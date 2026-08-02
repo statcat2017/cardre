@@ -45,8 +45,6 @@ class CoefficientSignCheckNode(NodeType):
     node_type = "cardre.coefficient_sign_check"
     version = "1"
     category = "fit"
-    input_roles: list[str] = ["model", "report"]
-    output_roles: list[str] = ["report"]
 
     __definition__ = NodeDefinition(
         node_type="cardre.coefficient_sign_check",
@@ -64,7 +62,6 @@ class CoefficientSignCheckNode(NodeType):
                 ArtifactRoleSpec("report"),
             ),
         ),
-        parameter_schema=None,
     )
 
     def run(self, context: NodeContext) -> NodeResult:
@@ -160,8 +157,6 @@ class SeparationDiagnosticsNode(NodeType):
     node_type = "cardre.separation_diagnostics"
     version = "1"
     category = "fit"
-    input_roles: list[str] = ["model"]
-    output_roles: list[str] = ["report"]
 
     __definition__ = NodeDefinition(
         node_type="cardre.separation_diagnostics",
@@ -178,7 +173,6 @@ class SeparationDiagnosticsNode(NodeType):
                 ArtifactRoleSpec("report"),
             ),
         ),
-        parameter_schema=None,
     )
 
     SEPARATION_COEFFICIENT_THRESHOLD = 10.0
@@ -256,8 +250,6 @@ class VifDiagnosticsNode(NodeType):
     node_type = "cardre.vif_diagnostics"
     version = "1"
     category = "fit"
-    input_roles: list[str] = ["train", "model"]
-    output_roles: list[str] = ["report"]
 
     __definition__ = NodeDefinition(
         node_type="cardre.vif_diagnostics",
@@ -275,7 +267,6 @@ class VifDiagnosticsNode(NodeType):
                 ArtifactRoleSpec("report"),
             ),
         ),
-        parameter_schema=None,
     )
 
     VIF_WARNING_THRESHOLD = 10.0
@@ -419,8 +410,6 @@ class CalibrationDiagnosticsNode(NodeType):
     node_type = "cardre.calibration_diagnostics"
     version = "1"
     category = "fit"
-    input_roles: list[str] = ["train", "test", "oot", "model", "definition"]
-    output_roles: list[str] = ["report"]
 
     __definition__ = NodeDefinition(
         node_type="cardre.calibration_diagnostics",
@@ -441,7 +430,6 @@ class CalibrationDiagnosticsNode(NodeType):
                 ArtifactRoleSpec("report"),
             ),
         ),
-        parameter_schema=None,
     )
 
     def run(self, context: NodeContext) -> NodeResult:

@@ -22,8 +22,6 @@ class FrozenScorecardBundleNode(NodeType):
     node_type = "cardre.freeze_scorecard_bundle"
     version = "1"
     category = "fit"
-    input_roles: list[str] = ["definition", "report", "model", "scorecard"]
-    output_roles: list[str] = ["scorecard"]
 
     __definition__ = NodeDefinition(
         node_type="cardre.freeze_scorecard_bundle",
@@ -43,7 +41,6 @@ class FrozenScorecardBundleNode(NodeType):
                 ArtifactRoleSpec("scorecard", kinds=(EvidenceKind.FROZEN_SCORECARD_BUNDLE,), media_types=("application/json",), schema_versions=(SCHEMA_FROZEN_SCORECARD_BUNDLE,)),
             ),
         ),
-        parameter_schema=None,
     )
 
     def run(self, context: NodeContext) -> NodeResult:

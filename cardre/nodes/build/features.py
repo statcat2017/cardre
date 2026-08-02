@@ -38,8 +38,6 @@ class CalculateWoeIvNode(NodeType):
     node_type = "cardre.calculate_woe_iv"
     version = "1"
     category = "selection"
-    input_roles: list[str] = ["train", "definition"]
-    output_roles: list[str] = ["report"]
 
     __definition__ = NodeDefinition(
         node_type="cardre.calculate_woe_iv",
@@ -57,7 +55,6 @@ class CalculateWoeIvNode(NodeType):
                 ArtifactRoleSpec("report"),
             ),
         ),
-        parameter_schema=None,
     )
 
     @classmethod
@@ -405,8 +402,6 @@ class WoeTransformTrainNode(NodeType):
     node_type = "cardre.woe_transform_train"
     version = "1"
     category = "fit"
-    input_roles: list[str] = ["train", "definition", "report"]
-    output_roles: list[str] = ["train", "report"]
 
     __definition__ = NodeDefinition(
         node_type="cardre.woe_transform_train",
@@ -426,7 +421,6 @@ class WoeTransformTrainNode(NodeType):
                 ArtifactRoleSpec("report", kinds=(EvidenceKind.WOE_TRANSFORM_EVIDENCE,), media_types=("application/json",), schema_versions=(SCHEMA_WOE_TRANSFORM_EVIDENCE,)),
             ),
         ),
-        parameter_schema=None,
     )
 
     def run(self, context: NodeContext) -> NodeResult:

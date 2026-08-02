@@ -176,8 +176,6 @@ class CalibrateProbabilitiesNode(NodeType):
     version = "1"
     category = "fit"
     description = "Calibrate model probabilities using Platt scaling or isotonic regression"
-    input_roles: list[str] = ["train", "test", "oot", "definition", "model"]
-    output_roles: list[str] = ["model", "report"]
 
     __definition__ = NodeDefinition(
         node_type="cardre.calibrate_probabilities",
@@ -199,7 +197,6 @@ class CalibrateProbabilitiesNode(NodeType):
                 ArtifactRoleSpec("report", kinds=(EvidenceKind.CALIBRATION_REPORT,), media_types=("application/json",), schema_versions=(SCHEMA_CALIBRATION_REPORT,)),
             ),
         ),
-        parameter_schema=None,
     )
 
     def allows_leakage_artifact(self, artifact: ArtifactRef) -> bool:

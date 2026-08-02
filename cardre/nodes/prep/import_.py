@@ -34,8 +34,6 @@ class ImportTabularDatasetNode(NodeType):
     node_type = "cardre.import_dataset"
     version = "1"
     category = "transform"
-    input_roles: list[str] = []
-    output_roles: list[str] = ["input"]
 
     __definition__ = NodeDefinition(
         node_type="cardre.import_dataset",
@@ -44,9 +42,6 @@ class ImportTabularDatasetNode(NodeType):
         description="Import tabular dataset from file",
         input_contract=ArtifactContract(),
         output_contract=ArtifactContract(roles=(ArtifactRoleSpec("input", required=True, kinds=(EvidenceKind.MODELLING_METADATA,), media_types=("application/vnd.apache.parquet",), schema_versions=()),)),
-        parameter_schema=None,
-        optional_dependencies=(),
-        tier="launch",
     )
 
     SUPPORTED_FORMATS = frozenset({"csv", "tsv", "parquet"})

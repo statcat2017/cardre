@@ -29,8 +29,6 @@ class VariableClusteringNode(NodeType):
     node_type = "cardre.variable_clustering"
     version = "1"
     category = "selection"
-    input_roles: list[str] = ["train", "report"]
-    output_roles: list[str] = ["report"]
 
     __definition__ = NodeDefinition(
         node_type="cardre.variable_clustering",
@@ -48,7 +46,6 @@ class VariableClusteringNode(NodeType):
                 ArtifactRoleSpec("report"),
             ),
         ),
-        parameter_schema=None,
     )
 
     @classmethod

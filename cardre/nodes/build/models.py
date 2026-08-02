@@ -44,8 +44,6 @@ class LogisticRegressionNode(NodeType):
     node_type = "cardre.logistic_regression"
     version = "1"
     category = "fit"
-    input_roles: list[str] = ["train", "definition"]
-    output_roles: list[str] = ["model"]
 
     VALID_PENALTIES = {"l1", "l2", "elasticnet", None}
     VALID_SOLVERS = {"lbfgs", "liblinear", "newton-cg", "newton-cholesky", "sag", "saga"}
@@ -331,8 +329,6 @@ class ScoreScalingNode(NodeType):
     version = "1"
     category = "fit"
     description = "Scale model log-odds into a credit scorecard"
-    input_roles: list[str] = ["model", "definition", "report"]
-    output_roles: list[str] = ["scorecard"]
 
     __definition__ = NodeDefinition(
         node_type="cardre.score_scaling",
@@ -349,9 +345,6 @@ class ScoreScalingNode(NodeType):
         output_contract=ArtifactContract(
             roles=(ArtifactRoleSpec("scorecard", required=True),),
         ),
-        parameter_schema=None,
-        optional_dependencies=(),
-        tier="launch",
     )
 
     @classmethod
@@ -531,8 +524,6 @@ class BuildSummaryReportNode(NodeType):
     version = "1"
     category = "fit"
     description = "Compile a build summary report from model, scorecard, and WOE/IV evidence"
-    input_roles: list[str] = ["scorecard", "model", "report"]
-    output_roles: list[str] = ["report"]
 
     __definition__ = NodeDefinition(
         node_type="cardre.build_summary_report",
@@ -549,9 +540,6 @@ class BuildSummaryReportNode(NodeType):
         output_contract=ArtifactContract(
             roles=(ArtifactRoleSpec("report", required=True),),
         ),
-        parameter_schema=None,
-        optional_dependencies=(),
-        tier="launch",
     )
 
     def run(self, context: NodeContext) -> NodeResult:
@@ -637,8 +625,6 @@ class DummyFitNode(NodeType):
     version = "1"
     category = "fit"
     description = "Create a dummy fit definition from training data"
-    input_roles: list[str] = ["train"]
-    output_roles: list[str] = ["definition"]
 
     __definition__ = NodeDefinition(
         node_type="cardre.dummy_fit",
@@ -651,9 +637,6 @@ class DummyFitNode(NodeType):
         output_contract=ArtifactContract(
             roles=(ArtifactRoleSpec("definition", required=True),),
         ),
-        parameter_schema=None,
-        optional_dependencies=(),
-        tier="launch",
     )
 
     def run(self, context: NodeContext) -> NodeResult:
@@ -683,18 +666,6 @@ class NoopNode(NodeType):
     version = "1"
     category = "transform"
     description = "Pass-through node that produces no outputs"
-    input_roles: list[str] = [
-        "input",
-        "train",
-        "test",
-        "oot",
-        "definition",
-        "report",
-        "model",
-        "scorecard",
-        "manifest",
-    ]
-    output_roles: list[str] = []
 
     __definition__ = NodeDefinition(
         node_type="cardre.noop",
@@ -715,10 +686,26 @@ class NoopNode(NodeType):
             ),
         ),
         output_contract=ArtifactContract(roles=()),
-        parameter_schema=None,
-        optional_dependencies=(),
-        tier="launch",
     )
 
     def run(self, context: NodeContext) -> NodeResult:
         return context.outputs.build_result()
+
+
+__definition_logistic = NodeDefinition(
+    node_type=LogisticRegressionNode.node_type,
+    version=LogisticRegressionNode.version,
+    category=LogisticRegressionNode.category,
+    description="Logistic regression classifier producing a cardre.model_artifact.v1 artifact",
+    input_contract=ArtifactContract(
+        roles=(
+            ArtifactRoleSpec("train", required=True),
+            ArtifactRoleSpec("definition", required=True),
+        ),
+    ),
+    output_contract=ArtifactContract(
+        roles=(ArtifactRoleSpec("model", required=True),),
+    ),
+)
+
+LogisticRegressionNode.__definition__ = __definition_logistic

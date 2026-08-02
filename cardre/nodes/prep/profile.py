@@ -27,8 +27,6 @@ class ProfileDatasetNode(NodeType):
     node_type = "cardre.profile_dataset"
     version = "1"
     category = "transform"
-    input_roles: list[str] = ["input", "train", "test", "oot"]
-    output_roles: list[str] = ["report"]
 
     __definition__ = NodeDefinition(
         node_type="cardre.profile_dataset",
@@ -37,9 +35,6 @@ class ProfileDatasetNode(NodeType):
         description="Profile dataset columns and detect quality issues",
         input_contract=ArtifactContract(roles=(ArtifactRoleSpec("input", required=True, kinds=(RoleKind.DATASET,)),)),
         output_contract=ArtifactContract(roles=(ArtifactRoleSpec("report", required=True, kinds=(EvidenceKind.PROFILE_SUMMARY,), media_types=("application/json",), schema_versions=(SCHEMA_PROFILE_SUMMARY,)),)),
-        parameter_schema=None,
-        optional_dependencies=(),
-        tier="launch",
     )
 
     @classmethod

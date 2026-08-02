@@ -27,8 +27,6 @@ class ThresholdOptimizationNode(NodeType):
     node_type = "cardre.threshold_optimization"
     version = "1"
     category = "apply"
-    input_roles: list[str] = ["train", "test", "oot", "definition"]
-    output_roles: list[str] = ["report"]
 
     OBJECTIVES = {"youden", "max_f1", "max_g_mean", "cost_minimize"}
 
@@ -220,12 +218,16 @@ __definition__ = NodeDefinition(
     category=ThresholdOptimizationNode.category,
     description="Optimize probability threshold for binary classification decisions",
     input_contract=ArtifactContract(
-        roles=tuple(ArtifactRoleSpec(r, required=True) for r in ThresholdOptimizationNode.input_roles),
+        roles=(
+            ArtifactRoleSpec("train", required=True),
+            ArtifactRoleSpec("test", required=True),
+            ArtifactRoleSpec("oot", required=True),
+            ArtifactRoleSpec("definition", required=True),
+        ),
     ),
     output_contract=ArtifactContract(
-        roles=tuple(ArtifactRoleSpec(r, required=True) for r in ThresholdOptimizationNode.output_roles),
+        roles=(ArtifactRoleSpec("report", required=True),),
     ),
-    parameter_schema=None,
-    optional_dependencies=(),
-    tier="launch",
 )
+
+ThresholdOptimizationNode.__definition__ = __definition__

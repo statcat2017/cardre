@@ -27,8 +27,6 @@ class FeatureSelectionFilterNode(NodeType):
     node_type = "cardre.feature_selection_filter"
     version = "1"
     category = "selection"
-    input_roles: list[str] = ["train", "definition", "report"]
-    output_roles: list[str] = ["definition"]
 
     def validate_params(self, params: dict[str, Any]) -> list[str]:
         errors: list[str] = []
@@ -241,12 +239,15 @@ __definition__ = NodeDefinition(
     category=FeatureSelectionFilterNode.category,
     description="",
     input_contract=ArtifactContract(
-        roles=tuple(ArtifactRoleSpec(r, required=True) for r in FeatureSelectionFilterNode.input_roles),
+        roles=(
+            ArtifactRoleSpec("train", required=True),
+            ArtifactRoleSpec("definition", required=True),
+            ArtifactRoleSpec("report", required=True),
+        ),
     ),
     output_contract=ArtifactContract(
-        roles=tuple(ArtifactRoleSpec(r, required=True) for r in FeatureSelectionFilterNode.output_roles),
+        roles=(ArtifactRoleSpec("definition", required=True),),
     ),
-    parameter_schema=None,
-    optional_dependencies=(),
-    tier="launch",
 )
+
+FeatureSelectionFilterNode.__definition__ = __definition__

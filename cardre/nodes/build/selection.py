@@ -30,8 +30,6 @@ class VariableSelectionNode(NodeType):
     node_type = "cardre.variable_selection"
     version = "1"
     category = "selection"
-    input_roles: list[str] = ["report"]
-    output_roles: list[str] = ["definition"]
 
     __definition__ = NodeDefinition(
         node_type="cardre.variable_selection",
@@ -48,7 +46,6 @@ class VariableSelectionNode(NodeType):
                 ArtifactRoleSpec("definition", kinds=(EvidenceKind.SELECTION_DEFINITION,), media_types=("application/json",), schema_versions=(SCHEMA_SELECTION_DEFINITION,)),
             ),
         ),
-        parameter_schema=None,
     )
 
     @classmethod

@@ -40,8 +40,6 @@ class FairnessReportNode(NodeType):
     node_type = "cardre.fairness_report"
     version = "1"
     category = "report"
-    input_roles: list[str] = ["train", "test", "oot", "definition", "model"]
-    output_roles: list[str] = ["report"]
 
     __definition__ = NodeDefinition(
         node_type=node_type,
@@ -60,7 +58,6 @@ class FairnessReportNode(NodeType):
         output_contract=ArtifactContract(
             roles=(ArtifactRoleSpec("report", kinds=(EvidenceKind.FAIRNESS_REPORT,), media_types=("application/json",), schema_versions=(SCHEMA_FAIRNESS_REPORT,)),),
         ),
-        parameter_schema=None,
     )
 
     def validate_params(self, params: dict[str, Any]) -> list[str]:
@@ -294,8 +291,6 @@ class ProxyRiskReportNode(NodeType):
     node_type = "cardre.proxy_risk_report"
     version = "1"
     category = "report"
-    input_roles: list[str] = ["train", "model", "definition"]
-    output_roles: list[str] = ["report"]
 
     __definition__ = NodeDefinition(
         node_type=node_type,
@@ -312,7 +307,6 @@ class ProxyRiskReportNode(NodeType):
         output_contract=ArtifactContract(
             roles=(ArtifactRoleSpec("report", kinds=(EvidenceKind.PROXY_RISK_REPORT,), media_types=("application/json",), schema_versions=(SCHEMA_PROXY_RISK_REPORT,)),),
         ),
-        parameter_schema=None,
     )
 
     def validate_params(self, params: dict[str, Any]) -> list[str]:
@@ -492,8 +486,6 @@ class AlternativeDataManifestNode(NodeType):
     node_type = "cardre.alternative_data_manifest"
     version = "1"
     category = "report"
-    input_roles: list[str] = ["train", "definition"]
-    output_roles: list[str] = ["report"]
 
     __definition__ = NodeDefinition(
         node_type=node_type,
@@ -509,7 +501,6 @@ class AlternativeDataManifestNode(NodeType):
         output_contract=ArtifactContract(
             roles=(ArtifactRoleSpec("report", kinds=(EvidenceKind.REPORT_BUNDLE,), media_types=("application/json",), schema_versions=()),),
         ),
-        parameter_schema=None,
     )
 
     def validate_params(self, params: dict[str, Any]) -> list[str]:

@@ -12,6 +12,7 @@ from typing import Any, cast
 import polars as pl
 
 from cardre.nodes._classifier_base import BaseClassifierNode, _ClassifierResult
+from cardre.nodes.contracts import ArtifactContract, ArtifactRoleSpec, NodeDefinition
 from cardre.nodes.parameters import (
     MethodOption,
     NodeParameterSchema,
@@ -41,8 +42,6 @@ class XGBoostClassifierNode(BaseClassifierNode):
     node_type = "cardre.xgboost_classifier"
     version = "1"
     category = "fit"
-    input_roles: list[str] = ["train", "definition"]
-    output_roles: list[str] = ["model"]
     model_family = "xgboost"
     optional_dependencies: list[str] = ["xgboost"]
 
@@ -185,8 +184,6 @@ class LightGBMClassifierNode(BaseClassifierNode):
     node_type = "cardre.lightgbm_classifier"
     version = "1"
     category = "fit"
-    input_roles: list[str] = ["train", "definition"]
-    output_roles: list[str] = ["model"]
     model_family = "lightgbm"
     optional_dependencies: list[str] = ["lightgbm"]
 
@@ -332,8 +329,6 @@ class CatBoostClassifierNode(BaseClassifierNode):
     node_type = "cardre.catboost_classifier"
     version = "1"
     category = "fit"
-    input_roles: list[str] = ["train", "definition"]
-    output_roles: list[str] = ["model"]
     model_family = "catboost"
     optional_dependencies: list[str] = ["catboost"]
 
@@ -463,3 +458,56 @@ class CatBoostClassifierNode(BaseClassifierNode):
             },
             extra_metrics={"estimator_count": iterations},
         )
+
+
+__definition__ = NodeDefinition(
+    node_type=XGBoostClassifierNode.node_type,
+    version=XGBoostClassifierNode.version,
+    category=XGBoostClassifierNode.category,
+    description="XGBoost classifier — optional boosting challenger",
+    input_contract=ArtifactContract(
+        roles=(
+            ArtifactRoleSpec("train", required=True),
+            ArtifactRoleSpec("definition", required=True),
+        ),
+    ),
+    output_contract=ArtifactContract(
+        roles=(ArtifactRoleSpec("model", required=True),),
+    ),
+)
+
+__definition_lightgbm = NodeDefinition(
+    node_type=LightGBMClassifierNode.node_type,
+    version=LightGBMClassifierNode.version,
+    category=LightGBMClassifierNode.category,
+    description="LightGBM classifier — optional boosting challenger",
+    input_contract=ArtifactContract(
+        roles=(
+            ArtifactRoleSpec("train", required=True),
+            ArtifactRoleSpec("definition", required=True),
+        ),
+    ),
+    output_contract=ArtifactContract(
+        roles=(ArtifactRoleSpec("model", required=True),),
+    ),
+)
+
+__definition_catboost = NodeDefinition(
+    node_type=CatBoostClassifierNode.node_type,
+    version=CatBoostClassifierNode.version,
+    category=CatBoostClassifierNode.category,
+    description="CatBoost classifier — optional boosting challenger",
+    input_contract=ArtifactContract(
+        roles=(
+            ArtifactRoleSpec("train", required=True),
+            ArtifactRoleSpec("definition", required=True),
+        ),
+    ),
+    output_contract=ArtifactContract(
+        roles=(ArtifactRoleSpec("model", required=True),),
+    ),
+)
+
+XGBoostClassifierNode.__definition__ = __definition__
+LightGBMClassifierNode.__definition__ = __definition_lightgbm
+CatBoostClassifierNode.__definition__ = __definition_catboost

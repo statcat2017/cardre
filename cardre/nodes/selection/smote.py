@@ -20,8 +20,6 @@ class SmoteTrainingDataNode(NodeType):
     node_type = "cardre.smote_training_data"
     version = "1"
     category = "transform"
-    input_roles: list[str] = ["train", "definition"]
-    output_roles: list[str] = ["train"]
     optional_dependencies: list[str] = ["imbalance"]
 
     def validate_params(self, params: dict[str, Any]) -> list[str]:
@@ -182,12 +180,17 @@ __definition__ = NodeDefinition(
     category=SmoteTrainingDataNode.category,
     description="",
     input_contract=ArtifactContract(
-        roles=tuple(ArtifactRoleSpec(r, required=True) for r in SmoteTrainingDataNode.input_roles),
+        roles=(
+            ArtifactRoleSpec("train", required=True),
+            ArtifactRoleSpec("definition", required=True),
+        ),
     ),
     output_contract=ArtifactContract(
-        roles=tuple(ArtifactRoleSpec(r, required=True) for r in SmoteTrainingDataNode.output_roles),
+        roles=(
+            ArtifactRoleSpec("train", required=True),
+            ArtifactRoleSpec("report", required=True),
+        ),
     ),
-    parameter_schema=None,
-    optional_dependencies=("imbalance",),
-    tier="launch",
 )
+
+SmoteTrainingDataNode.__definition__ = __definition__

@@ -20,8 +20,6 @@ class _RequiredInputNode(NodeType):
     version = "1"
     category = "test"
     description = "Declares a required train input that callers may omit"
-    input_roles: list[str] = ["train", "test"]
-    output_roles: list[str] = []
 
     __definition__ = NodeDefinition(
         node_type="test.required_input",
@@ -35,7 +33,6 @@ class _RequiredInputNode(NodeType):
             ),
         ),
         output_contract=ArtifactContract(roles=()),
-        parameter_schema=None,
     )
 
     ran = False

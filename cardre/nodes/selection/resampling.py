@@ -21,8 +21,6 @@ class ResampleTrainingDataNode(NodeType):
     node_type = "cardre.resample_training_data"
     version = "1"
     category = "transform"
-    input_roles: list[str] = ["train", "definition"]
-    output_roles: list[str] = ["train"]
 
     STRATEGIES = {"undersample_majority", "oversample_minority", "combined"}
 
@@ -165,12 +163,17 @@ __definition__ = NodeDefinition(
     category=ResampleTrainingDataNode.category,
     description="",
     input_contract=ArtifactContract(
-        roles=tuple(ArtifactRoleSpec(r, required=True) for r in ResampleTrainingDataNode.input_roles),
+        roles=(
+            ArtifactRoleSpec("train", required=True),
+            ArtifactRoleSpec("definition", required=True),
+        ),
     ),
     output_contract=ArtifactContract(
-        roles=tuple(ArtifactRoleSpec(r, required=True) for r in ResampleTrainingDataNode.output_roles),
+        roles=(
+            ArtifactRoleSpec("train", required=True),
+            ArtifactRoleSpec("report", required=True),
+        ),
     ),
-    parameter_schema=None,
-    optional_dependencies=(),
-    tier="launch",
 )
+
+ResampleTrainingDataNode.__definition__ = __definition__

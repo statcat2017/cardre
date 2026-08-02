@@ -31,8 +31,6 @@ class ScorecardTableExportNode(NodeType):
     version = "1"
     category = "export"
     description = "Export scorecard as a table (CSV equivalent + JSON)"
-    input_roles: list[str] = ["scorecard", "report"]
-    output_roles: list[str] = ["report"]
 
     __definition__ = NodeDefinition(
         node_type="cardre.scorecard_table_export",
@@ -48,9 +46,6 @@ class ScorecardTableExportNode(NodeType):
         output_contract=ArtifactContract(
             roles=(ArtifactRoleSpec("report", required=True),),
         ),
-        parameter_schema=None,
-        optional_dependencies=(),
-        tier="launch",
     )
 
     def run(self, context: NodeContext) -> NodeResult:
@@ -270,8 +265,6 @@ class PythonScoringExportNode(NodeType):
     version = "1"
     category = "export"
     description = "Export a standalone Python scorer from a frozen scorecard bundle"
-    input_roles: list[str] = ["scorecard", "model", "report", "definition"]
-    output_roles: list[str] = ["report"]
 
     __definition__ = NodeDefinition(
         node_type="cardre.scoring_export_python",
@@ -289,9 +282,6 @@ class PythonScoringExportNode(NodeType):
         output_contract=ArtifactContract(
             roles=(ArtifactRoleSpec("report", required=True),),
         ),
-        parameter_schema=None,
-        optional_dependencies=(),
-        tier="launch",
     )
 
     def run(self, context: NodeContext) -> NodeResult:
@@ -475,8 +465,6 @@ class SqlScoringExportNode(NodeType):
     version = "1"
     category = "export"
     description = "Export a generic SQL scorer from a frozen scorecard bundle"
-    input_roles: list[str] = ["scorecard", "model", "report", "definition"]
-    output_roles: list[str] = ["report"]
 
     __definition__ = NodeDefinition(
         node_type="cardre.scoring_export_sql",
@@ -494,9 +482,6 @@ class SqlScoringExportNode(NodeType):
         output_contract=ArtifactContract(
             roles=(ArtifactRoleSpec("report", required=True),),
         ),
-        parameter_schema=None,
-        optional_dependencies=(),
-        tier="launch",
     )
 
     def run(self, context: NodeContext) -> NodeResult:

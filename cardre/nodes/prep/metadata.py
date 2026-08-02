@@ -18,8 +18,6 @@ class DefineModellingMetadataNode(NodeType):
     node_type = "cardre.define_modelling_metadata"
     version = "1"
     category = "transform"
-    input_roles: list[str] = ["input", "train"]
-    output_roles: list[str] = ["definition"]
 
     __definition__ = NodeDefinition(
         node_type="cardre.define_modelling_metadata",
@@ -28,9 +26,6 @@ class DefineModellingMetadataNode(NodeType):
         description="Define modelling metadata including target specification",
         input_contract=ArtifactContract(roles=(ArtifactRoleSpec("input", required=True, kinds=(RoleKind.DATASET,)),)),
         output_contract=ArtifactContract(roles=(ArtifactRoleSpec("definition", required=True, kinds=(EvidenceKind.MODELLING_METADATA, EvidenceKind.SAMPLE_DEFINITION), media_types=("application/json",), schema_versions=(SCHEMA_MODELLING_METADATA, SCHEMA_SAMPLE_DEFINITION)),)),
-        parameter_schema=None,
-        optional_dependencies=(),
-        tier="launch",
     )
 
     VALID_REJECT_INFERENCE_POSITIONS = {
@@ -124,8 +119,6 @@ class DevelopmentSampleDefinitionNode(NodeType):
     node_type = "cardre.development_sample_definition"
     version = "1"
     category = "transform"
-    input_roles: list[str] = ["input", "train", "definition"]
-    output_roles: list[str] = ["definition"]
 
     __definition__ = NodeDefinition(
         node_type="cardre.development_sample_definition",
@@ -134,9 +127,6 @@ class DevelopmentSampleDefinitionNode(NodeType):
         description="Define development sample population and weighting",
         input_contract=ArtifactContract(roles=(ArtifactRoleSpec("input", required=True, kinds=(RoleKind.DATASET,)), ArtifactRoleSpec("train", required=False, kinds=(RoleKind.DATASET,)), ArtifactRoleSpec("definition", required=False, kinds=(RoleKind.DEFINITION,)))),
         output_contract=ArtifactContract(roles=(ArtifactRoleSpec("definition", required=True, kinds=(EvidenceKind.MODELLING_METADATA, EvidenceKind.SAMPLE_DEFINITION), media_types=("application/json",), schema_versions=(SCHEMA_MODELLING_METADATA, SCHEMA_SAMPLE_DEFINITION)),)),
-        parameter_schema=None,
-        optional_dependencies=(),
-        tier="launch",
     )
 
     def validate_params(self, params: dict[str, Any]) -> list[str]:

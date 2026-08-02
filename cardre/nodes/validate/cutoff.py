@@ -27,8 +27,6 @@ class CutoffAnalysisNode(NodeType):
     node_type = "cardre.cutoff_analysis"
     version = "1"
     category = "apply"
-    input_roles: list[str] = ["train", "test", "oot", "definition"]
-    output_roles: list[str] = ["report"]
 
     @classmethod
     def parameter_schema(cls) -> NodeParameterSchema:
@@ -198,12 +196,16 @@ __definition__ = NodeDefinition(
     input_contract=ArtifactContract(
         # No role is hard-required: the node analyses whichever datasets are
         # supplied (train/test/oot) and tolerates missing target metadata.
-        roles=tuple(ArtifactRoleSpec(r, required=False) for r in CutoffAnalysisNode.input_roles),
+        roles=(
+            ArtifactRoleSpec("train", required=False),
+            ArtifactRoleSpec("test", required=False),
+            ArtifactRoleSpec("oot", required=False),
+            ArtifactRoleSpec("definition", required=False),
+        ),
     ),
     output_contract=ArtifactContract(
-        roles=tuple(ArtifactRoleSpec(r, required=True) for r in CutoffAnalysisNode.output_roles),
+        roles=(ArtifactRoleSpec("report", required=True),),
     ),
-    parameter_schema=None,
-    optional_dependencies=(),
-    tier="launch",
 )
+
+CutoffAnalysisNode.__definition__ = __definition__

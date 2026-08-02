@@ -95,8 +95,6 @@ class ModelExplainabilityNode(NodeType):
     node_type = "cardre.model_explainability"
     version = "1"
     category = "report"
-    input_roles: list[str] = ["model", "train", "test", "oot"]
-    output_roles: list[str] = ["report"]
     optional_dependencies: list[str] = ["explain"]
 
     __definition__ = NodeDefinition(
@@ -115,8 +113,6 @@ class ModelExplainabilityNode(NodeType):
         output_contract=ArtifactContract(
             roles=(ArtifactRoleSpec("report", kinds=(EvidenceKind.EXPLAINABILITY_REPORT,), media_types=("application/json",), schema_versions=(SCHEMA_EXPLAINABILITY_REPORT,)),),
         ),
-        parameter_schema=None,
-        optional_dependencies=("explain",),
     )
 
     @classmethod
@@ -571,8 +567,6 @@ class ModelLimitationsNode(NodeType):
     node_type = "cardre.model_limitations"
     version = "1"
     category = "report"
-    input_roles: list[str] = ["model", "train", "definition"]
-    output_roles: list[str] = ["report"]
 
     __definition__ = NodeDefinition(
         node_type="cardre.model_limitations",
@@ -589,7 +583,6 @@ class ModelLimitationsNode(NodeType):
         output_contract=ArtifactContract(
             roles=(ArtifactRoleSpec("report", kinds=(EvidenceKind.EXPLAINABILITY_REPORT,), media_types=("application/json",), schema_versions=(SCHEMA_EXPLAINABILITY_REPORT,)),),
         ),
-        parameter_schema=None,
     )
 
     @classmethod

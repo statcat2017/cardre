@@ -29,8 +29,6 @@ class DefineRejectPopulationNode(NodeType):
     node_type = "cardre.define_reject_population"
     version = "1"
     category = "transform"
-    input_roles: list[str] = ["input", "definition"]
-    output_roles: list[str] = ["input", "definition"]
 
     __definition__ = NodeDefinition(
         node_type=node_type,
@@ -52,7 +50,6 @@ class DefineRejectPopulationNode(NodeType):
                 ArtifactRoleSpec("definition", kinds=(EvidenceKind.REJECT_POPULATION_CONFIG,), media_types=("application/json",), schema_versions=(SCHEMA_REJECT_POPULATION_CONFIG,)),
             ),
         ),
-        parameter_schema=None,
     )
 
     @classmethod
@@ -203,8 +200,6 @@ class RejectInferenceNoneNode(NodeType):
     node_type = "cardre.reject_inference_none"
     version = "1"
     category = "transform"
-    input_roles: list[str] = ["input", "definition"]
-    output_roles: list[str] = ["input", "report"]
 
     __definition__ = NodeDefinition(
         node_type=node_type,
@@ -223,7 +218,6 @@ class RejectInferenceNoneNode(NodeType):
                 ArtifactRoleSpec("report", kinds=(EvidenceKind.REJECT_INFERENCE_RESULT,), media_types=("application/json",), schema_versions=(SCHEMA_REJECT_INFERENCE_RESULT,)),
             ),
         ),
-        parameter_schema=None,
     )
 
     @classmethod
@@ -311,8 +305,6 @@ class RejectInferenceAugmentationNode(NodeType):
     node_type = "cardre.reject_inference_augmentation"
     version = "1"
     category = "transform"
-    input_roles: list[str] = ["input", "definition"]
-    output_roles: list[str] = ["input", "report"]
 
     __definition__ = NodeDefinition(
         node_type=node_type,
@@ -334,7 +326,6 @@ class RejectInferenceAugmentationNode(NodeType):
                 ArtifactRoleSpec("report", kinds=(EvidenceKind.REJECT_INFERENCE_RESULT,), media_types=("application/json",), schema_versions=(SCHEMA_REJECT_INFERENCE_RESULT,)),
             ),
         ),
-        parameter_schema=None,
     )
 
     @classmethod

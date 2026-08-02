@@ -34,8 +34,6 @@ class ApplyWoeMappingNode(NodeType):
     node_type = "cardre.apply_woe_mapping"
     version = "1"
     category = "apply"
-    input_roles: list[str] = ["train", "test", "oot", "definition", "report", "scorecard"]
-    output_roles: list[str] = ["train", "test", "oot", "report"]
 
     VALID_UNMATCHED_POLICIES = {"fill_zero", "warn", "fail"}
 
@@ -238,8 +236,6 @@ class ApplyModelNode(NodeType):
     node_type = "cardre.apply_model"
     version = "2"
     category = "apply"
-    input_roles: list[str] = ["train", "test", "oot", "model", "scorecard"]
-    output_roles: list[str] = ["train", "test", "oot", "report"]
 
     _DATA_ROLES = ("train", "test", "oot")
 
@@ -624,9 +620,6 @@ __definition__ = NodeDefinition(
             ArtifactRoleSpec("report", required=True, kinds=(EvidenceKind.APPLY_WOE_EVIDENCE,), media_types=("application/json",), schema_versions=(SCHEMA_APPLY_WOE_EVIDENCE,)),
         ),
     ),
-    parameter_schema=None,
-    optional_dependencies=(),
-    tier="launch",
 )
 
 __definition_apply_model = NodeDefinition(
@@ -654,9 +647,6 @@ __definition_apply_model = NodeDefinition(
             ArtifactRoleSpec("report", required=True, kinds=(EvidenceKind.APPLY_MODEL_EVIDENCE,), media_types=("application/json",), schema_versions=(SCHEMA_APPLY_MODEL_EVIDENCE,)),
         ),
     ),
-    parameter_schema=None,
-    optional_dependencies=(),
-    tier="launch",
 )
 
 # Bind the typed contracts to their classes so StepRunner (which reads

@@ -26,30 +26,23 @@ class ArtifactRoleSpec:
 @dataclass(frozen=True)
 class ArtifactContract:
     roles: tuple[ArtifactRoleSpec, ...] = ()
-    # Backward-compat: old nodes use input_roles/output_roles as lists
-    input_roles: tuple[str, ...] = ()
-    output_roles: tuple[str, ...] = ()
-
-    @property
-    def input_roles_list(self) -> list[str]:
-        return list(self.input_roles)
-
-    @property
-    def output_roles_list(self) -> list[str]:
-        return list(self.output_roles)
 
 
 @dataclass(frozen=True)
 class NodeDefinition:
+    """The single contract source for a node.
+
+    Carries identity (node_type, version, category, description) and the
+    typed input/output contracts. Runtime authorities for tier, optional
+    dependencies and parameter schemas live on the ``NodeType`` class and
+    are consumed directly by the catalogue and ``StepRunner``.
+    """
     node_type: str
     version: str
     category: str
     description: str
     input_contract: ArtifactContract
     output_contract: ArtifactContract
-    parameter_schema: NodeParameterSchema | None = None
-    optional_dependencies: tuple[str, ...] = ()
-    tier: str = "launch"
 
 
 @dataclass
@@ -111,8 +104,11 @@ class NodeContext:
 
 
 class NodeType(ABC):
-    """Abstract base for all node types. Old nodes (pre-Batch 03) use class-level
-    attributes; new nodes define ``__definition__``."""
+    """Abstract base for all node types.
+
+    Every executable node declares exactly one explicit ``__definition__``
+    (a ``NodeDefinition``) as its single contract source.
+    """
 
     node_type: str = ""
     version: str = ""
@@ -120,56 +116,17 @@ class NodeType(ABC):
     description: str = ""
     optional_dependencies: list[str] | None = None
     _deferred: bool = False
-    __definition_cached: NodeDefinition | None = None
-
-    @property
-    def __definition__(self) -> NodeDefinition:
-        """Backward-compatible accessor. Caches after first computation."""
-        if self.__definition_cached is not None:
-            return self.__definition_cached
-        defn = NodeDefinition(
-            node_type=self.node_type,
-            version=self.version,
-            category=self.category,
-            description=self.description or "",
-            input_contract=ArtifactContract(
-                input_roles=tuple(getattr(self, "input_roles", []) or []),
-            ),
-            output_contract=ArtifactContract(
-                output_roles=tuple(getattr(self, "output_roles", []) or []),
-            ),
-            parameter_schema=self.parameter_schema(),
-            optional_dependencies=tuple(self.optional_dependencies or []),
-            tier="deferred" if self._deferred else "launch",
-        )
-        self.__definition_cached = defn
-        return defn
 
     @classmethod
     def node_definition(cls) -> NodeDefinition:
-        """The single authoritative ``NodeDefinition`` for this node type.
-
-        ``__definition__`` is an instance property; for class-level access this
-        builds the definition from the class attributes. All version checks,
-        plan building and contract validation must read from this, never from
-        the legacy class-level ``version`` attribute directly.
-        """
-        return cls().__definition__
+        """The single authoritative ``NodeDefinition`` for this node type."""
+        return cls.__definition__
 
     @abstractmethod
     def run(self, context: Any) -> Any: ...
 
     def validate_params(self, params: dict[str, Any]) -> list[str]:
         return []
-
-    @classmethod
-    def contract(cls) -> ArtifactContract:
-        ir = tuple(getattr(cls, "input_roles", []))
-        o_r = tuple(getattr(cls, "output_roles", []))
-        return ArtifactContract(
-            input_roles=ir,
-            output_roles=o_r,
-        )
 
     @classmethod
     def parameter_schema(cls) -> NodeParameterSchema | None:
