@@ -54,11 +54,12 @@ def _build_classifier_plan(csv_path: Path, cat) -> list[StepSpec]:
     """
 
     def _spec(step_id: str, node_type: str, parents: list[str], params: dict) -> StepSpec:
+        defn = cat.resolve(node_type).node_definition()
         return StepSpec(
             step_id=step_id,
             node_type=node_type,
-            node_version=cat.resolve(node_type).version,
-            category=cat.resolve(node_type).category,
+            node_version=defn.version,
+            category=defn.category,
             params=params,
             params_hash=json.dumps(params, sort_keys=True),
             parent_step_ids=parents,

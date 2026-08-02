@@ -1019,10 +1019,7 @@ export interface components {
              * @default 0
              */
             position: number;
-            /**
-             * Canonical Step Id
-             * @default
-             */
+            /** Canonical Step Id */
             canonical_step_id: string;
             /** Branch Id */
             branch_id?: string | null;

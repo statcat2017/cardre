@@ -31,6 +31,10 @@ class StepSpec:
     canonical_step_id: str = field(kw_only=True)
     branch_id: str | None = field(default=None, kw_only=True)
 
+    def __post_init__(self) -> None:
+        if not self.canonical_step_id:
+            raise ValueError("StepSpec.canonical_step_id must be a non-empty string")
+
     def to_dict(self) -> JsonDict:
         return {
             "step_id": self.step_id,

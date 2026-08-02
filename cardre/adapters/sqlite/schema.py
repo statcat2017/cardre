@@ -51,7 +51,7 @@ CREATE TABLE IF NOT EXISTS plan_steps (
     params_hash TEXT NOT NULL,
     branch_label TEXT NOT NULL DEFAULT '',
     position INTEGER NOT NULL,
-    canonical_step_id TEXT NOT NULL DEFAULT '',
+    canonical_step_id TEXT NOT NULL CHECK (canonical_step_id <> ''),
     branch_id TEXT,
     PRIMARY KEY (plan_version_id, step_id)
 );

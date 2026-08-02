@@ -193,6 +193,21 @@ class ExecuteRun:
                  for sid in unavailable]
             )
 
+        mismatches: list[dict[str, str]] = []
+        for step in steps:
+            current = self._node_catalogue.resolve(step.node_type).node_definition().version
+            if step.node_version != current:
+                mismatches.append({
+                    "step_id": step.step_id,
+                    "node_type": step.node_type,
+                    "persisted_version": step.node_version,
+                    "current_version": current,
+                })
+        if mismatches:
+            from cardre.domain.errors import NodeVersionMismatchError
+
+            raise NodeVersionMismatchError.from_mismatches(mismatches)
+
     def _claim_run(self, command: ExecuteRunCommand) -> int | None:
         """Transition submitted -> running, begin a worker lease, and
         atomically remove the durable dispatch row.

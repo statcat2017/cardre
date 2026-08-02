@@ -115,7 +115,7 @@ class PlanStepResponse(BaseModel):
     parent_step_ids: list[str] = Field(default_factory=list)
     branch_label: str = ""
     position: int = 0
-    canonical_step_id: str = ""
+    canonical_step_id: str
     branch_id: str | None = None
 
 

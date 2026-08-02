@@ -246,24 +246,45 @@ class NodeVersionMismatchError(CardreError):
     code = "NODE_VERSION_MISMATCH"
     status_code = 409
 
-    def __init__(self, step_id: str, node_type: str, expected: str, actual: str) -> None:
+    def __init__(self, step_id: str, node_type: str, persisted: str, current: str) -> None:
         self.step_id = step_id
         self.node_type = node_type
-        self.expected_version = expected
-        self.actual_version = actual
+        self.persisted_version = persisted
+        self.current_version = current
         message = (
-            f"Step {step_id!r} ({node_type!r}) recorded node_version {expected!r} "
-            f"but the current implementation is version {actual!r}."
+            f"Step {step_id!r} ({node_type!r}) recorded node_version {persisted!r} "
+            f"but the current implementation is version {current!r}."
         )
         super().__init__(
             message,
             context={
                 "step_id": step_id,
                 "node_type": node_type,
-                "expected_version": expected,
-                "actual_version": actual,
+                "persisted_version": persisted,
+                "current_version": current,
             },
         )
+
+    @classmethod
+    def from_mismatches(cls, mismatches: list[dict[str, str]]) -> NodeVersionMismatchError:
+        """Build an error covering several mismatched steps (pre-execution validation)."""
+        details = [
+            f"{m['step_id']!r} ({m['node_type']!r}): {m['persisted_version']!r} != {m['current_version']!r}"
+            for m in mismatches
+        ]
+        first = mismatches[0]
+        err = cls(
+            step_id=first["step_id"],
+            node_type=first["node_type"],
+            persisted=first["persisted_version"],
+            current=first["current_version"],
+        )
+        err.message = (
+            f"{len(mismatches)} step(s) record a node_version that does not match "
+            f"the current implementation: {'; '.join(details)}."
+        )
+        err.context["mismatches"] = list(mismatches)
+        return err
 
 
 class RunScopeNotAvailableForLaunch(CardreError):

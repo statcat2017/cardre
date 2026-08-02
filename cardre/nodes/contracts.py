@@ -145,6 +145,17 @@ class NodeType(ABC):
         self.__definition_cached = defn
         return defn
 
+    @classmethod
+    def node_definition(cls) -> NodeDefinition:
+        """The single authoritative ``NodeDefinition`` for this node type.
+
+        ``__definition__`` is an instance property; for class-level access this
+        builds the definition from the class attributes. All version checks,
+        plan building and contract validation must read from this, never from
+        the legacy class-level ``version`` attribute directly.
+        """
+        return cls().__definition__
+
     @abstractmethod
     def run(self, context: Any) -> Any: ...
 

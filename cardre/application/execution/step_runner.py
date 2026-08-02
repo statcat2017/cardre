@@ -107,8 +107,8 @@ class StepRunner:
                 raise NodeVersionMismatchError(
                     step_id=spec.step_id,
                     node_type=spec.node_type,
-                    expected=spec.node_version,
-                    actual=current_version,
+                    persisted=spec.node_version,
+                    current=current_version,
                 )
 
             # Normalize params
