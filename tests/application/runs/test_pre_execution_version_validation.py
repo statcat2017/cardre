@@ -112,3 +112,36 @@ def test_matching_versions_run_succeeds(tmp_path):
     with uow_factory.for_project(project_id) as uow:
         run = uow.runs.get(result.run_id)
         assert run.status == "succeeded", f"Run status: {run.status}"
+
+
+def test_obsolete_threshold_optimization_version_rejected_pre_execution(tmp_path):
+    """A persisted v1 threshold_optimization step must be rejected before any
+    step executes once the node moved to v2 (output contract changed)."""
+    from cardre.bootstrap.node_catalogue import build_default_catalogue
+
+    cat = build_default_catalogue(Settings(launch_mode=False))
+    current = cat.resolve("cardre.threshold_optimization").node_definition().version
+    assert current == "2", f"expected threshold_optimization at v2, got {current}"
+
+    steps = [
+        _step_spec("step-1", "cardre.threshold_optimization", "1"),
+    ]
+    project_id, pv_id, uow_factory, root = _provision_project(tmp_path, steps)
+
+    settings = Settings(launch_mode=False, registry_path=str(tmp_path / "registry.json"))
+    container = build_container(settings)
+    result = container.submit_run_factory(project_id)(
+        SubmitRunCommand(plan_version_id=pv_id, sync=True),
+    )
+
+    with uow_factory.for_project(project_id) as uow:
+        run = uow.runs.get(result.run_id)
+        assert run.status == "failed", f"Run status: {run.status}"
+        diagnostics = uow.runs.get_diagnostics(result.run_id)
+    codes = {d["code"] for d in diagnostics}
+    assert "NODE_VERSION_MISMATCH" in codes, f"Expected NODE_VERSION_MISMATCH, got {diagnostics}"
+
+    run_steps, artifacts, lineage = _counts(uow_factory, project_id, result.run_id)
+    assert run_steps == 0, f"Expected no run-step records, got {run_steps}"
+    assert artifacts == 0, f"Expected no artifacts, got {artifacts}"
+    assert lineage == 0, f"Expected no lineage, got {lineage}"

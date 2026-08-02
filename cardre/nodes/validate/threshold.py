@@ -26,7 +26,7 @@ from cardre.nodes.parameters import (
 
 class ThresholdOptimizationNode(NodeType):
     node_type = "cardre.threshold_optimization"
-    version = "1"
+    version = "2"
     category = "apply"
 
     OBJECTIVES = {"youden", "max_f1", "max_g_mean", "cost_minimize"}
