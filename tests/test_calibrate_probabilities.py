@@ -133,11 +133,10 @@ def test_calibration_publishes_binary_calibrator_through_node_context(tmp_path: 
     assert isinstance(result, NodeResult)
     staged = result.staged_artifacts
     assert len(staged) == 3
-    # Publish order: report, JSON model, calibrator blob. The JSON model must
-    # precede the binary so role consumers select the parseable model.
-    report_artifact = staged[0]
-    model_artifact = staged[1]
-    binary_artifact = staged[2]
+    # Report + JSON model under their roles, calibrator blob under 'estimator'.
+    report_artifact = next(a for a in staged if a.role == "report")
+    model_artifact = next(a for a in staged if a.role == "model")
+    binary_artifact = next(a for a in staged if a.role == "estimator")
     assert model_artifact.media_type == "application/json"
     assert binary_artifact.media_type == "application/octet-stream"
     assert report_artifact.media_type == "application/json"
@@ -184,11 +183,15 @@ def test_calibrate_emits_json_model_first_for_role_consumers(tmp_path: Path):
     ))
 
     model_arts = [a for a in result.staged_artifacts if a.role == "model"]
-    assert len(model_arts) == 2
+    assert len(model_arts) == 1
     first = model_arts[0]
     assert first.media_type == "application/json", (
-        f"first-by-role model artifact must be the JSON model, "
+        f"model-role artifact must be the JSON model, "
         f"got media_type={first.media_type!r}"
+    )
+    assert any(a.role == "estimator" and a.media_type == "application/octet-stream"
+               for a in result.staged_artifacts), (
+        "calibrator binary must be published under a distinct 'estimator' role"
     )
 
     for staged in result.staged_artifacts:

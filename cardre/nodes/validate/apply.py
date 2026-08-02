@@ -631,8 +631,11 @@ __definition_apply_model = NodeDefinition(
         roles=(
             # Only the model is hard-required. Scorecard is optional (the node
             # scores without it) and each of the three data roles is processed
-            # for whichever datasets the plan supplies.
+            # for whichever datasets the plan supplies. The estimator role is
+            # the binary twin of the JSON model (resolved by estimator_reference
+            # artifact_id); it must remain in the input set.
             ArtifactRoleSpec("model", required=True),
+            ArtifactRoleSpec("estimator", required=False),
             ArtifactRoleSpec("train", required=False),
             ArtifactRoleSpec("test", required=False),
             ArtifactRoleSpec("oot", required=False),

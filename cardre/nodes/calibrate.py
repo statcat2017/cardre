@@ -193,7 +193,8 @@ class CalibrateProbabilitiesNode(NodeType):
         ),
         output_contract=ArtifactContract(
             roles=(
-                ArtifactRoleSpec("model", kinds=(EvidenceKind.MODEL_ARTIFACT,), media_types=("application/octet-stream", "application/json"), schema_versions=(SCHEMA_MODEL_ARTIFACT,)),
+                ArtifactRoleSpec("model", kinds=(EvidenceKind.MODEL_ARTIFACT,), media_types=("application/json",), schema_versions=(SCHEMA_MODEL_ARTIFACT,)),
+                ArtifactRoleSpec("estimator", required=False, media_types=("application/octet-stream",)),
                 ArtifactRoleSpec("report", kinds=(EvidenceKind.CALIBRATION_REPORT,), media_types=("application/json",), schema_versions=(SCHEMA_CALIBRATION_REPORT,)),
             ),
         ),
@@ -630,7 +631,7 @@ class CalibrateProbabilitiesNode(NodeType):
 
         if calibrator_ref is not None:
             context.outputs.publish_bytes(
-                role="model",
+                role="estimator",
                 kind=EvidenceKind.MODEL_ARTIFACT,
                 data=serialized_calibrator,
                 media_type="application/octet-stream",

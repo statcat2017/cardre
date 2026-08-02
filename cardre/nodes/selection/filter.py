@@ -6,6 +6,7 @@ from typing import Any, cast
 from polars.exceptions import ComputeError, SchemaError
 
 from cardre.domain.evidence.kinds import EvidenceKind
+from cardre.domain.evidence.schemas import SCHEMA_SELECTION_DEFINITION
 from cardre.nodes._training_utils import (
     prepare_supervised_training_data,
     resolve_supervised_feature_columns,
@@ -226,7 +227,7 @@ class FeatureSelectionFilterNode(NodeType):
             role="definition",
             kind=EvidenceKind.SELECTION_DEFINITION,
             payload=selection,
-            metadata={"method": "filter", "selected_count": len(selected)},
+            metadata={"method": "filter", "selected_count": len(selected), "schema_version": SCHEMA_SELECTION_DEFINITION},
         )
         context.outputs.add_metric("selected_count", len(selected))
         context.outputs.add_metric("rejected_count", len(rejected))
@@ -246,7 +247,9 @@ __definition__ = NodeDefinition(
         ),
     ),
     output_contract=ArtifactContract(
-        roles=(ArtifactRoleSpec("definition", required=True),),
+        roles=(
+            ArtifactRoleSpec("definition", required=True, kinds=(EvidenceKind.SELECTION_DEFINITION,), media_types=("application/json",), schema_versions=(SCHEMA_SELECTION_DEFINITION,)),
+        ),
     ),
 )
 

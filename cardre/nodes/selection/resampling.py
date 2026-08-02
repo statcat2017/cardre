@@ -6,6 +6,7 @@ import numpy as np
 import polars as pl
 
 from cardre.domain.evidence.kinds import EvidenceKind
+from cardre.domain.evidence.schemas import SCHEMA_RESAMPLING_EVIDENCE
 from cardre.nodes._training_utils import prepare_supervised_training_data
 from cardre.nodes.contracts import (
     ArtifactContract,
@@ -141,6 +142,7 @@ class ResampleTrainingDataNode(NodeType):
                 "source_artifact_id": train_art.artifact_id,
                 "resample_report": resample_report,
                 "synthetic_row_column": "_is_synthetic_row",
+                "schema_version": SCHEMA_RESAMPLING_EVIDENCE,
             },
         )
 
@@ -148,7 +150,7 @@ class ResampleTrainingDataNode(NodeType):
             role="report",
             kind=EvidenceKind.RESAMPLING_EVIDENCE,
             payload=resample_report,
-            metadata={"strategy": strategy},
+            metadata={"strategy": strategy, "schema_version": SCHEMA_RESAMPLING_EVIDENCE},
         )
 
         context.outputs.add_metric("original_count", original_count)
@@ -171,7 +173,7 @@ __definition__ = NodeDefinition(
     output_contract=ArtifactContract(
         roles=(
             ArtifactRoleSpec("train", required=True),
-            ArtifactRoleSpec("report", required=True),
+            ArtifactRoleSpec("report", required=True, kinds=(EvidenceKind.RESAMPLING_EVIDENCE,), media_types=("application/json",), schema_versions=(SCHEMA_RESAMPLING_EVIDENCE,)),
         ),
     ),
 )

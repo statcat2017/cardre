@@ -28,6 +28,7 @@ import polars as pl
 from sklearn.model_selection import StratifiedKFold, cross_validate
 
 from cardre.domain.evidence.kinds import EvidenceKind
+from cardre.domain.evidence.schemas import SCHEMA_MODEL_ARTIFACT
 from cardre.modeling.builders import build_model_artifact
 from cardre.nodes._training_utils import (
     _estimator_parts,
@@ -239,6 +240,7 @@ class BaseClassifierNode(NodeType):
 
         # 9. Write JSON artifact FIRST so role consumers pick it up
         artifact_metadata = {
+            "schema_version": SCHEMA_MODEL_ARTIFACT,
             "feature_count": len(features),
             "target_column": target_column,
             "model_family": self.model_family,
@@ -252,9 +254,9 @@ class BaseClassifierNode(NodeType):
         )
 
         # 10. Stage the binary estimator SECOND (same descriptor id as the
-        # model's estimator_reference).
+        # model's estimator_reference) under the distinct estimator role.
         context.outputs.publish_bytes(
-            role="model",
+            role="estimator",
             kind=EvidenceKind.MODEL_ARTIFACT,
             data=estimator_bytes,
             media_type="application/octet-stream",
