@@ -101,6 +101,16 @@ class StepRunner:
             # Instantiate node
             node = self._node_catalogue.instantiate(spec.node_type)
 
+            current_version = node.__definition__.version
+            if spec.node_version != current_version:
+                from cardre.domain.errors import NodeVersionMismatchError
+                raise NodeVersionMismatchError(
+                    step_id=spec.step_id,
+                    node_type=spec.node_type,
+                    expected=spec.node_version,
+                    actual=current_version,
+                )
+
             # Normalize params
             schema = node.parameter_schema()
             if schema is not None:

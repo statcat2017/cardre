@@ -84,6 +84,7 @@ def test_decision_tree_node_uses_node_context_staged_outputs():
         params={},
         params_hash="params-hash",
         parent_step_ids=[],
+        canonical_step_id="fit-1",
     )
     outputs = _Outputs()
     context = NodeContext(
@@ -127,6 +128,7 @@ def test_tuning_node_uses_node_context_staged_outputs():
         params=params,
         params_hash="params-hash",
         parent_step_ids=[],
+        canonical_step_id="tune-1",
     )
     outputs = _Outputs()
     context = NodeContext(

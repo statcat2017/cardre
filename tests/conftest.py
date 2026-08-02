@@ -132,17 +132,6 @@ def api_client():
 
 @pytest.fixture(autouse=True)
 def _project_resolution_test_env(monkeypatch, tmp_path_factory):
-    """Set up registry path for tests. Raw project path is disabled by default.
-
-    Tests that need the legacy raw-path mode should use the
-    ``raw_project_path`` fixture to opt in.
-    """
+    """Set up the project registry path for tests."""
     registry_dir = tmp_path_factory.mktemp("cardre-registry")
-    monkeypatch.setenv("CARDRE_ALLOW_RAW_PROJECT_PATH", "0")
     monkeypatch.setenv("CARDRE_REGISTRY_PATH", str(registry_dir / "projects.json"))
-
-
-@pytest.fixture
-def raw_project_path(monkeypatch):
-    """Opt-in fixture for tests that need CARDRE_ALLOW_RAW_PROJECT_PATH=1."""
-    monkeypatch.setenv("CARDRE_ALLOW_RAW_PROJECT_PATH", "1")

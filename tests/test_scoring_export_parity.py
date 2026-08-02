@@ -37,7 +37,7 @@ def _write_input_csv(path: Path) -> Path:
     return path
 
 
-def test_scoring_export_parity(raw_project_path, api_client, tmp_path):
+def test_scoring_export_parity(api_client, tmp_path):
     project_dir = tmp_path / "parity.cardre"
     resp = api_client.post("/projects", json={"name": "Parity", "path": str(project_dir)})
     assert resp.status_code == 201, resp.text

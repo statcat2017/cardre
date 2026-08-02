@@ -59,6 +59,7 @@ def _context(inputs, outputs, params):
         params=params,
         params_hash="test",
         parent_step_ids=[],
+        canonical_step_id="calibrate-1",
     )
     return NodeContext(
         run_id="run-1",

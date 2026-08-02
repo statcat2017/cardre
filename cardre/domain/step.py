@@ -7,9 +7,7 @@ No NodeType here (that is an executable plugin interface in
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import cast
 
-from cardre.domain.artifacts import json_logical_hash
 from cardre.domain.diagnostics import JsonDict
 
 
@@ -30,12 +28,8 @@ class StepSpec:
     parent_step_ids: list[str]
     branch_label: str = ""
     position: int = 0
-    canonical_step_id: str = field(default="", kw_only=True)
+    canonical_step_id: str = field(kw_only=True)
     branch_id: str | None = field(default=None, kw_only=True)
-
-    def __post_init__(self) -> None:
-        if not self.canonical_step_id:
-            object.__setattr__(self, "canonical_step_id", self.step_id)
 
     def to_dict(self) -> JsonDict:
         return {
@@ -51,22 +45,6 @@ class StepSpec:
             "canonical_step_id": self.canonical_step_id,
             "branch_id": self.branch_id,
         }
-
-    @classmethod
-    def from_dict(cls, data: JsonDict) -> StepSpec:
-        return cls(
-            step_id=data["step_id"],
-            node_type=data["node_type"],
-            node_version=data["node_version"],
-            category=data["category"],
-            params=dict(data.get("params", {})),
-            params_hash=data.get("params_hash", json_logical_hash(dict(data.get("params", {})))),
-            parent_step_ids=list(data.get("parent_step_ids", [])),
-            branch_label=data.get("branch_label", ""),
-            position=data.get("position", 0),
-            canonical_step_id=cast(str, data.get("canonical_step_id", data["step_id"])),
-            branch_id=data.get("branch_id"),
-        )
 
 
 __all__ = ["StepSpec"]

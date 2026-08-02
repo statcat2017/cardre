@@ -73,6 +73,7 @@ def _spec(step_id: str = "s1") -> StepSpec:
         params={},
         params_hash="params-hash",
         parent_step_ids=[],
+        canonical_step_id=step_id,
     )
 
 

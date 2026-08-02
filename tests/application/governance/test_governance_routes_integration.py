@@ -25,7 +25,6 @@ from cardre.domain.step import StepSpec
 def governance_env(monkeypatch, tmp_path):
     monkeypatch.setenv("CARDRE_GOVERNANCE", "1")
     monkeypatch.setenv("CARDRE_REGISTRY_PATH", str(tmp_path / "registry.json"))
-    monkeypatch.setenv("CARDRE_ALLOW_RAW_PROJECT_PATH", "1")
     settings = Settings.from_env()
     container = build_container(settings)
     app = create_app(container)
@@ -81,7 +80,6 @@ def _create_branch_via_use_case(container, project_id, plan_id, pv_id, branch_ty
 def test_governance_disabled_returns_403_envelope(monkeypatch, tmp_path):
     monkeypatch.setenv("CARDRE_GOVERNANCE", "0")
     monkeypatch.setenv("CARDRE_REGISTRY_PATH", str(tmp_path / "r.json"))
-    monkeypatch.setenv("CARDRE_ALLOW_RAW_PROJECT_PATH", "1")
     settings = Settings.from_env()
     container = build_container(settings)
     app = create_app(container)

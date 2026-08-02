@@ -50,6 +50,7 @@ def _context(node_type, inputs, outputs, params):
         params=params,
         params_hash="test",
         parent_step_ids=[],
+        canonical_step_id="explain-1",
     )
     return NodeContext(
         run_id="run-1",

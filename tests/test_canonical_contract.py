@@ -16,12 +16,23 @@ from cardre.bootstrap.settings import Settings
 from cardre.domain.plans.scorecard_pathway import build_canonical_scorecard_steps
 
 
-def test_only_one_automatic_binning_node_registered():
+def test_catalogue_keys_are_current_supported_set():
     cat = build_default_catalogue(Settings(launch_mode=True))
-    assert cat.has("cardre.automatic_binning")
-    assert not cat.has("cardre.fine_classing")
-    assert not cat.has("cardre.auto_binning_fit")
-    assert not cat.has("cardre.binning")
+    keys = set(cat.list_types())
+    assert keys, "Catalogue must register at least one node"
+    for banned in ("cardre.fine_classing", "cardre.auto_binning_fit", "cardre.binning"):
+        assert banned not in keys, f"Banned legacy alias {banned!r} registered"
+
+
+def test_canonical_plan_steps_match_current_node_versions():
+    cat = build_default_catalogue(Settings(launch_mode=True))
+    steps = build_canonical_scorecard_steps("dummy.csv", cat.resolve)
+    for step in steps:
+        node = cat.resolve(step.node_type)
+        assert step.node_version == node.version, (
+            f"Step {step.step_id!r} records node_version {step.node_version!r} "
+            f"but {step.node_type!r} is version {node.version!r}"
+        )
 
 
 def test_manual_binning_distinct_node():

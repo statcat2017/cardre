@@ -67,6 +67,7 @@ def _context(inputs: Any, outputs: Any, params: dict) -> NodeContext:
         params=params,
         params_hash="params-hash",
         parent_step_ids=[],
+        canonical_step_id="score-scaling-1",
     )
     return NodeContext(
         run_id="run-1",

@@ -63,6 +63,7 @@ def _build_classifier_plan(csv_path: Path, cat) -> list[StepSpec]:
             params_hash=json.dumps(params, sort_keys=True),
             parent_step_ids=parents,
             position=len(parents),
+            canonical_step_id=step_id,
         )
 
     return [

@@ -68,6 +68,7 @@ def _run_decision_tree(tmp_path: Path):
         params={"max_depth": 1, "random_seed": 42},
         params_hash="params-hash",
         parent_step_ids=[],
+        canonical_step_id="fit-1",
     )
     context = NodeContext(
         run_id="run-1",

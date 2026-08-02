@@ -96,6 +96,7 @@ def _context(inputs: Any, outputs: Any) -> NodeContext:
         params={},
         params_hash="params-hash",
         parent_step_ids=[],
+        canonical_step_id="apply-1",
     )
     return NodeContext(
         run_id="run-1",
@@ -295,6 +296,7 @@ def test_apply_model_partial_inputs_through_step_runner(tmp_path: Path):
         params={},
         params_hash="params-hash",
         parent_step_ids=["parent-1"],
+        canonical_step_id="apply-1",
     )
     result = runner.run_step(
         "plan-1", "run-1", spec,
