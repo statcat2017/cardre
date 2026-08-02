@@ -74,7 +74,10 @@ class SubmitRun:
 
         # Atomic concurrent-run guard: check + insert happen in one BEGIN
         # IMMEDIATE transaction, so two concurrent submissions cannot both
-        # observe "no active run" and both create one.
+        # observe "no active run" and both create one. The dispatch intent is
+        # committed in the same transaction, so a crash before the in-memory
+        # dispatch cannot strand the run: startup reconciliation drains
+        # pending dispatch rows.
         uow3 = self._uow_factory()
         try:
             run_id = uow3.runs.create_if_no_active_run(
@@ -93,6 +96,7 @@ class SubmitRun:
                     context={"plan_version_id": command.plan_version_id},
                     status_code=409,
                 )
+            uow3.dispatches.enqueue(run_id)
             uow3.commit()
         except Exception:
             uow3.rollback()

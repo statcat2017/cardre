@@ -9,6 +9,7 @@ from cardre.adapters.sqlite.artifact_repo import ArtifactRepo
 from cardre.adapters.sqlite.branch_repo import BranchRepo
 from cardre.adapters.sqlite.champion_repo import ChampionRepo
 from cardre.adapters.sqlite.comparison_repo import ComparisonRepo
+from cardre.adapters.sqlite.dispatch_repo import DispatchRepo
 from cardre.adapters.sqlite.evidence_repo import EvidenceRepo
 from cardre.adapters.sqlite.export_repo import ExportRepo
 from cardre.adapters.sqlite.manual_binning_repo import ManualBinningRepo
@@ -73,6 +74,10 @@ class SqliteUnitOfWork:
     @property
     def publications(self) -> PublicationRepo:
         return PublicationRepo(self._conn)
+
+    @property
+    def dispatches(self) -> DispatchRepo:
+        return DispatchRepo(self._conn)
 
     @property
     def branches(self) -> BranchRepo:
@@ -171,6 +176,10 @@ class SqliteReadOnlyUnitOfWork:
     @property
     def publications(self) -> PublicationRepo:
         return PublicationRepo(self._conn)
+
+    @property
+    def dispatches(self) -> DispatchRepo:
+        return DispatchRepo(self._conn)
 
     @property
     def branches(self) -> BranchRepo:

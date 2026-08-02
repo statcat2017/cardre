@@ -24,6 +24,7 @@ def build_app() -> tuple[FastAPI, Callable[[], None]]:
     settings = Settings.from_env()
     container = build_container(settings)
     container.reconcile_publications_factory()()
+    container.reconcile_dispatches_factory()()
     app = create_app(container)
     shutdown = container.async_dispatcher.shutdown
     return app, shutdown

@@ -57,8 +57,9 @@ class _RunSummaryHook:
     instance-state side-channel between the loop and the persist block.
     """
 
-    def __init__(self, execute_run: ExecuteRun) -> None:
+    def __init__(self, execute_run: ExecuteRun, artifact_store: Any) -> None:
         self._execute_run = execute_run
+        self._artifact_store = artifact_store
         self._summary_ref: ArtifactRef | None = None
 
     def before_step(
@@ -75,6 +76,7 @@ class _RunSummaryHook:
             return
         self._summary_ref = self._execute_run._publish_run_summary(
             command, pv_id, run, step_outputs, run_step_records, worker_generation,
+            artifact_store=self._artifact_store,
         )
         # Inject the RunSummary into the step's own output bucket.
         # StepRunner._resolve_inputs later picks up own-step entries.
@@ -110,33 +112,34 @@ class ExecuteRun:
     def __init__(
         self,
         uow_factory: Callable[[], Any],
+        read_only_factory: Callable[[], Any],
         node_catalogue: Any,
         step_runner: Any,
         finalize_run: FinalizeRun,
         artifact_store_factory: Callable[[], Any],
         heartbeat_interval_seconds: float = 75,
-        read_only_factory: Callable[[], Any] | None = None,
     ) -> None:
         self._uow_factory = uow_factory
+        self._read_only_factory = read_only_factory
         self._node_catalogue = node_catalogue
         self._step_runner = step_runner
         self._finalize_run = finalize_run
         self._artifact_store_factory = artifact_store_factory
         self._heartbeat_interval_seconds = heartbeat_interval_seconds
-        self._read_only_factory = read_only_factory or uow_factory
 
     def __call__(self, command: ExecuteRunCommand) -> None:
-        # FsArtifactStore is stateless and project-bound — construct once per
-        # run and reuse across all steps (P3-2).
-        self._artifact_store = self._artifact_store_factory()
+        # FsArtifactStore is stateless and project-bound — construct one per
+        # invocation and keep it local (never on self) so concurrent use of a
+        # single ExecuteRun instance cannot cross invocations' stores.
+        artifact_store = self._artifact_store_factory()
 
-        with _read_uow(self._uow_factory) as uow:
+        with _read_uow(self._read_only_factory) as uow:
             run = uow.runs.get(command.run_id)
         if run is None or run.status not in ("created", "queued"):
             return
 
         pv_id = run.plan_version_id
-        with _read_uow(self._uow_factory) as uow:
+        with _read_uow(self._read_only_factory) as uow:
             pv = uow.plans.get_version(pv_id)
             steps = uow.plans.get_version_steps(pv_id) if pv is not None else None
         if pv is None or steps is None:
@@ -163,7 +166,9 @@ class ExecuteRun:
         )
         watchdog.start()
         try:
-            self._execute_steps(command, pv_id, run, steps, worker_generation)
+            self._execute_steps(
+                command, pv_id, run, steps, worker_generation, artifact_store,
+            )
         except Exception as exc:
             self._finalize_run(command.run_id, "failed", diagnostic=FinalizeDiagnostic(
                 code="RUN_EXECUTION_FAILED",
@@ -189,7 +194,8 @@ class ExecuteRun:
             )
 
     def _claim_run(self, command: ExecuteRunCommand) -> int | None:
-        """Transition created/queued -> running and begin a worker lease.
+        """Transition created/queued -> running, begin a worker lease, and
+        atomically remove the durable dispatch row.
 
         Returns the worker generation, or ``None`` if the run was already
         claimed/terminalized concurrently.
@@ -201,13 +207,15 @@ class ExecuteRun:
             )
             if not claimed:
                 return None
-            return uow.runs.begin_worker_generation(command.run_id)
+            worker_generation = uow.runs.begin_worker_generation(command.run_id)
+            uow.dispatches.claim(command.run_id)
+            return worker_generation
 
     def _finalize_after_pre_exec_failure(self, command: ExecuteRunCommand) -> None:
         # If a cancellation landed while we validated, the run must end
         # cancelled, not failed (a created/queued run is terminalized by
         # CancelRun before we reach here; a running run is cooperative).
-        with _read_uow(self._uow_factory) as uow:
+        with _read_uow(self._read_only_factory) as uow:
             cancel_check = uow.runs.get(command.run_id)
         if cancel_check is not None and getattr(cancel_check, "cancel_requested", False):
             self._finalize_run(command.run_id, "cancelled")
@@ -218,7 +226,7 @@ class ExecuteRun:
         ))
 
     def _is_cancelled(self, command: ExecuteRunCommand) -> bool:
-        with _read_uow(self._uow_factory) as uow:
+        with _read_uow(self._read_only_factory) as uow:
             run = uow.runs.get(command.run_id)
         return run is not None and getattr(run, "cancel_requested", False)
 
@@ -239,10 +247,11 @@ class ExecuteRun:
         run: Any,
         steps: list[Any],
         worker_generation: int,
+        artifact_store: Any,
     ) -> None:
         step_outputs: dict[str, list[Any]] = {}
         run_step_records: dict[str, RunStep] = {}
-        summary_hook = _RunSummaryHook(self)
+        summary_hook = _RunSummaryHook(self, artifact_store)
         for step in steps:
             if self._is_cancelled(command):
                 self._finalize_run(command.run_id, "cancelled")
@@ -260,14 +269,14 @@ class ExecuteRun:
             try:
                 output_refs, staged_by_artifact, outbox_ids = self._persist_step_outputs(
                     command, step, pv_id, run, result, step_outputs, run_step_records,
-                    worker_generation, summary_hook,
+                    worker_generation, summary_hook, artifact_store,
                 )
             except LeaseLost as exc:
                 if "cancellation" in str(exc):
                     self._finalize_run(command.run_id, "cancelled")
                 return
 
-            self._finalize_artifacts(output_refs, staged_by_artifact, outbox_ids)
+            self._finalize_artifacts(output_refs, staged_by_artifact, outbox_ids, artifact_store)
 
             if result.status == RunStepStatus.FAILED:
                 self._finalize_run(command.run_id, "failed")
@@ -296,6 +305,7 @@ class ExecuteRun:
         run_step_records: dict[str, RunStep],
         worker_generation: int,
         summary_hook: _RunSummaryHook,
+        artifact_store: Any,
     ) -> tuple[list[ArtifactRef], dict[str, Any], list[str]]:
         """Register artifacts, run-step, lineage, evidence edges, and outbox
         rows inside one fenced transaction.
@@ -306,7 +316,6 @@ class ExecuteRun:
         or terminalization that raced the node finishing causes a
         ``LeaseLost`` and nothing is written.
         """
-        artifact_store = self._artifact_store
         with _fenced_persist(self._uow_factory, command.run_id, worker_generation) as uow:
             output_refs: list[ArtifactRef] = []
             staged_by_artifact: dict[str, Any] = {}
@@ -401,12 +410,12 @@ class ExecuteRun:
         output_refs: list[ArtifactRef],
         staged_by_artifact: dict[str, Any],
         outbox_ids: list[str],
+        artifact_store: Any,
     ) -> None:
         # The filesystem side of the publication happens only after the DB
         # mutation committed. On failure here the DB already has the
         # descriptor + outbox row, so reconciliation can retry; the staging
         # file is not orphaned into objects/.
-        artifact_store = self._artifact_store
         for art_ref in output_refs:
             staged = staged_by_artifact.get(art_ref.artifact_id)
             if staged is not None:
@@ -431,6 +440,8 @@ class ExecuteRun:
         step_outputs: dict[str, list[ArtifactRef]],
         run_step_records: dict[str, RunStep],
         worker_generation: int,
+        *,
+        artifact_store: Any,
     ) -> ArtifactRef | None:
         """Build and publish a RunSummary artifact from persisted execution state.
 
@@ -502,7 +513,6 @@ class ExecuteRun:
             "artifacts": artifacts_data,
         }
 
-        artifact_store = self._artifact_store
         staged = artifact_store.stage_json(
             role="manifest",
             kind=EvidenceKind.RUN_SUMMARY.value,

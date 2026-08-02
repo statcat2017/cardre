@@ -269,6 +269,7 @@ def test_cancellation_during_final_node_ends_cancelled(provisioned_project):
 
     executor = ExecuteRun(
         lambda: uow_factory.for_project(project_id),
+        lambda: uow_factory.read_only(project_id),
         _NoopCatalogue(),
         _BlockingRunner(),
         finalize,
@@ -342,6 +343,7 @@ def test_lost_lease_blocks_output_persistence(provisioned_project):
 
     executor = ExecuteRun(
         lambda: uow_factory.for_project(project_id),
+        lambda: uow_factory.read_only(project_id),
         _NoopCatalogue(),
         _BlockingRunner(),
         finalize,
@@ -429,10 +431,38 @@ def test_run_summary_not_published_after_stale_recovery(provisioned_project):
     summary_read_started = threading.Event()
     release_summary_read = threading.Event()
 
+    class _BlockingSummaryReadUoW:
+        """Wraps a read-only UoW and blocks only on the summary-specific read.
+
+        The RunSummary publication opens a read-only UoW and calls
+        ``run_steps.get_for_run``; blocking there lets the test terminalize the
+        run between the summary read and its write transaction. Other read-only
+        opens (run lookup, per-step cancellation checks) pass through untouched.
+        """
+
+        def __init__(self, inner):
+            self._inner = inner
+
+        def __getattr__(self, name):
+            return getattr(self._inner, name)
+
+        @property
+        def run_steps(self):
+            summary_read_started.set()
+            release_summary_read.wait(timeout=5)
+            return self._inner.run_steps
+
+        def close(self):
+            self._inner.close()
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            self.close()
+
     def blocking_read_only():
-        summary_read_started.set()
-        release_summary_read.wait(timeout=5)
-        return uow_factory.read_only(project_id)
+        return _BlockingSummaryReadUoW(uow_factory.read_only(project_id))
 
     class _Runner:
         def run_step(self, pv_id, run_id, step, step_outputs, run_step_records):
@@ -466,12 +496,12 @@ def test_run_summary_not_published_after_stale_recovery(provisioned_project):
 
     executor = ExecuteRun(
         lambda: uow_factory.for_project(project_id),
+        blocking_read_only,
         _NoopCatalogue(),
         _Runner(),
         finalize,
         lambda: FsArtifactStore(root),
         heartbeat_interval_seconds=0.1,
-        read_only_factory=blocking_read_only,
     )
 
     thread = threading.Thread(target=lambda: executor(ExecuteRunCommand(run_id=run_id)))
@@ -559,6 +589,7 @@ def test_run_summary_not_published_after_cancellation(provisioned_project):
 
     executor = ExecuteRun(
         lambda: uow_factory.for_project(project_id),
+        lambda: uow_factory.read_only(project_id),
         _NoopCatalogue(),
         _BlockingRunner(),
         finalize,
@@ -618,6 +649,7 @@ def test_cancelled_created_run_stays_cancelled_through_execute(provisioned_proje
 
     executor = ExecuteRun(
         lambda: uow_factory.for_project(project_id),
+        lambda: uow_factory.read_only(project_id),
         _UnavailableCatalogue(),
         None,
         None,

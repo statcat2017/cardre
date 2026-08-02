@@ -105,22 +105,33 @@ def test_dispatcher_reports_running_then_completed():
     dispatcher.shutdown()
 
 
-def test_dispatcher_enforces_max_workers_bound():
-    """A dispatcher with max_workers=1 rejects a second concurrent dispatch."""
+def test_dispatcher_queues_beyond_max_workers():
+    """A dispatcher with max_workers=1 queues a second dispatch instead of
+    rejecting it, so durable reconciliation never strands a pending run."""
     harness = _BlockingHarness()
     dispatcher = ThreadRunDispatcher(harness.execute, max_workers=1)
 
     harness.events("run-1")
+    harness.events("run-2")
     dispatcher.dispatch(_request("run-1"))
+    harness.wait_started("run-1")
+    # Second dispatch is admitted into the queue (not rejected).
+    dispatcher.dispatch(_request("run-2"))
+    assert dispatcher.active_count == 1
+    assert dispatcher.queued_count == 1
     try:
-        harness.wait_started("run-1")
-        with pytest.raises(RuntimeError) as exc_info:
-            dispatcher.dispatch(_request("run-2"))
-        assert "workers" in str(exc_info.value).lower()
-    finally:
+        assert dispatcher.get_status("run-2") == "completed"  # not yet running
+        # Release the first worker; the queued run must then execute.
         harness.release["run-1"].set()
-        harness.wait_finished("run-1")
-        dispatcher.shutdown()
+        harness.wait_started("run-2")
+        assert dispatcher.get_status("run-2") == "running"
+    finally:
+        for run_id in ("run-1", "run-2"):
+            harness.release[run_id].set()
+        for run_id in ("run-1", "run-2"):
+            harness.wait_finished(run_id)
+    assert sorted(harness.executed) == ["run-1", "run-2"]
+    dispatcher.shutdown()
 
 
 def test_dispatcher_rejects_dispatch_after_shutdown():
@@ -203,3 +214,41 @@ def test_shutdown_reports_failed_drain_when_worker_does_not_exit():
         harness.wait_finished("run-1")
     # After the worker finally exits, active_count drops to zero.
     assert dispatcher.active_count == 0
+
+
+def test_worker_survives_execution_exception_and_processes_next_request():
+    """A failing run must not kill the worker: with a pool of one, an escaped
+    exception would leave every queued run unprocessed until restart."""
+    import time
+
+    executed: list[str] = []
+    release = threading.Event()
+
+    def execute(request):
+        if request.run_id == "run-boom":
+            raise RuntimeError("boom")
+        executed.append(request.run_id)
+        release.wait(timeout=5)
+
+    dispatcher = ThreadRunDispatcher(execute, max_workers=1)
+    try:
+        dispatcher.dispatch(_request("run-boom"))
+        dispatcher.dispatch(_request("run-ok"))
+        # The failing run must not kill the worker; the queued run still executes.
+        deadline = time.monotonic() + 5
+        while not executed and time.monotonic() < deadline:
+            time.sleep(0.05)
+        assert executed == ["run-ok"], f"worker must survive and run run-ok: {executed}"
+        release.set()
+    finally:
+        release.set()
+        dispatcher.shutdown()
+
+
+def test_dispatcher_rejects_non_positive_max_workers():
+    """max_workers=0 or negative would silently create a dispatcher that never
+    executes anything; reject it at construction."""
+    with pytest.raises(ValueError, match="max_workers"):
+        ThreadRunDispatcher(lambda command: None, max_workers=0)
+    with pytest.raises(ValueError, match="max_workers"):
+        ThreadRunDispatcher(lambda command: None, max_workers=-1)

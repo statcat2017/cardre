@@ -7,6 +7,7 @@ from typing import Any
 import joblib
 import numpy as np
 import polars as pl
+import pytest
 from sklearn.isotonic import IsotonicRegression
 
 from cardre.adapters.evidence.reader import EvidenceReader
@@ -308,3 +309,57 @@ def test_apply_model_partial_inputs_through_step_runner(tmp_path: Path):
     assert produced == {"test", "report"}, (
         f"expected test+report outputs, got {sorted(produced)}"
     )
+
+
+def test_apply_model_rejects_invalid_supplied_scorecard(tmp_path: Path):
+    """A *supplied* scorecard that fails to parse must fail the apply step.
+
+    Optionality means the role may be absent (the node then scores unscaled);
+    it must NOT mean a supplied artifact is silently discarded when it cannot
+    be read as a scorecard — that would drop the score column and provenance
+    without any signal."""
+    store = FsArtifactStore(tmp_path)
+    pub = StagingOutputPublisher(store)
+    model_staged = pub.publish_json(
+        role="model",
+        kind=EvidenceKind.MODEL_ARTIFACT,
+        payload={
+            "schema_version": SCHEMA_MODEL_ARTIFACT,
+            "model_family": "logistic_regression",
+            "target_column": "target",
+            "target_event_value": "bad",
+            "class_mapping": {"0": "good", "1": "bad"},
+            "probability_column_index": 1,
+            "feature_contract": {"features": ["x"], "transformation_strategy": "raw_numeric"},
+            "model_payload": {"intercept": 0.0, "coefficients": {"x": 1.0}},
+            "training": {"row_count": 3},
+        },
+        metadata={"schema_version": SCHEMA_MODEL_ARTIFACT},
+    )
+    test_staged = pub.publish_table(
+        role="test",
+        kind=EvidenceKind.SCORED_DATASET,
+        frame=pl.DataFrame({"x": [-2.0, 0.0, 2.0]}),
+    )
+    # A malformed scorecard: wrong kind (a scored dataset standing in for a
+    # scorecard) so the SCORE_SCALING read must fail rather than fall back.
+    bad_scorecard_staged = pub.publish_table(
+        role="scorecard",
+        kind=EvidenceKind.SCORED_DATASET,
+        frame=pl.DataFrame({"offset": [1.0], "factor": [1.0]}),
+    )
+    for staged in (model_staged, test_staged, bad_scorecard_staged):
+        store.finalize(staged)
+
+    model_ref = _staged_to_ref(model_staged)
+    test_ref = _staged_to_ref(test_staged)
+    bad_scorecard_ref = _staged_to_ref(bad_scorecard_staged)
+    refs = [model_ref, test_ref, bad_scorecard_ref]
+    inputs = _ApplyInputs(store, refs)
+    outputs = StagingOutputPublisher(store)
+
+    from cardre.domain.evidence.kinds import EvidenceNotFoundError
+    from cardre.nodes.validate.apply import ApplyModelNode
+
+    with pytest.raises(EvidenceNotFoundError):
+        ApplyModelNode().run(_context(inputs, outputs))

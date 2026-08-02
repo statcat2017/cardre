@@ -188,6 +188,17 @@ class PublicationRepoPort(Protocol):
 
 
 @runtime_checkable
+class DispatchRepoPort(Protocol):
+    """Durable run-dispatch queue: committed with run creation, drained on
+    claim, reconciled on startup."""
+
+    def enqueue(self, run_id: str) -> None: ...
+    def claim(self, run_id: str) -> bool: ...
+    def list_pending(self) -> list[str]: ...
+    def remove(self, run_id: str) -> None: ...
+
+
+@runtime_checkable
 class ReadOnlyUnitOfWork(Protocol):
     """Read-only persistence boundary.
 
@@ -212,6 +223,8 @@ class ReadOnlyUnitOfWork(Protocol):
     def evidence(self) -> EvidenceRepoPort: ...
     @property
     def publications(self) -> PublicationRepoPort: ...
+    @property
+    def dispatches(self) -> DispatchRepoPort: ...
     @property
     def branches(self) -> BranchRepoPort: ...
     @property

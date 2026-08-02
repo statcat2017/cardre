@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Protocol, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 
 from cardre.domain.diagnostics import JsonDict
 
@@ -26,13 +26,28 @@ class StagedArtifact:
 class StagedArtifactWriter(Protocol):
     def stage_json(self, role: str, kind: str, payload: JsonDict,
                    metadata: JsonDict | None = None) -> StagedArtifact: ...
-    def stage_table(self, role: str, kind: str, frame: object,
+    def stage_table(self, role: str, kind: str, frame: Any,
                     metadata: JsonDict | None = None,
                     artifact_type: str | None = None) -> StagedArtifact: ...
     def stage_bytes(self, role: str, kind: str, data: bytes,
                     media_type: str, logical_hash: str,
                     metadata: JsonDict | None = None) -> StagedArtifact: ...
     def publish(self, staged: StagedArtifact) -> Path: ...
+
+
+@runtime_checkable
+class DurableArtifactWriter(StagedArtifactWriter, Protocol):
+    """Staged writer plus the durable-publication operations.
+
+    The durable publication protocol (R2) keeps files in staging until the DB
+    transaction commits, then finalizes them: ``dest_path`` computes the
+    content-addressed object path without moving the file, and ``finalize``
+    moves it after commit. Use cases that publish via the outbox must depend
+    on this port, not on concrete filesystem methods.
+    """
+
+    def dest_path(self, staged: StagedArtifact) -> Path: ...
+    def finalize(self, staged: StagedArtifact) -> Path: ...
 
 
 @runtime_checkable

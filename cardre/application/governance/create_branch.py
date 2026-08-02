@@ -179,6 +179,26 @@ class CreateBranch:
                         message=f"No branch with ID {command.base_branch_id}",
                         context={"base_branch_id": command.base_branch_id},
                     )
+                # An aggregate branch belongs to exactly one project and plan.
+                # Cloning another plan's graph into this plan would silently
+                # forge lineage and head versions, so reject cross-plan bases.
+                if (
+                    base_branch.get("project_id") != command.project_id
+                    or base_branch.get("plan_id") != command.plan_id
+                ):
+                    raise BranchValidationError(
+                        code="BASE_BRANCH_SCOPE_MISMATCH",
+                        message=(
+                            f"Base branch {command.base_branch_id} does not belong "
+                            f"to plan {command.plan_id} in project {command.project_id}."
+                        ),
+                        context={
+                            "base_branch_id": command.base_branch_id,
+                            "plan_id": command.plan_id,
+                            "base_branch_plan_id": base_branch.get("plan_id"),
+                            "project_id": command.project_id,
+                        },
+                    )
 
             head_pv_id = base_branch["head_plan_version_id"] if base_branch else command.base_plan_version_id
 
