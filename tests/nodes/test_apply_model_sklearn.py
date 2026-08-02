@@ -318,3 +318,54 @@ def test_load_estimator_falls_back_to_physical_hash(tmp_path: Path):
         model,
     )
     assert isinstance(loaded, DecisionTreeClassifier)
+
+
+def test_apply_runtime_calibration_falls_back_to_physical_hash(tmp_path: Path):
+    """Finding 2: a runtime calibrator resolved through the shared helper must
+    fall back to its embedded physical hash when persistence deduplicated the
+    provisional calibrator ID to a legacy canonical UUID."""
+    from types import SimpleNamespace
+
+    from cardre.nodes.validate.apply import _apply_runtime_calibration
+
+    store = FsArtifactStore(tmp_path)
+    pub = StagingOutputPublisher(store)
+
+    # A real, pickleable sklearn calibrator so joblib.load round-trips.
+    from sklearn.isotonic import IsotonicRegression
+
+    calibrator = IsotonicRegression(out_of_bounds="clip")
+    calibrator.fit(np.array([0.1, 0.5, 0.9]), np.array([0.0, 0.5, 1.0]))
+    buf = io.BytesIO()
+    joblib.dump(calibrator, buf)
+    cal_bytes = buf.getvalue()
+    cal_hash = hashlib.sha256(cal_bytes).hexdigest()
+    cal_staged = pub.publish_bytes(
+        role="model", kind=EvidenceKind.MODEL_ARTIFACT, data=cal_bytes,
+        media_type="application/octet-stream", logical_hash=cal_hash, metadata={},
+    )
+    store.finalize(cal_staged)
+    cal_ref = _staged_to_ref(cal_staged)
+
+    # The calibration block embeds a provisional ID that does not match the
+    # canonical ref; only the physical hash matches.
+    calibration = {
+        "calibrator_artifact_id": "legacy-cal-uuid",
+        "calibrator_physical_hash": cal_hash,
+    }
+
+    class _CalInputs:
+        def artifact_ref(self, artifact_id, *, physical_hash=None):
+            if physical_hash == cal_hash:
+                return cal_ref
+            return None
+
+        def read_bytes(self, artifact):
+            return store.read_bytes(artifact)
+
+    result = _apply_runtime_calibration(
+        SimpleNamespace(inputs=_CalInputs()),
+        calibration,
+        np.array([0.2, 0.8]),
+    )
+    assert result.shape == (2,)

@@ -214,3 +214,41 @@ def test_shutdown_reports_failed_drain_when_worker_does_not_exit():
         harness.wait_finished("run-1")
     # After the worker finally exits, active_count drops to zero.
     assert dispatcher.active_count == 0
+
+
+def test_worker_survives_execution_exception_and_processes_next_request():
+    """A failing run must not kill the worker: with a pool of one, an escaped
+    exception would leave every queued run unprocessed until restart."""
+    import time
+
+    executed: list[str] = []
+    release = threading.Event()
+
+    def execute(request):
+        if request.run_id == "run-boom":
+            raise RuntimeError("boom")
+        executed.append(request.run_id)
+        release.wait(timeout=5)
+
+    dispatcher = ThreadRunDispatcher(execute, max_workers=1)
+    try:
+        dispatcher.dispatch(_request("run-boom"))
+        dispatcher.dispatch(_request("run-ok"))
+        # The failing run must not kill the worker; the queued run still executes.
+        deadline = time.monotonic() + 5
+        while not executed and time.monotonic() < deadline:
+            time.sleep(0.05)
+        assert executed == ["run-ok"], f"worker must survive and run run-ok: {executed}"
+        release.set()
+    finally:
+        release.set()
+        dispatcher.shutdown()
+
+
+def test_dispatcher_rejects_non_positive_max_workers():
+    """max_workers=0 or negative would silently create a dispatcher that never
+    executes anything; reject it at construction."""
+    with pytest.raises(ValueError, match="max_workers"):
+        ThreadRunDispatcher(lambda command: None, max_workers=0)
+    with pytest.raises(ValueError, match="max_workers"):
+        ThreadRunDispatcher(lambda command: None, max_workers=-1)

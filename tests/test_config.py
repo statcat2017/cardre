@@ -52,3 +52,25 @@ class TestHeartbeatWatchdogInterval:
         cfg = Settings.from_env()
         assert cfg.stale_heartbeat_seconds == 300
         assert cfg.heartbeat_watchdog_interval_seconds == 75
+
+
+class TestMaxWorkers:
+    """CARDRE_MAX_WORKERS parsing and validation."""
+
+    def test_defaults_to_one(self, monkeypatch):
+        monkeypatch.delenv("CARDRE_MAX_WORKERS", raising=False)
+        assert Settings.from_env().max_workers == 1
+
+    def test_positive_override(self, monkeypatch):
+        monkeypatch.setenv("CARDRE_MAX_WORKERS", "4")
+        assert Settings.from_env().max_workers == 4
+
+    def test_zero_is_rejected(self, monkeypatch):
+        monkeypatch.setenv("CARDRE_MAX_WORKERS", "0")
+        with pytest.raises(ValueError, match="positive"):
+            Settings.from_env()
+
+    def test_negative_is_rejected(self, monkeypatch):
+        monkeypatch.setenv("CARDRE_MAX_WORKERS", "-1")
+        with pytest.raises(ValueError, match="positive"):
+            Settings.from_env()

@@ -349,7 +349,10 @@ class ApplyModelNode(NodeType):
                         raise ValueError(
                             "Model has calibration block but no calibrator_artifact_id"
                         )
-                    cal_ref = context.inputs.artifact_ref(calibrator_id)
+                    cal_ref = context.inputs.artifact_ref(
+                        calibrator_id,
+                        physical_hash=calibration.get("calibrator_physical_hash"),
+                    )
                     if cal_ref is None:
                         raise ValueError(
                             f"Calibrator artifact {calibrator_id!r} not among step inputs"
@@ -547,7 +550,10 @@ def _apply_runtime_calibration(
     calibrator_id = calibration.get("calibrator_artifact_id", "")
     if not calibrator_id:
         raise ValueError("Model has calibration block but no calibrator_artifact_id")
-    cal_ref = context.inputs.artifact_ref(calibrator_id)
+    cal_ref = context.inputs.artifact_ref(
+        calibrator_id,
+        physical_hash=calibration.get("calibrator_physical_hash"),
+    )
     if cal_ref is None:
         raise ValueError(f"Calibrator artifact {calibrator_id!r} not among step inputs")
     calibrator = joblib.load(io.BytesIO(context.inputs.read_bytes(cal_ref)))

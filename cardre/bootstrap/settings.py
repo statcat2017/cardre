@@ -54,6 +54,12 @@ class Settings:
                 "http://127.0.0.1:5173",
             )
 
+        max_workers = int(os.environ.get("CARDRE_MAX_WORKERS", "1"))
+        if max_workers < 1:
+            raise ValueError(
+                f"CARDRE_MAX_WORKERS={max_workers!r} must be a positive integer"
+            )
+
         return cls(
             launch_mode=_env_bool("CARDRE_LAUNCH_MODE", True),
             governance_enabled=_env_bool("CARDRE_GOVERNANCE", False),
@@ -63,7 +69,7 @@ class Settings:
             api_port=int(os.environ.get("CARDRE_API_PORT", "8752")),
             registry_path=Path(os.environ.get("CARDRE_REGISTRY_PATH", str(Path.home() / ".cardre" / "projects.json"))),
             cors_origins=cors,
-            max_workers=int(os.environ.get("CARDRE_MAX_WORKERS", "1")),
+            max_workers=max_workers,
         )
 
 

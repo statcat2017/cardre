@@ -35,6 +35,8 @@ class ThreadRunDispatcher:
         cancel_run: Callable[[RunRequest], None] | None = None,
         drain_timeout_seconds: float = 30.0,
     ) -> None:
+        if max_workers < 1:
+            raise ValueError(f"max_workers must be >= 1, got {max_workers}")
         self._execute_run = execute_run
         self._cancel_run = cancel_run
         self._max_workers = max_workers
@@ -75,6 +77,17 @@ class ThreadRunDispatcher:
                 self._active[request.run_id] = request
             try:
                 self._execute_run(request)
+            except Exception as exc:  # noqa: BLE001
+                # A failing run must never kill the worker: with a pool of one
+                # an escaped exception would leave every subsequent queued run
+                # unprocessed until restart. Log, drop this run, and continue.
+                # The run stays created/queued with its durable dispatch row so
+                # a later reconcile/restart can recover it.
+                import logging
+
+                logging.getLogger(__name__).exception(
+                    "run worker %s failed: %s", request.run_id, exc,
+                )
             finally:
                 with self._lock:
                     self._active.pop(request.run_id, None)
