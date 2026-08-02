@@ -159,6 +159,8 @@ class FeatureSelectionEmbeddedNode(NodeType):
             "method": "embedded",
             "estimator": estimator_type,
             "feature_importance": importance_map,
+            "selected": selected,
+            "rejected": rejected,
             "selected_count": len(selected),
             "rejected_count": len(rejected),
             "importance_threshold": importance_threshold,
