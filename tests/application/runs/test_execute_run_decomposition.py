@@ -13,6 +13,11 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
+
+class _FakeClock:
+    def now_iso(self) -> str:
+        return "2026-01-01T00:00:00Z"
+
 EXEC = Path(__file__).resolve().parents[3] / "cardre" / "application" / "runs" / "execute_run.py"
 
 
@@ -329,6 +334,7 @@ def test_initial_reads_and_cancellation_use_read_only_uow(tmp_path):
     finalize = FinalizeRun(
         lambda: uow_factory.for_project(project_id),
         type("Pub", (), {"publish": lambda self, run_id, payload: None})(),
+        _FakeClock(),
     )
 
     read_created: list[object] = []

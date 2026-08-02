@@ -18,6 +18,11 @@ from cardre.domain.run import RunStatus
 from cardre.domain.step import StepSpec
 
 
+class _FakeClock:
+    def now_iso(self) -> str:
+        return "2026-01-01T00:00:00Z"
+
+
 class _NoopDispatcher:
     def dispatch(self, request):  # noqa: D401
         pass
@@ -285,7 +290,7 @@ def _submit_with_finalize(uow_factory, project_id):
     from cardre.application.runs.submit_run import SubmitRun
 
     root = uow_factory._registry.resolve_root(project_id)
-    finalize = FinalizeRun(lambda: uow_factory.for_project(project_id), FsManifestPublisher(root))
+    finalize = FinalizeRun(lambda: uow_factory.for_project(project_id), FsManifestPublisher(root), _FakeClock())
     return SubmitRun(
         lambda: uow_factory.for_project(project_id), _NoopDispatcher(), None, finalize,
         governance_enabled=True, project_id=project_id,
@@ -442,7 +447,7 @@ def _finalize_for(uow_factory, project_id):
     from cardre.application.runs.finalize_run import FinalizeRun
 
     root = uow_factory._registry.resolve_root(project_id)
-    return FinalizeRun(lambda: uow_factory.for_project(project_id), FsManifestPublisher(root))
+    return FinalizeRun(lambda: uow_factory.for_project(project_id), FsManifestPublisher(root), _FakeClock())
 
 
 def test_stale_finalization_loses_after_heartbeat_renewal(committed_plan):
@@ -670,7 +675,7 @@ def test_sweep_stale_uses_configured_threshold(committed_plan):
     from cardre.application.runs.submit_run import SubmitRun
 
     root = uow_factory._registry.resolve_root(project_id)
-    finalize = FinalizeRun(lambda: uow_factory.for_project(project_id), FsManifestPublisher(root))
+    finalize = FinalizeRun(lambda: uow_factory.for_project(project_id), FsManifestPublisher(root), _FakeClock())
     submit = SubmitRun(
         lambda: uow_factory.for_project(project_id), _NoopDispatcher(), None, finalize,
         governance_enabled=True, project_id=project_id,

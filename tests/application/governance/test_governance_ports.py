@@ -47,6 +47,14 @@ def _provision(tmp_path):
     return project_id, plan_id, pv_id, uow_factory, root
 
 
+class _FakeIdGenerator:
+    def __init__(self):
+        self._counter = 0
+    def new_id(self) -> str:
+        self._counter += 1
+        return f"fake-id-{self._counter}"
+
+
 # ---------------------------------------------------------------------------
 # 1. No ._conn from the application layer
 # ---------------------------------------------------------------------------
@@ -165,7 +173,7 @@ def test_create_comparison_uses_fake_uow_without_conn():
     )
 
     uow = _FakeUoW()
-    uc = CreateComparison(_FakeUoWFactory(uow))
+    uc = CreateComparison(_FakeUoWFactory(uow), _FakeIdGenerator())
     result = uc(CreateComparisonCommand(
         project_id="proj", plan_id="plan", baseline_branch_id="base-1",
         challenger_branch_ids=["challenger-1"], comparison_spec={

@@ -39,7 +39,7 @@ class ReconcileDispatches:
         uow_factory: Any,
         project_registry: Any,
         dispatcher: Any,
-        capability_probe: CapabilityProbePort | None = None,
+        capability_probe: CapabilityProbePort,
     ) -> None:
         self._uow_factory = uow_factory
         self._project_registry = project_registry
@@ -52,7 +52,7 @@ class ReconcileDispatches:
         from cardre.domain.run import RunStatus
 
         for project_id, root in self._project_registry.list_all().items():
-            if self._capability_probe is not None and not self._capability_probe.project_root_exists(root):
+            if not self._capability_probe.project_root_exists(root):
                 continue
             try:
                 with self._uow_factory.read_only(project_id) as uow:

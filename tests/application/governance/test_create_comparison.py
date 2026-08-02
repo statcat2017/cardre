@@ -21,6 +21,15 @@ from cardre.application.governance.refresh_comparison import (
 )
 from cardre.domain.errors import CardreError
 
+
+class _FakeIdGenerator:
+    def __init__(self):
+        self._counter = 0
+    def new_id(self) -> str:
+        self._counter += 1
+        return f"fake-id-{self._counter}"
+
+
 # =========================================================================
 # CreateComparison
 # =========================================================================
@@ -45,7 +54,7 @@ class TestCreateComparison:
             challenger_id = _seed_branch(uow, project_id, plan_id, challenger_pv_id, "challenger")
             uow.commit()
 
-        use_case = CreateComparison(uow_factory)
+        use_case = CreateComparison(uow_factory, _FakeIdGenerator())
         result = use_case(CreateComparisonCommand(
             project_id=project_id, plan_id=plan_id,
             baseline_branch_id=baseline_id,
@@ -64,7 +73,7 @@ class TestCreateComparison:
 
     def test_create_comparison_missing_baseline_raises(self, provisioned_project):
         project_id, uow_factory, _, _ = provisioned_project
-        use_case = CreateComparison(uow_factory)
+        use_case = CreateComparison(uow_factory, _FakeIdGenerator())
         with pytest.raises(CardreError, match="BASELINE_BRANCH_NOT_FOUND"):
             use_case(CreateComparisonCommand(
                 project_id=project_id, plan_id="pl1",
@@ -80,7 +89,7 @@ class TestCreateComparison:
             baseline_id = _seed_branch(uow, project_id, plan_id, pv_id, "baseline")
             uow.commit()
 
-        use_case = CreateComparison(uow_factory)
+        use_case = CreateComparison(uow_factory, _FakeIdGenerator())
         with pytest.raises(CardreError, match="CHALLENGER_BRANCH_NOT_FOUND"):
             use_case(CreateComparisonCommand(
                 project_id=project_id, plan_id=plan_id,
@@ -100,7 +109,7 @@ class TestCreateComparison:
             baseline_b = _seed_branch(uow, project_id, plan_b, pv_b, "baseline-b")
             uow.commit()
 
-        use_case = CreateComparison(uow_factory)
+        use_case = CreateComparison(uow_factory, _FakeIdGenerator())
         with pytest.raises(CardreError, match="BRANCH_SCOPE_MISMATCH"):
             use_case(CreateComparisonCommand(
                 project_id=project_id, plan_id=plan_a,
@@ -124,7 +133,7 @@ class TestCreateComparison:
             challenger_b = _seed_branch(uow, project_id, plan_b, pv_b, "challenger-b")
             uow.commit()
 
-        use_case = CreateComparison(uow_factory)
+        use_case = CreateComparison(uow_factory, _FakeIdGenerator())
         with pytest.raises(CardreError, match="BRANCH_SCOPE_MISMATCH"):
             use_case(CreateComparisonCommand(
                 project_id=project_id, plan_id=plan_a,

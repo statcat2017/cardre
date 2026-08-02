@@ -33,6 +33,11 @@ from cardre.domain.run import RunStatus
 from cardre.domain.step import StepSpec
 
 
+class _FakeClock:
+    def now_iso(self) -> str:
+        return "2026-01-01T00:00:00Z"
+
+
 class _BlockingHarness:
     """Runs a blocking ``execute_run`` fake with deterministic events.
 
@@ -250,6 +255,7 @@ def test_cancellation_during_final_node_ends_cancelled(provisioned_project):
     finalize = FinalizeRun(
         lambda: uow_factory.for_project(project_id),
         type("Pub", (), {"publish": lambda self, run_id, payload: None})(),
+        _FakeClock(),
     )
 
     class _BlockingRunner:
@@ -315,6 +321,7 @@ def test_lost_lease_blocks_output_persistence(provisioned_project):
     finalize = FinalizeRun(
         lambda: uow_factory.for_project(project_id),
         type("Pub", (), {"publish": lambda self, run_id, payload: None})(),
+        _FakeClock(),
     )
 
     node_returned = threading.Event()
@@ -426,6 +433,7 @@ def test_run_summary_not_published_after_stale_recovery(provisioned_project):
     finalize = FinalizeRun(
         lambda: uow_factory.for_project(project_id),
         type("Pub", (), {"publish": lambda self, run_id, payload: None})(),
+        _FakeClock(),
     )
 
     summary_read_started = threading.Event()
@@ -566,6 +574,7 @@ def test_run_summary_not_published_after_cancellation(provisioned_project):
     finalize = FinalizeRun(
         lambda: uow_factory.for_project(project_id),
         type("Pub", (), {"publish": lambda self, run_id, payload: None})(),
+        _FakeClock(),
     )
 
     release_s1 = threading.Event()

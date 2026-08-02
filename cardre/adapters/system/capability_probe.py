@@ -9,4 +9,4 @@ class FilesystemCapabilityProbe:
     """Concrete CapabilityProbePort that checks filesystem paths."""
 
     def project_root_exists(self, root: str) -> bool:
-        return Path(root).exists()
+        return (Path(root) / "project.sqlite").exists()

@@ -28,7 +28,6 @@ from cardre.application.ports.unit_of_work import ArtifactRepoPort, RunStepRepoP
 from cardre.application.projects.create_project import CreateProject
 from cardre.application.projects.get_project import GetProject
 from cardre.application.projects.list_projects import ListProjects
-from cardre.application.projects.resolve_project import ResolveProject
 from cardre.application.reporting.export_audit_pack import ExportAuditPack
 from cardre.application.reporting.generate_report import GenerateReport
 from cardre.application.runs.execute_run import ExecuteRun
@@ -51,7 +50,6 @@ class Container:
     create_project: Any = None
     list_projects: Any = None
     get_project: Any = None
-    resolve_project: Any = None
     generate_report: Any = None
     export_audit_pack: Any = None
     submit_run: Any = None
@@ -278,7 +276,6 @@ def build_container(settings: Settings) -> Container:
         create_project=CreateProject(provisioner, registry, uow_factory),
         list_projects=ListProjects(registry, uow_factory),
         get_project=GetProject(registry, uow_factory),
-        resolve_project=ResolveProject(registry),
         generate_report=generate_report,
         export_audit_pack=export_audit_pack,
         finalize_run=finalize_run_factory,
