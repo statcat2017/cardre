@@ -11,8 +11,9 @@ terminalized meanwhile) simply has its stale row dropped.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Any
+
+from cardre.application.ports.capability_probe import CapabilityProbePort
 
 
 @dataclass
@@ -38,10 +39,12 @@ class ReconcileDispatches:
         uow_factory: Any,
         project_registry: Any,
         dispatcher: Any,
+        capability_probe: CapabilityProbePort | None = None,
     ) -> None:
         self._uow_factory = uow_factory
         self._project_registry = project_registry
         self._dispatcher = dispatcher
+        self._capability_probe = capability_probe
 
     def __call__(self) -> ReconcileDispatchOutcome:
         outcome = ReconcileDispatchOutcome()
@@ -49,7 +52,7 @@ class ReconcileDispatches:
         from cardre.domain.run import RunStatus
 
         for project_id, root in self._project_registry.list_all().items():
-            if not (Path(root) / "project.sqlite").exists():
+            if self._capability_probe is not None and not self._capability_probe.project_root_exists(root):
                 continue
             try:
                 with self._uow_factory.read_only(project_id) as uow:

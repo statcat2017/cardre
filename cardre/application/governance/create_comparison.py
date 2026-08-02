@@ -11,6 +11,7 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Any
 
+from cardre.application.ports.id_generator import IdGeneratorPort
 from cardre.domain.diagnostics import utc_now_iso
 from cardre.domain.errors import CardreError, GovernanceNotEnabled
 
@@ -52,9 +53,11 @@ class CreateComparisonResult:
 class CreateComparison:
     """Create a comparison intent between a baseline and one or more challenger branches."""
 
-    def __init__(self, uow_factory: Any, governance_enabled: bool = True) -> None:
+    def __init__(self, uow_factory: Any, governance_enabled: bool = True,
+                 id_generator: IdGeneratorPort | None = None) -> None:
         self._uow_factory = uow_factory
         self._governance_enabled = governance_enabled
+        self._id_generator = id_generator
 
     def __call__(self, command: CreateComparisonCommand) -> CreateComparisonResult:
         if not self._governance_enabled:
@@ -112,7 +115,7 @@ class CreateComparison:
 
             now = utc_now_iso()
 
-            comparison_id = str(uuid.uuid4())
+            comparison_id = self._id_generator.new_id() if self._id_generator else str(uuid.uuid4())
             uow.comparisons.create_comparison_with_id(
                 comparison_id,
                 command.project_id,

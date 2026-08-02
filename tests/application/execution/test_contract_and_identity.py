@@ -30,7 +30,7 @@ from cardre.application.execution.contract_validation import (
 )
 from cardre.application.ports.artifact_store import StagedArtifact
 from cardre.domain.artifacts import ArtifactRef, json_logical_hash
-from cardre.domain.errors import CardreError
+from cardre.domain.errors import CardreError, ErrorCode
 from cardre.domain.evidence.kinds import EvidenceKind
 from cardre.nodes.contracts import ArtifactContract, ArtifactRoleSpec
 
@@ -534,8 +534,9 @@ def test_input_wrong_media_type_is_rejected():
         ArtifactRoleSpec("model", required=True, media_types=("application/json",)),
     ))
     bad = _input_ref(role="model", media_type="application/vnd.apache.parquet")
-    with pytest.raises(CardreError, match="media type"):
+    with pytest.raises(CardreError, match="media type") as exc:
         validate_input_contract(contract, [bad], node_type="test", step_id="s1")
+    assert exc.value.code == ErrorCode.INPUT_CONTRACT_VIOLATION
 
 
 def test_input_wrong_schema_version_is_rejected():
@@ -545,8 +546,9 @@ def test_input_wrong_schema_version_is_rejected():
                          schema_versions=("cardre.model_artifact.v1",)),
     ))
     bad = _input_ref(role="model", schema_version="cardre.model_artifact.v9")
-    with pytest.raises(CardreError, match="schema version"):
+    with pytest.raises(CardreError, match="schema version") as exc:
         validate_input_contract(contract, [bad], node_type="test", step_id="s1")
+    assert exc.value.code == ErrorCode.INPUT_CONTRACT_VIOLATION
 
 
 def test_input_valid_media_and_schema_passes():
@@ -564,12 +566,14 @@ def test_input_missing_required_role_is_rejected():
     contract = ArtifactContract(roles=(
         ArtifactRoleSpec("model", required=True),
     ))
-    with pytest.raises(CardreError, match="missing required input"):
+    with pytest.raises(CardreError, match="missing required input") as exc:
         validate_input_contract(contract, [], node_type="test", step_id="s1")
+    assert exc.value.code == ErrorCode.INPUT_CONTRACT_VIOLATION
 
 
 def test_input_legacy_role_list_still_enforced():
     """Legacy nodes declaring only input_roles keep required-role presence."""
     contract = ArtifactContract(input_roles=("model",))
-    with pytest.raises(CardreError, match="missing required input"):
+    with pytest.raises(CardreError, match="missing required input") as exc:
         validate_input_contract(contract, [], node_type="test", step_id="s1")
+    assert exc.value.code == ErrorCode.INPUT_CONTRACT_VIOLATION

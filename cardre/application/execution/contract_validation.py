@@ -176,7 +176,7 @@ def validate_input_contract(
             raise CardreError(
                 f"Step {step_id or '-'} ({node_type or '-'}) missing required input "
                 f"roles: {sorted(missing)}",
-                code=ErrorCode.OUTPUT_CONTRACT_VIOLATION,
+                code=ErrorCode.INPUT_CONTRACT_VIOLATION,
             )
         return
 
@@ -187,7 +187,7 @@ def validate_input_contract(
         raise CardreError(
             f"Step {step_id or '-'} ({node_type or '-'}) missing required input "
             f"roles: {sorted(missing)}",
-            code=ErrorCode.OUTPUT_CONTRACT_VIOLATION,
+            code=ErrorCode.INPUT_CONTRACT_VIOLATION,
         )
 
     # Enforce declared media types and versioned schemas on supplied artifacts.
@@ -204,7 +204,7 @@ def validate_input_contract(
                 f"Step {step_id or '-'} ({node_type or '-'}) input role "
                 f"{artifact.role!r} has media type {artifact.media_type!r}, "
                 f"but the contract allows {sorted(allowed_media)}",
-                code=ErrorCode.OUTPUT_CONTRACT_VIOLATION,
+                code=ErrorCode.INPUT_CONTRACT_VIOLATION,
             )
         allowed_schemas = set(spec.schema_versions or ())
         if allowed_schemas:
@@ -214,7 +214,7 @@ def validate_input_contract(
                     f"Step {step_id or '-'} ({node_type or '-'}) input role "
                     f"{artifact.role!r} has schema version {supplied_schema!r}, "
                     f"but the contract allows {sorted(allowed_schemas)}",
-                    code=ErrorCode.OUTPUT_CONTRACT_VIOLATION,
+                    code=ErrorCode.INPUT_CONTRACT_VIOLATION,
                 )
 
 

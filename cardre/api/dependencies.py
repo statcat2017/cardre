@@ -42,6 +42,10 @@ def get_get_project(container: Container = Depends(get_container)) -> Any:
     return container.get_project
 
 
+def get_resolve_project(container: Container = Depends(get_container)) -> Any:
+    return container.resolve_project
+
+
 # ---------------------------------------------------------------------------
 # Runs
 # ---------------------------------------------------------------------------

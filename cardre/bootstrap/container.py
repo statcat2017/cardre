@@ -128,6 +128,7 @@ def build_container(settings: Settings) -> Container:
         return FinalizeRun(
             lambda: uow_factory.for_project(project_id),
             manifest_publisher_factory(project_id),
+            clock=clock,
         )
 
     from cardre.application.execution.step_runner import StepRunner
@@ -228,6 +229,7 @@ def build_container(settings: Settings) -> Container:
             uow_factory,
             registry,
             async_dispatcher,
+            capability_probe=capability_probe,
         )
 
     # Governance use cases — built here in the composition root so the API
@@ -254,7 +256,7 @@ def build_container(settings: Settings) -> Container:
         return CreateBranch(uow_factory)
 
     def create_comparison_factory(project_id: str) -> CreateComparison:
-        return CreateComparison(uow_factory)
+        return CreateComparison(uow_factory, id_generator=id_generator)
 
     def assign_champion_factory(project_id: str) -> AssignChampion:
         return AssignChampion(uow_factory)
