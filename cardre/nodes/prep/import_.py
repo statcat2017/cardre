@@ -34,8 +34,6 @@ class ImportTabularDatasetNode(NodeType):
     node_type = "cardre.import_dataset"
     version = "1"
     category = "transform"
-    input_roles: list[str] = []
-    output_roles: list[str] = ["input"]
 
     __definition__ = NodeDefinition(
         node_type="cardre.import_dataset",

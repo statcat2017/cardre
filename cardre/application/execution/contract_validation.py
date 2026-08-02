@@ -86,15 +86,14 @@ def validate_output_contract(
     """
     specs_by_role = {spec.role: spec for spec in contract.roles}
 
-    # An empty contract is the only opt-out (backward-compat legacy output_roles
-    # behave like declared roles without kinds/media constraints).
-    declared_roles = set(specs_by_role) | set(contract.output_roles_list)
+    # An empty contract is the only opt-out.
+    declared_roles = set(specs_by_role)
     if not declared_roles:
         return
 
     for staged_artifact in staged:
         role_spec = specs_by_role.get(staged_artifact.role)
-        if role_spec is None and staged_artifact.role not in contract.output_roles_list:
+        if role_spec is None:
             raise CardreError(
                 f"Step {step_id or '-'} ({node_type or '-'}) emitted undeclared output "
                 f"role {staged_artifact.role!r}; declared roles: {sorted(declared_roles)}",
@@ -134,7 +133,7 @@ def validate_output_contract(
                     code=ErrorCode.OUTPUT_CONTRACT_VIOLATION,
                 )
 
-    # Required roles must all be present (legacy required-role enforcement).
+    # Required roles must all be present.
     required_roles = {spec.role for spec in contract.roles if spec.required}
     produced_roles = {s.role for s in staged}
     missing = required_roles - produced_roles
@@ -161,24 +160,11 @@ def validate_input_contract(
     enforcement is not possible here because a persisted ``ArtifactRef`` does
     not carry the staging-kind token (only the versioned schema in metadata).
 
-    Legacy nodes with only ``input_roles`` lists declare no typed required
-    roles and are unaffected. Nodes that self-enforce via
-    ``InputCollection.require()`` continue to work; this is the framework-level
-    guarantee so nodes that never call ``require()`` (e.g. NoopNode) cannot
-    silently run with missing required inputs.
+    Nodes that self-enforce via ``InputCollection.require()`` continue to work;
+    this is the framework-level guarantee so nodes that never call ``require()``
+    (e.g. NoopNode) cannot silently run with missing required inputs.
     """
     specs_by_role = {spec.role: spec for spec in contract.roles}
-    if not specs_by_role:
-        required_roles = set(contract.input_roles_list)
-        present_roles = {a.role for a in input_artifacts}
-        missing = required_roles - present_roles
-        if missing:
-            raise CardreError(
-                f"Step {step_id or '-'} ({node_type or '-'}) missing required input "
-                f"roles: {sorted(missing)}",
-                code=ErrorCode.INPUT_CONTRACT_VIOLATION,
-            )
-        return
 
     required_roles = {spec.role for spec in contract.roles if spec.required}
     present_roles = {a.role for a in input_artifacts}

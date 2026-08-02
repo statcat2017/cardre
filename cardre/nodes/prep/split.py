@@ -25,8 +25,6 @@ class ValidateBinaryTargetNode(NodeType):
     node_type = "cardre.validate_binary_target"
     version = "1"
     category = "transform"
-    input_roles: list[str] = ["input", "train"]
-    output_roles: list[str] = ["report"]
 
     __definition__ = NodeDefinition(
         node_type="cardre.validate_binary_target",
@@ -132,8 +130,6 @@ class SplitTrainTestOotNode(NodeType):
     node_type = "cardre.split_train_test_oot"
     version = "2"
     category = "transform"
-    input_roles: list[str] = ["input", "definition"]
-    output_roles: list[str] = ["train", "test", "oot", "report"]
 
     __definition__ = NodeDefinition(
         node_type="cardre.split_train_test_oot",

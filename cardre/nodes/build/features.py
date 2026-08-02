@@ -38,8 +38,6 @@ class CalculateWoeIvNode(NodeType):
     node_type = "cardre.calculate_woe_iv"
     version = "1"
     category = "selection"
-    input_roles: list[str] = ["train", "definition"]
-    output_roles: list[str] = ["report"]
 
     __definition__ = NodeDefinition(
         node_type="cardre.calculate_woe_iv",
@@ -405,8 +403,6 @@ class WoeTransformTrainNode(NodeType):
     node_type = "cardre.woe_transform_train"
     version = "1"
     category = "fit"
-    input_roles: list[str] = ["train", "definition", "report"]
-    output_roles: list[str] = ["train", "report"]
 
     __definition__ = NodeDefinition(
         node_type="cardre.woe_transform_train",

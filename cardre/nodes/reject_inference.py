@@ -29,8 +29,6 @@ class DefineRejectPopulationNode(NodeType):
     node_type = "cardre.define_reject_population"
     version = "1"
     category = "transform"
-    input_roles: list[str] = ["input", "definition"]
-    output_roles: list[str] = ["input", "definition"]
 
     __definition__ = NodeDefinition(
         node_type=node_type,
@@ -203,8 +201,6 @@ class RejectInferenceNoneNode(NodeType):
     node_type = "cardre.reject_inference_none"
     version = "1"
     category = "transform"
-    input_roles: list[str] = ["input", "definition"]
-    output_roles: list[str] = ["input", "report"]
 
     __definition__ = NodeDefinition(
         node_type=node_type,
@@ -311,8 +307,6 @@ class RejectInferenceAugmentationNode(NodeType):
     node_type = "cardre.reject_inference_augmentation"
     version = "1"
     category = "transform"
-    input_roles: list[str] = ["input", "definition"]
-    output_roles: list[str] = ["input", "report"]
 
     __definition__ = NodeDefinition(
         node_type=node_type,

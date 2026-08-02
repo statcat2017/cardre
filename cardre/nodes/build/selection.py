@@ -30,8 +30,6 @@ class VariableSelectionNode(NodeType):
     node_type = "cardre.variable_selection"
     version = "1"
     category = "selection"
-    input_roles: list[str] = ["report"]
-    output_roles: list[str] = ["definition"]
 
     __definition__ = NodeDefinition(
         node_type="cardre.variable_selection",

@@ -22,8 +22,6 @@ class FeatureSelectionEmbeddedNode(NodeType):
     node_type = "cardre.feature_selection_embedded"
     version = "1"
     category = "selection"
-    input_roles: list[str] = ["train", "definition"]
-    output_roles: list[str] = ["definition", "report"]
 
     def validate_params(self, params: dict[str, Any]) -> list[str]:
         errors: list[str] = []
@@ -179,12 +177,20 @@ __definition__ = NodeDefinition(
     category=FeatureSelectionEmbeddedNode.category,
     description="",
     input_contract=ArtifactContract(
-        roles=tuple(ArtifactRoleSpec(r, required=True) for r in FeatureSelectionEmbeddedNode.input_roles),
+        roles=(
+            ArtifactRoleSpec("train", required=True),
+            ArtifactRoleSpec("definition", required=True),
+        ),
     ),
     output_contract=ArtifactContract(
-        roles=tuple(ArtifactRoleSpec(r, required=True) for r in FeatureSelectionEmbeddedNode.output_roles),
+        roles=(
+            ArtifactRoleSpec("definition", required=True),
+            ArtifactRoleSpec("report", required=True),
+        ),
     ),
     parameter_schema=None,
     optional_dependencies=(),
     tier="launch",
 )
+
+FeatureSelectionEmbeddedNode.__definition__ = __definition__

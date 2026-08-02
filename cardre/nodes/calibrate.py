@@ -176,8 +176,6 @@ class CalibrateProbabilitiesNode(NodeType):
     version = "1"
     category = "fit"
     description = "Calibrate model probabilities using Platt scaling or isotonic regression"
-    input_roles: list[str] = ["train", "test", "oot", "definition", "model"]
-    output_roles: list[str] = ["model", "report"]
 
     __definition__ = NodeDefinition(
         node_type="cardre.calibrate_probabilities",

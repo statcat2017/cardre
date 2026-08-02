@@ -34,8 +34,6 @@ class ApplyWoeMappingNode(NodeType):
     node_type = "cardre.apply_woe_mapping"
     version = "1"
     category = "apply"
-    input_roles: list[str] = ["train", "test", "oot", "definition", "report", "scorecard"]
-    output_roles: list[str] = ["train", "test", "oot", "report"]
 
     VALID_UNMATCHED_POLICIES = {"fill_zero", "warn", "fail"}
 
@@ -238,8 +236,6 @@ class ApplyModelNode(NodeType):
     node_type = "cardre.apply_model"
     version = "2"
     category = "apply"
-    input_roles: list[str] = ["train", "test", "oot", "model", "scorecard"]
-    output_roles: list[str] = ["train", "test", "oot", "report"]
 
     _DATA_ROLES = ("train", "test", "oot")
 

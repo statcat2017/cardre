@@ -49,8 +49,6 @@ class ValidationMetricsNode(NodeType):
     node_type = "cardre.validation_metrics"
     version = "2"
     category = "apply"
-    input_roles: list[str] = ["train", "test", "oot", "definition", "report"]
-    output_roles: list[str] = ["report"]
 
     @classmethod
     def parameter_schema(cls) -> NodeParameterSchema:
@@ -444,12 +442,20 @@ __definition__ = NodeDefinition(
     input_contract=ArtifactContract(
         # No role is hard-required: the node processes whichever datasets are
         # supplied and gates on presence via params (require_test/require_oot).
-        roles=tuple(ArtifactRoleSpec(r, required=False) for r in ValidationMetricsNode.input_roles),
+        roles=(
+            ArtifactRoleSpec("train", required=False),
+            ArtifactRoleSpec("test", required=False),
+            ArtifactRoleSpec("oot", required=False),
+            ArtifactRoleSpec("definition", required=False),
+            ArtifactRoleSpec("report", required=False),
+        ),
     ),
     output_contract=ArtifactContract(
-        roles=tuple(ArtifactRoleSpec(r, required=True) for r in ValidationMetricsNode.output_roles),
+        roles=(ArtifactRoleSpec("report", required=True),),
     ),
     parameter_schema=None,
     optional_dependencies=(),
     tier="launch",
 )
+
+ValidationMetricsNode.__definition__ = __definition__

@@ -476,6 +476,9 @@ def test_catalogue_contracts_are_machine_checkable():
                 continue
             if getattr(obj, "__module__", "") != m.__name__:
                 continue
+            if not getattr(obj, "node_type", ""):
+                # Abstract base classes (no node_type) are not catalogue nodes.
+                continue
             try:
                 defn = obj.__definition__
             except Exception as exc:  # noqa: BLE001 — a definition failure must fail the audit
@@ -566,14 +569,6 @@ def test_input_missing_required_role_is_rejected():
     contract = ArtifactContract(roles=(
         ArtifactRoleSpec("model", required=True),
     ))
-    with pytest.raises(CardreError, match="missing required input") as exc:
-        validate_input_contract(contract, [], node_type="test", step_id="s1")
-    assert exc.value.code == ErrorCode.INPUT_CONTRACT_VIOLATION
-
-
-def test_input_legacy_role_list_still_enforced():
-    """Legacy nodes declaring only input_roles keep required-role presence."""
-    contract = ArtifactContract(input_roles=("model",))
     with pytest.raises(CardreError, match="missing required input") as exc:
         validate_input_contract(contract, [], node_type="test", step_id="s1")
     assert exc.value.code == ErrorCode.INPUT_CONTRACT_VIOLATION

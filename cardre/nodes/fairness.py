@@ -40,8 +40,6 @@ class FairnessReportNode(NodeType):
     node_type = "cardre.fairness_report"
     version = "1"
     category = "report"
-    input_roles: list[str] = ["train", "test", "oot", "definition", "model"]
-    output_roles: list[str] = ["report"]
 
     __definition__ = NodeDefinition(
         node_type=node_type,
@@ -294,8 +292,6 @@ class ProxyRiskReportNode(NodeType):
     node_type = "cardre.proxy_risk_report"
     version = "1"
     category = "report"
-    input_roles: list[str] = ["train", "model", "definition"]
-    output_roles: list[str] = ["report"]
 
     __definition__ = NodeDefinition(
         node_type=node_type,
@@ -492,8 +488,6 @@ class AlternativeDataManifestNode(NodeType):
     node_type = "cardre.alternative_data_manifest"
     version = "1"
     category = "report"
-    input_roles: list[str] = ["train", "definition"]
-    output_roles: list[str] = ["report"]
 
     __definition__ = NodeDefinition(
         node_type=node_type,

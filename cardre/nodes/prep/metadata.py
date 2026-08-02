@@ -18,8 +18,6 @@ class DefineModellingMetadataNode(NodeType):
     node_type = "cardre.define_modelling_metadata"
     version = "1"
     category = "transform"
-    input_roles: list[str] = ["input", "train"]
-    output_roles: list[str] = ["definition"]
 
     __definition__ = NodeDefinition(
         node_type="cardre.define_modelling_metadata",
@@ -124,8 +122,6 @@ class DevelopmentSampleDefinitionNode(NodeType):
     node_type = "cardre.development_sample_definition"
     version = "1"
     category = "transform"
-    input_roles: list[str] = ["input", "train", "definition"]
-    output_roles: list[str] = ["definition"]
 
     __definition__ = NodeDefinition(
         node_type="cardre.development_sample_definition",

@@ -1,7 +1,6 @@
 """Node catalogue for Cardre pipeline nodes.
 
-Replaces ``cardre/nodes/registry.py`` (Batch 04). The catalogue is built
-from ``Settings`` + a list of node classes, replacing the old
+Built from ``Settings`` + a list of node classes, replacing the old
 ``NodeRegistry.with_defaults()`` pattern.
 """
 
@@ -46,7 +45,7 @@ def _probe_optional_dep(group: str) -> bool:
 def _resolve_tier(cls: type[NodeType]) -> NodeTier:
     if getattr(cls, "_deferred", False):
         return "deferred"
-    definition = getattr(cls, "_NodeType__definition_cached", None)
+    definition = getattr(cls, "__definition__", None)
     if definition is not None and hasattr(definition, "tier"):
         return definition.tier
     return getattr(cls, "tier", "launch")

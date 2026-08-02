@@ -175,6 +175,5 @@ allow_indirect_imports = true
 modules = [
     "cardre._version",
     "cardre.modeling",
-    "cardre.node_parameters",
     "sidecar",
 ]

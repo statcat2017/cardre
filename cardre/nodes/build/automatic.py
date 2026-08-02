@@ -25,8 +25,6 @@ class AutomaticBinningNode(NodeType):
     node_type = "cardre.automatic_binning"
     version = "1"
     category = "fit"
-    input_roles: list[str] = ["train", "definition"]
-    output_roles: list[str] = ["definition", "report"]
 
     __definition__ = NodeDefinition(
         node_type="cardre.automatic_binning",

@@ -125,11 +125,7 @@ class StepRunner:
                     f"Step {spec.step_id!r} validation failed: {'; '.join(validation_errors)}"
                 )
 
-            input_roles = [
-                rs.role for rs in node.__definition__.input_contract.roles
-            ] if hasattr(node.__definition__, 'input_contract') and node.__definition__.input_contract.roles else (
-                getattr(node, 'input_roles', []) or []
-            )
+            input_roles = [rs.role for rs in node.__definition__.input_contract.roles]
             input_artifacts = self._filter_input_artifacts(spec, input_roles, resolved)
 
             self._validate_input_roles(node, input_artifacts, spec)
@@ -280,9 +276,6 @@ class StepRunner:
     ) -> None:
         from cardre.application.execution.contract_validation import validate_output_contract
 
-        # Preserve legacy behaviour: nodes with only output_roles lists (no
-        # ArtifactRoleSpec) still pass through the full validator, which treats
-        # them as declared roles without kind/media constraints.
         validate_output_contract(
             output_contract,
             staged,

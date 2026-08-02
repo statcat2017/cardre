@@ -22,8 +22,6 @@ class FrozenScorecardBundleNode(NodeType):
     node_type = "cardre.freeze_scorecard_bundle"
     version = "1"
     category = "fit"
-    input_roles: list[str] = ["definition", "report", "model", "scorecard"]
-    output_roles: list[str] = ["scorecard"]
 
     __definition__ = NodeDefinition(
         node_type="cardre.freeze_scorecard_bundle",

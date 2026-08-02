@@ -93,6 +93,19 @@ def test_canonical_plan_steps_match_current_node_versions():
         )
 
 
+def test_every_node_has_complete_definition():
+    cat = build_default_catalogue(Settings(launch_mode=True))
+    for node_type in cat.list_types():
+        cls = cat.resolve(node_type)
+        assert "__definition__" in cls.__dict__, node_type
+        defn = cls.node_definition()
+        assert defn.node_type == node_type
+        assert defn.version
+        assert defn.category
+        assert "input_roles" not in cls.__dict__, node_type
+        assert "output_roles" not in cls.__dict__, node_type
+
+
 def test_manual_binning_distinct_node():
     cat = build_default_catalogue(Settings(launch_mode=True))
     manual = cat.resolve("cardre.manual_binning")
@@ -304,7 +317,6 @@ BANNED_ATTRIBUTES = {
 ALLOWED_PREFIXES = {
     "cardre.adapters.sqlite": {"sqlite3"},
     "cardre.bootstrap.settings": {"os.environ", "os.getenv"},
-    "cardre.nodes.registry": {"NodeType"},
 }
 
 

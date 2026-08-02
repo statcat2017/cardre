@@ -45,8 +45,6 @@ class CoefficientSignCheckNode(NodeType):
     node_type = "cardre.coefficient_sign_check"
     version = "1"
     category = "fit"
-    input_roles: list[str] = ["model", "report"]
-    output_roles: list[str] = ["report"]
 
     __definition__ = NodeDefinition(
         node_type="cardre.coefficient_sign_check",
@@ -160,8 +158,6 @@ class SeparationDiagnosticsNode(NodeType):
     node_type = "cardre.separation_diagnostics"
     version = "1"
     category = "fit"
-    input_roles: list[str] = ["model"]
-    output_roles: list[str] = ["report"]
 
     __definition__ = NodeDefinition(
         node_type="cardre.separation_diagnostics",
@@ -256,8 +252,6 @@ class VifDiagnosticsNode(NodeType):
     node_type = "cardre.vif_diagnostics"
     version = "1"
     category = "fit"
-    input_roles: list[str] = ["train", "model"]
-    output_roles: list[str] = ["report"]
 
     __definition__ = NodeDefinition(
         node_type="cardre.vif_diagnostics",
@@ -419,8 +413,6 @@ class CalibrationDiagnosticsNode(NodeType):
     node_type = "cardre.calibration_diagnostics"
     version = "1"
     category = "fit"
-    input_roles: list[str] = ["train", "test", "oot", "model", "definition"]
-    output_roles: list[str] = ["report"]
 
     __definition__ = NodeDefinition(
         node_type="cardre.calibration_diagnostics",

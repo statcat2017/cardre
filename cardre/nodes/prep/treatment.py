@@ -20,8 +20,6 @@ class ApplyExclusionsNode(NodeType):
     node_type = "cardre.apply_exclusions"
     version = "1"
     category = "transform"
-    input_roles: list[str] = ["input", "train", "definition"]
-    output_roles: list[str] = ["input", "train", "report"]
 
     __definition__ = NodeDefinition(
         node_type="cardre.apply_exclusions",
@@ -128,8 +126,6 @@ class ExplicitMissingOutlierTreatmentNode(NodeType):
     node_type = "cardre.explicit_missing_outlier_treatment"
     version = "1"
     category = "apply"
-    input_roles: list[str] = ["train", "test", "oot"]
-    output_roles: list[str] = ["train", "test", "oot", "report"]
 
     __definition__ = NodeDefinition(
         node_type="cardre.explicit_missing_outlier_treatment",

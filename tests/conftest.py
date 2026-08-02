@@ -126,7 +126,11 @@ def api_client():
     """FastAPI TestClient bound to the v2 minimal API."""
     from fastapi.testclient import TestClient
 
-    from cardre.api._app_instance import app
+    from cardre.api.app import create_app
+    from cardre.bootstrap.container import build_container
+    from cardre.bootstrap.settings import Settings
+
+    app = create_app(build_container(Settings()))
     return TestClient(app)
 
 

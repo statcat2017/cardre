@@ -27,8 +27,6 @@ class ProfileDatasetNode(NodeType):
     node_type = "cardre.profile_dataset"
     version = "1"
     category = "transform"
-    input_roles: list[str] = ["input", "train", "test", "oot"]
-    output_roles: list[str] = ["report"]
 
     __definition__ = NodeDefinition(
         node_type="cardre.profile_dataset",

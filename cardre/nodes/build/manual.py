@@ -23,8 +23,6 @@ class ManualBinningNode(NodeType):
     node_type = "cardre.manual_binning"
     version = "1"
     category = "refinement"
-    input_roles: list[str] = ["definition"]
-    output_roles: list[str] = ["definition"]
 
     __definition__ = NodeDefinition(
         node_type="cardre.manual_binning",

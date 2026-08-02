@@ -95,8 +95,6 @@ class ModelExplainabilityNode(NodeType):
     node_type = "cardre.model_explainability"
     version = "1"
     category = "report"
-    input_roles: list[str] = ["model", "train", "test", "oot"]
-    output_roles: list[str] = ["report"]
     optional_dependencies: list[str] = ["explain"]
 
     __definition__ = NodeDefinition(
@@ -571,8 +569,6 @@ class ModelLimitationsNode(NodeType):
     node_type = "cardre.model_limitations"
     version = "1"
     category = "report"
-    input_roles: list[str] = ["model", "train", "definition"]
-    output_roles: list[str] = ["report"]
 
     __definition__ = NodeDefinition(
         node_type="cardre.model_limitations",

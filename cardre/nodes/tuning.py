@@ -19,7 +19,14 @@ from cardre.nodes._training_utils import (
     _model_binary_descriptor_id,
     prepare_supervised_training_data,
 )
-from cardre.nodes.contracts import NodeContext, NodeResult, NodeType
+from cardre.nodes.contracts import (
+    ArtifactContract,
+    ArtifactRoleSpec,
+    NodeContext,
+    NodeDefinition,
+    NodeResult,
+    NodeType,
+)
 from cardre.nodes.parameters import (
     MethodOption,
     NodeParameterSchema,
@@ -53,8 +60,6 @@ class HyperparameterTuningNode(NodeType):
     node_type = "cardre.hyperparameter_tuning"
     version = "1"
     category = "fit"
-    input_roles: list[str] = ["train", "definition"]
-    output_roles: list[str] = ["model"]
 
     @classmethod
     def parameter_schema(cls) -> NodeParameterSchema:
@@ -386,3 +391,25 @@ class HyperparameterTuningNode(NodeType):
         for name, value in metrics.items():
             context.outputs.add_metric(name, value)
         return context.outputs.build_result()
+
+
+__definition__ = NodeDefinition(
+    node_type=HyperparameterTuningNode.node_type,
+    version=HyperparameterTuningNode.version,
+    category=HyperparameterTuningNode.category,
+    description="Hyperparameter tuning node using sklearn GridSearchCV / RandomizedSearchCV",
+    input_contract=ArtifactContract(
+        roles=(
+            ArtifactRoleSpec("train", required=True),
+            ArtifactRoleSpec("definition", required=True),
+        ),
+    ),
+    output_contract=ArtifactContract(
+        roles=(ArtifactRoleSpec("model", required=True),),
+    ),
+    parameter_schema=None,
+    optional_dependencies=(),
+    tier="launch",
+)
+
+HyperparameterTuningNode.__definition__ = __definition__
