@@ -277,16 +277,6 @@ def match_by_schema_version(artifacts: list[ArtifactRef], profile: _Profile) -> 
     return [a for a in artifacts if a.metadata.get("schema_version") == profile.schema_version]
 
 
-def match_by_role_type_media(artifacts: list[ArtifactRef], profile: _Profile) -> list[ArtifactRef]:
-    return [
-        a for a in artifacts
-        if a.role in profile.expected_roles
-        and a.artifact_type in profile.expected_artifact_types
-        and a.media_type in profile.expected_media_types
-        and (profile.exclude_key is None or profile.exclude_key not in a.metadata)
-    ]
-
-
 def parquet_has_columns(art: ArtifactRef, columns: set[str], reader: ArtifactReader) -> bool:
     try:
         cols = pl.scan_parquet(reader.resolve_path(art)).collect_schema().names()
@@ -314,38 +304,27 @@ def candidate_passes_payload_check(art: ArtifactRef, profile: _Profile, reader: 
 
 
 def match(artifacts: list[ArtifactRef], profile: _Profile, reader: ArtifactReader) -> list[ArtifactRef]:
-    schema_matches = match_by_schema_version(artifacts, profile)
-    if schema_matches:
-        validated = [
-            a for a in schema_matches
+    if not profile.schema_version:
+        # Schema-less kind (SCORED_DATASET): match by canonical role/type/media.
+        return [
+            a for a in artifacts
             if a.role in profile.expected_roles
             and a.artifact_type in profile.expected_artifact_types
             and a.media_type in profile.expected_media_types
             and (profile.exclude_key is None or profile.exclude_key not in a.metadata)
-            and candidate_passes_payload_check(a, profile, reader)
         ]
-        if validated:
-            return validated
+    schema_matches = match_by_schema_version(artifacts, profile)
+    if not schema_matches:
         return []
-    candidates = match_by_role_type_media(artifacts, profile)
-    if len(candidates) == 1:
-        if candidate_passes_payload_check(candidates[0], profile, reader):
-            return candidates
-        candidates = []
-    return candidates
+    return [
+        a for a in schema_matches
+        if a.role in profile.expected_roles
+        and a.artifact_type in profile.expected_artifact_types
+        and a.media_type in profile.expected_media_types
+        and (profile.exclude_key is None or profile.exclude_key not in a.metadata)
+        and candidate_passes_payload_check(a, profile, reader)
+    ]
 
-
-def _passes_format_check(art: ArtifactRef, profile: _Profile) -> bool:
-    """Format-only check for schema-matched artifacts.
-
-    Schema version is a strong signal; we only reject files whose media type
-    and profile contract are fundamentally incompatible.
-    For profiles with ``required_columns`` (parquet-based), parquet is accepted.
-    For profiles without (JSON-based), parquet is rejected.
-    """
-    if art.media_type != "application/vnd.apache.parquet":
-        return True
-    return profile.required_columns is not None
 
 def read_json_payload(path: Path) -> dict[str, Any]:
     return json.loads(path.read_text())  # type: ignore[no-any-return]
@@ -361,8 +340,6 @@ __all__ = [
     "get_adapter",
     "match",
     "match_by_schema_version",
-    "match_by_role_type_media",
-    "parquet_has_columns",
     "candidate_passes_payload_check",
     "read_json_payload",
     "scan_parquet",

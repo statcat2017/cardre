@@ -170,19 +170,21 @@ def _model_binary_descriptor_id(
     logical_hash: str,
     metadata: dict[str, Any],
 ) -> str:
-    """Compute the descriptor id the store will assign to a model-role binary.
+    """Compute the descriptor id the store will assign to a binary estimator.
 
     Used for estimator blobs (classifier/tuning nodes) and the calibrator
     blob so the JSON model artifact can reference the binary's id before it is
-    staged, letting callers publish the JSON model first (matching the
-    historical role-consumer ordering).
+    staged. The binary is published under the distinct ``estimator`` role
+    (media ``application/octet-stream``), separate from the JSON ``model``
+    role, so the descriptor id must use that role to match what the store
+    assigns on publication.
     """
     from cardre.domain.artifacts import descriptor_id
 
     kind_value = EvidenceKind.MODEL_ARTIFACT.value
     return descriptor_id(
         artifact_type=kind_value.split(".")[-1] if "." in kind_value else kind_value,
-        role="model",
+        role="estimator",
         media_type="application/octet-stream",
         kind=kind_value,
         schema_version=str(metadata.get("schema_version", "")),
@@ -203,7 +205,7 @@ def _write_estimator(
         clf, step_id, run_id, model_family,
     )
     return outputs.publish_bytes(
-        role="model",
+        role="estimator",
         kind=EvidenceKind.MODEL_ARTIFACT,
         data=estimator_bytes,
         media_type="application/octet-stream",

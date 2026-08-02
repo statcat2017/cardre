@@ -25,7 +25,7 @@ from cardre.application.execution.input_collection import StepInputCollection
 from cardre.application.execution.output_publisher import StagingOutputPublisher
 from cardre.domain.artifacts import ArtifactRef
 from cardre.domain.evidence.kinds import EvidenceKind
-from cardre.domain.evidence.schemas import SCHEMA_MODEL_ARTIFACT
+from cardre.domain.evidence.schemas import SCHEMA_MODEL_ARTIFACT, SCHEMA_WOE_TABLE
 from cardre.domain.step import StepSpec
 from cardre.nodes.build._logit_helpers import POINTS_ROUND, WOE_ROUND
 from cardre.nodes.build.models import ScoreScalingNode
@@ -152,6 +152,7 @@ def test_score_scaling_with_known_input(tmp_path: Path) -> None:
         role="report",
         kind=EvidenceKind.WOE_TABLE,
         frame=woe_df,
+        metadata={"schema_version": SCHEMA_WOE_TABLE},
     )
 
     for staged in (model_staged, bin_def_staged, woe_staged):

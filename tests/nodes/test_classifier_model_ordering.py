@@ -88,29 +88,32 @@ def _run_decision_tree(tmp_path: Path):
 
 
 def test_classifier_emits_json_model_first_for_role_consumers(tmp_path: Path):
-    """A downstream `require("model")` returns the first artifact by role.
+    """A downstream `require("model")` returns the parseable JSON model.
 
-    It must be the parseable JSON model, not the joblib estimator blob.
-    Otherwise `reader.read(first, MODEL_ARTIFACT)` raises EvidenceNotFoundError
-    and every apply/calibrate/explain consumer hard-fails.
+    The classifier publishes the JSON model under the ``model`` role and the
+    joblib estimator blob under the distinct ``estimator`` role, so role
+    consumers always get the JSON model (never the binary).
     """
     result, store = _run_decision_tree(tmp_path)
 
     model_arts = [a for a in result.staged_artifacts if a.role == "model"]
-    assert len(model_arts) == 2
+    estimator_arts = [a for a in result.staged_artifacts if a.role == "estimator"]
+    assert len(model_arts) == 1
+    assert len(estimator_arts) == 1
 
     first = model_arts[0]
     assert first.media_type == "application/json", (
-        f"first-by-role model artifact must be the JSON model, "
+        f"model-role artifact must be the JSON model, "
         f"got media_type={first.media_type!r}"
     )
+    assert estimator_arts[0].media_type == "application/octet-stream"
 
     # Publish staged artifacts to the object store (ExecuteRun finalizes after
     # DB registration) so the evidence reader can resolve them by hash.
     for staged in result.staged_artifacts:
         store.finalize(staged)
 
-    # The real evidence reader must read the first-by-role model as
+    # The real evidence reader must read the model-role artifact as
     # MODEL_ARTIFACT evidence; the binary estimator must NOT match the profile.
     reader = EvidenceReader(store, _NullRepo(), _NullRepo())
     typed = reader.find([_staged_to_ref(first)], EvidenceKind.MODEL_ARTIFACT)
@@ -118,9 +121,9 @@ def test_classifier_emits_json_model_first_for_role_consumers(tmp_path: Path):
     assert typed.model_family == "decision_tree"
 
     # The JSON model's estimator_reference must point at the staged binary's
-    # actual descriptor id (the reorder must not break estimator identity).
-    second = model_arts[1]
-    assert second.media_type == "application/octet-stream"
+    # actual descriptor id (the distinct estimator role must not break
+    # estimator identity).
+    second = estimator_arts[0]
     import json
 
     payload = json.loads(store.read_bytes(first))

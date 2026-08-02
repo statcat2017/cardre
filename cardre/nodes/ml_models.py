@@ -555,7 +555,10 @@ __definition__ = NodeDefinition(
         ),
     ),
     output_contract=ArtifactContract(
-        roles=(ArtifactRoleSpec("model", required=True),),
+        roles=(
+            ArtifactRoleSpec("model", required=True),
+            ArtifactRoleSpec("estimator", required=True, media_types=("application/octet-stream",)),
+        ),
     ),
 )
 
@@ -571,7 +574,10 @@ __definition_random_forest = NodeDefinition(
         ),
     ),
     output_contract=ArtifactContract(
-        roles=(ArtifactRoleSpec("model", required=True),),
+        roles=(
+            ArtifactRoleSpec("model", required=True),
+            ArtifactRoleSpec("estimator", required=True, media_types=("application/octet-stream",)),
+        ),
     ),
 )
 
@@ -587,7 +593,10 @@ __definition_gbdt = NodeDefinition(
         ),
     ),
     output_contract=ArtifactContract(
-        roles=(ArtifactRoleSpec("model", required=True),),
+        roles=(
+            ArtifactRoleSpec("model", required=True),
+            ArtifactRoleSpec("estimator", required=True, media_types=("application/octet-stream",)),
+        ),
     ),
 )
 

@@ -105,6 +105,7 @@ class ModelExplainabilityNode(NodeType):
         input_contract=ArtifactContract(
             roles=(
                 ArtifactRoleSpec("model", kinds=(EvidenceKind.MODEL_ARTIFACT,)),
+                ArtifactRoleSpec("estimator", required=False, media_types=("application/octet-stream",)),
                 ArtifactRoleSpec("train", required=False, kinds=(RoleKind.DATASET,)),
                 ArtifactRoleSpec("test", required=False, kinds=(RoleKind.DATASET,)),
                 ArtifactRoleSpec("oot", required=False, kinds=(RoleKind.DATASET,)),
@@ -576,6 +577,7 @@ class ModelLimitationsNode(NodeType):
         input_contract=ArtifactContract(
             roles=(
                 ArtifactRoleSpec("model", kinds=(EvidenceKind.MODEL_ARTIFACT,)),
+                ArtifactRoleSpec("estimator", required=False, media_types=("application/octet-stream",)),
                 ArtifactRoleSpec("train", required=False, kinds=(RoleKind.DATASET,)),
                 ArtifactRoleSpec("definition", required=False, kinds=(RoleKind.DEFINITION,)),
             ),

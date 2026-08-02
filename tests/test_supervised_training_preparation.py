@@ -182,7 +182,7 @@ class TestWriteEstimator:
 
         published = outputs.published
         assert artifact.provisional_artifact_id == "estimator-artifact"
-        assert published["role"] == "model"
+        assert published["role"] == "estimator"
         assert published["kind"] is EvidenceKind.MODEL_ARTIFACT
         assert published["media_type"] == "application/octet-stream"
         assert published["logical_hash"] == hashlib.sha256(published["data"]).hexdigest()

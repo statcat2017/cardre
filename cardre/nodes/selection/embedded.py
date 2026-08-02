@@ -4,6 +4,10 @@ import logging
 from typing import Any
 
 from cardre.domain.evidence.kinds import EvidenceKind
+from cardre.domain.evidence.schemas import (
+    SCHEMA_FEATURE_SELECTION_EVIDENCE,
+    SCHEMA_SELECTION_DEFINITION,
+)
 from cardre.nodes._training_utils import prepare_supervised_training_data
 from cardre.nodes.contracts import (
     ArtifactContract,
@@ -148,7 +152,7 @@ class FeatureSelectionEmbeddedNode(NodeType):
             role="definition",
             kind=EvidenceKind.SELECTION_DEFINITION,
             payload=selection,
-            metadata={"method": "embedded", "selected_count": len(selected)},
+            metadata={"method": "embedded", "selected_count": len(selected), "schema_version": SCHEMA_SELECTION_DEFINITION},
         )
 
         importance_report = {
@@ -163,7 +167,7 @@ class FeatureSelectionEmbeddedNode(NodeType):
             role="report",
             kind=EvidenceKind.FEATURE_SELECTION_EVIDENCE,
             payload=importance_report,
-            metadata={"estimator": estimator_type},
+            metadata={"estimator": estimator_type, "schema_version": SCHEMA_FEATURE_SELECTION_EVIDENCE},
         )
 
         context.outputs.add_metric("selected_count", len(selected))
@@ -184,8 +188,8 @@ __definition__ = NodeDefinition(
     ),
     output_contract=ArtifactContract(
         roles=(
-            ArtifactRoleSpec("definition", required=True),
-            ArtifactRoleSpec("report", required=True),
+            ArtifactRoleSpec("definition", required=True, kinds=(EvidenceKind.SELECTION_DEFINITION,), media_types=("application/json",), schema_versions=(SCHEMA_SELECTION_DEFINITION,)),
+            ArtifactRoleSpec("report", required=True, kinds=(EvidenceKind.FEATURE_SELECTION_EVIDENCE,), media_types=("application/json",), schema_versions=(SCHEMA_FEATURE_SELECTION_EVIDENCE,)),
         ),
     ),
 )

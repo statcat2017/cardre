@@ -280,13 +280,15 @@ def test_bin_definition_match_parity_multiple_artifacts(artifacts: _ProjectArtif
     _assert_match_parity(artifacts, EvidenceKind.SELECTION_DEFINITION, [bin_art, sel_art])
 
 
-def test_bin_definition_match_parity_no_schema_version(artifacts: _ProjectArtifacts) -> None:
-    """Parity: artifacts with the canonical type match by role/type/media."""
+def test_bin_definition_no_schema_version_rejected(artifacts: _ProjectArtifacts) -> None:
+    """A bin definition without its canonical schema_version is not a current
+    artifact — strict matching rejects it (no schema-less fallback)."""
     art = artifacts.write_json(
         "bin_definition", "definition", "",
         {"variables": [{"variable": "age", "bins": []}]},
     )
-    _assert_match_parity(artifacts, EvidenceKind.BIN_DEFINITION, [art])
+    matched = _assert_match_parity(artifacts, EvidenceKind.BIN_DEFINITION, [art])
+    assert not matched
 
 
 # Parquet evidence kinds
@@ -338,12 +340,12 @@ def test_no_match_parity(artifacts: _ProjectArtifacts) -> None:
 def test_ambiguous_match_parity(artifacts: _ProjectArtifacts) -> None:
     """Parity: both adapter and reader return multiple candidates for ambiguous input."""
     art1 = artifacts.write_json(
-        "bin_definition", "definition", "",
+        "bin_definition", "definition", "cardre.bin_definition.v1",
         {"variables": [{"variable": "age", "bins": []}]},
         artifact_id="amb1",
     )
     art2 = artifacts.write_json(
-        "bin_definition", "definition", "",
+        "bin_definition", "definition", "cardre.bin_definition.v1",
         {"variables": [{"variable": "income", "bins": []}]},
         artifact_id="amb2",
     )
@@ -366,22 +368,21 @@ def test_schema_version_mismatched_role_type_returns_empty(artifacts: _ProjectAr
     assert result == []
 
 
-def test_schema_version_mismatch_falls_through_to_role_type_media(artifacts: _ProjectArtifacts) -> None:
-    """When schema_version doesn't match, fall through to role/type/media matching (3a behaviour)."""
+def test_schema_version_mismatch_returns_empty(artifacts: _ProjectArtifacts) -> None:
+    """When schema_version doesn't match, the artifact is rejected (no fallback)."""
     art = artifacts.write_json(
         "bin_definition", "definition", "wrong.schema.v1",
         {"variables": [{"variable": "age", "bins": []}]},
     )
     spec = get_adapter(EvidenceKind.BIN_DEFINITION)
     result = _match(artifacts, [art], spec.profile)
-    assert len(result) == 1
-    assert result[0].artifact_id == art.artifact_id
+    assert result == []
 
 
 def test_single_candidate_fails_payload_check_returns_empty(artifacts: _ProjectArtifacts) -> None:
-    """Single candidate by role/type/media that fails payload check → []."""
+    """A schema-matched candidate that fails the payload check → []."""
     art = artifacts.write_json(
-        "bin_definition", "definition", "",
+        "bin_definition", "definition", "cardre.bin_definition.v1",
         {"wrong_key": "wrong_value"},
     )
     spec = get_adapter(EvidenceKind.BIN_DEFINITION)
@@ -389,21 +390,22 @@ def test_single_candidate_fails_payload_check_returns_empty(artifacts: _ProjectA
     assert result == []
 
 
-def test_multiple_candidates_skip_payload_check(artifacts: _ProjectArtifacts) -> None:
-    """Multiple candidates by role/type/media → payload check skipped → return all."""
+def test_multiple_candidates_payload_check_filters(artifacts: _ProjectArtifacts) -> None:
+    """Every schema-matched candidate passes the payload check; invalid ones are
+    filtered out."""
     art1 = artifacts.write_json(
-        "bin_definition", "definition", "",
+        "bin_definition", "definition", "cardre.bin_definition.v1",
         {"variables": [{"variable": "age", "bins": []}]},
         artifact_id="cand1",
     )
     art2 = artifacts.write_json(
-        "bin_definition", "definition", "",
+        "bin_definition", "definition", "cardre.bin_definition.v1",
         {"wrong_key": "wrong"},
         artifact_id="cand2",
     )
     spec = get_adapter(EvidenceKind.BIN_DEFINITION)
     result = _match(artifacts, [art1, art2], spec.profile)
-    assert len(result) == 2
+    assert [a.artifact_id for a in result] == ["cand1"]
 
 
 def test_exclude_key_filters_artifact(artifacts: _ProjectArtifacts) -> None:
@@ -471,12 +473,12 @@ def test_parse_invalid_json_raises(artifacts: _ProjectArtifacts) -> None:
         spec.parse(artifacts.store.resolve_path(stored), stored, artifacts.store)
 
 
-def test_iv_table_empty_schema_skips_schema_phase(artifacts: _ProjectArtifacts) -> None:
-    """IV_TABLE with canonical type matches by role/type/media when schema absent."""
+def test_iv_table_with_canonical_schema_matches(artifacts: _ProjectArtifacts) -> None:
+    """IV_TABLE matches when it carries its canonical schema_version."""
     art = artifacts.write_parquet(
-        "iv_table", "report", "",
+        "iv_table", "report", "cardre.iv_table.v1",
         pl.DataFrame({"iv": [0.5], "variable": ["age"]}),
-        artifact_id="iv-empty-schema",
+        artifact_id="iv-schema-match",
     )
     spec = get_adapter(EvidenceKind.IV_TABLE)
     result = _match(artifacts, [art], spec.profile)

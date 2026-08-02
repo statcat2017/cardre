@@ -5,6 +5,7 @@ from typing import Any
 import polars as pl
 
 from cardre.domain.evidence.kinds import EvidenceKind
+from cardre.domain.evidence.schemas import SCHEMA_RESAMPLING_EVIDENCE
 from cardre.nodes._training_utils import prepare_supervised_training_data
 from cardre.nodes.contracts import (
     ArtifactContract,
@@ -158,6 +159,7 @@ class SmoteTrainingDataNode(NodeType):
                 "smote_report": smote_report,
                 "synthetic_count": n_synthetic,
                 "synthetic_row_column": "_is_synthetic_row",
+                "schema_version": SCHEMA_RESAMPLING_EVIDENCE,
             },
         )
 
@@ -165,7 +167,7 @@ class SmoteTrainingDataNode(NodeType):
             role="report",
             kind=EvidenceKind.RESAMPLING_EVIDENCE,
             payload=smote_report,
-            metadata={"method": "smote"},
+            metadata={"method": "smote", "schema_version": SCHEMA_RESAMPLING_EVIDENCE},
         )
 
         context.outputs.add_metric("original_count", n_original)
@@ -188,7 +190,7 @@ __definition__ = NodeDefinition(
     output_contract=ArtifactContract(
         roles=(
             ArtifactRoleSpec("train", required=True),
-            ArtifactRoleSpec("report", required=True),
+            ArtifactRoleSpec("report", required=True, kinds=(EvidenceKind.RESAMPLING_EVIDENCE,), media_types=("application/json",), schema_versions=(SCHEMA_RESAMPLING_EVIDENCE,)),
         ),
     ),
 )

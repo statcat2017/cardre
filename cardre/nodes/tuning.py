@@ -13,6 +13,7 @@ from sklearn.model_selection import GridSearchCV, RandomizedSearchCV
 from sklearn.tree import DecisionTreeClassifier
 
 from cardre.domain.evidence.kinds import EvidenceKind
+from cardre.domain.evidence.schemas import SCHEMA_MODEL_ARTIFACT
 from cardre.modeling.builders import build_model_artifact
 from cardre.nodes._training_utils import (
     _estimator_parts,
@@ -358,6 +359,7 @@ class HyperparameterTuningNode(NodeType):
         }
 
         artifact_metadata = {
+            "schema_version": SCHEMA_MODEL_ARTIFACT,
             "feature_count": len(features),
             "target_column": target_column,
             "model_family": model_family,
@@ -375,7 +377,7 @@ class HyperparameterTuningNode(NodeType):
         # Stage the binary estimator AFTER the JSON model so role consumers
         # (`require("model")` / `first("model")`) select the parseable model.
         context.outputs.publish_bytes(
-            role="model",
+            role="estimator",
             kind=EvidenceKind.MODEL_ARTIFACT,
             data=estimator_bytes,
             media_type="application/octet-stream",
@@ -405,7 +407,10 @@ __definition__ = NodeDefinition(
         ),
     ),
     output_contract=ArtifactContract(
-        roles=(ArtifactRoleSpec("model", required=True),),
+        roles=(
+            ArtifactRoleSpec("model", required=True, kinds=(EvidenceKind.MODEL_ARTIFACT,), media_types=("application/json",), schema_versions=(SCHEMA_MODEL_ARTIFACT,)),
+            ArtifactRoleSpec("estimator", required=True, media_types=("application/octet-stream",)),
+        ),
     ),
 )
 
