@@ -13,9 +13,16 @@ from cardre.adapters.rendering.html_report import HtmlReportRenderer
 from cardre.adapters.reporting.collector import ReportCollector
 from cardre.adapters.sqlite.connection import SqliteUnitOfWorkFactory
 from cardre.adapters.sqlite.project_provisioner import SqliteProjectProvisioner
+from cardre.adapters.system.capability_probe import FilesystemCapabilityProbe
+from cardre.adapters.system.clock import SystemClock
+from cardre.adapters.system.id_generator import UuidGenerator
 from cardre.adapters.system.project_registry import JsonProjectRegistry
 from cardre.application.ports.artifact_store import ArtifactReader
+from cardre.application.ports.capability_probe import CapabilityProbePort
+from cardre.application.ports.clock import ClockPort
 from cardre.application.ports.evidence_reader import EvidenceReaderPort
+from cardre.application.ports.id_generator import IdGeneratorPort
+from cardre.application.ports.node_catalogue import NodeCataloguePort
 from cardre.application.ports.report_collector import ReportCollectorPort
 from cardre.application.ports.unit_of_work import ArtifactRepoPort, RunStepRepoPort
 from cardre.application.projects.create_project import CreateProject
@@ -33,10 +40,13 @@ from cardre.bootstrap.settings import Settings
 @dataclass
 class Container:
     settings: Settings
+    clock: ClockPort | None = None
+    id_generator: IdGeneratorPort | None = None
     project_registry: Any = None
     project_provisioner: Any = None
     uow_factory: Any = None
-    node_catalogue: Any = None
+    node_catalogue: NodeCataloguePort | None = None
+    capability_probe: CapabilityProbePort | None = None
     create_project: Any = None
     list_projects: Any = None
     get_project: Any = None
@@ -65,6 +75,9 @@ def build_container(settings: Settings) -> Container:
     provisioner = SqliteProjectProvisioner()
     uow_factory = SqliteUnitOfWorkFactory(registry)
     node_catalogue = build_default_catalogue(settings)
+    clock = SystemClock()
+    id_generator = UuidGenerator()
+    capability_probe = FilesystemCapabilityProbe()
 
     def project_root(project_id: str) -> Path:
         root = registry.resolve_root(project_id)
@@ -86,11 +99,11 @@ def build_container(settings: Settings) -> Container:
     ) -> EvidenceReaderPort:
         return EvidenceReader(reader, artifacts, run_steps)
 
-    def step_evidence_reader_factory(project_id: str) -> EvidenceReader:
+    def step_evidence_reader_factory(project_id: str) -> tuple[EvidenceReader, Any]:
         """Create an EvidenceReader backed by a read-only UoW.
 
-        The UoW is attached as ``_evidence_uow`` on the reader so the
-        StepRunner can close it after each step.
+        Returns ``(reader, uow)`` so the caller can close the UoW
+        after use — no monkey-patching needed.
         """
         uow = uow_factory.for_root_readonly(project_root(project_id))
         reader = EvidenceReader(
@@ -98,8 +111,7 @@ def build_container(settings: Settings) -> Container:
             uow.artifacts,
             uow.run_steps,
         )
-        reader._evidence_uow = uow  # type: ignore[attr-defined]
-        return reader
+        return reader, uow
 
     def collector_factory(
         reader: EvidenceReaderPort,
@@ -114,6 +126,7 @@ def build_container(settings: Settings) -> Container:
         return FinalizeRun(
             lambda: uow_factory.for_project(project_id),
             manifest_publisher_factory(project_id),
+            clock=clock,
         )
 
     from cardre.application.execution.step_runner import StepRunner
@@ -214,6 +227,7 @@ def build_container(settings: Settings) -> Container:
             uow_factory,
             registry,
             async_dispatcher,
+            capability_probe=capability_probe,
         )
 
     # Governance use cases — built here in the composition root so the API
@@ -240,7 +254,7 @@ def build_container(settings: Settings) -> Container:
         return CreateBranch(uow_factory)
 
     def create_comparison_factory(project_id: str) -> CreateComparison:
-        return CreateComparison(uow_factory)
+        return CreateComparison(uow_factory, id_generator=id_generator)
 
     def assign_champion_factory(project_id: str) -> AssignChampion:
         return AssignChampion(uow_factory)
@@ -252,6 +266,9 @@ def build_container(settings: Settings) -> Container:
 
     return Container(
         settings=settings,
+        clock=clock,
+        id_generator=id_generator,
+        capability_probe=capability_probe,
         project_registry=registry,
         project_provisioner=provisioner,
         uow_factory=uow_factory,

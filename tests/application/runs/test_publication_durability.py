@@ -33,6 +33,11 @@ from cardre.domain.artifacts import json_logical_hash, physical_hash
 from cardre.domain.run import RunStatus
 
 
+class _FakeClock:
+    def now_iso(self) -> str:
+        return "2026-01-01T00:00:00Z"
+
+
 class _FailingManifestPublisher:
     """Manifest publisher that raises before writing anything."""
 
@@ -59,7 +64,7 @@ def _provision(tmp_path):
         pv_id = uow.plans.create_version(plan_id, steps=[], is_committed=True)
         run_id = uow.runs.create(pv_id)
         uow.runs.transition(run_id, RunStatus.RUNNING,
-                            expected_from=(RunStatus.CREATED, RunStatus.QUEUED))
+                            expected_from=(RunStatus.SUBMITTED, RunStatus.SUBMITTED))
         uow.runs.begin_worker_generation(run_id)
         uow.commit()
     registry.register(project_id, root)
@@ -283,7 +288,7 @@ def test_manifest_publish_failure_leaves_terminal_run_and_failed_outbox(tmp_path
     failed outbox record and no false published manifest."""
     project_id, _plan_id, pv_id, run_id, uow_factory, _registry, _root = _provision(tmp_path)
     failing = _FailingManifestPublisher()
-    finalize = FinalizeRun(lambda: uow_factory.for_project(project_id), failing)
+    finalize = FinalizeRun(lambda: uow_factory.for_project(project_id), failing, _FakeClock())
 
     with pytest.raises(OSError, match="injected manifest publish failure"):
         finalize(run_id, "succeeded", worker_generation=_run_generation(uow_factory, project_id, run_id))
@@ -406,7 +411,7 @@ def test_failed_manifest_outbox_reconciled_with_working_publisher(tmp_path):
     """A previously-failed manifest publication is retried by reconciliation."""
     project_id, _plan_id, pv_id, run_id, uow_factory, registry, root = _provision(tmp_path)
     failing = _FailingManifestPublisher()
-    finalize = FinalizeRun(lambda: uow_factory.for_project(project_id), failing)
+    finalize = FinalizeRun(lambda: uow_factory.for_project(project_id), failing, _FakeClock())
 
     with pytest.raises(OSError):
         finalize(run_id, "succeeded", worker_generation=_run_generation(uow_factory, project_id, run_id))

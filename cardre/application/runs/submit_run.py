@@ -125,7 +125,7 @@ class SubmitRun:
         uow4 = self._uow_factory()
         try:
             final_run = uow4.runs.get(run_id)
-            actual_status = final_run.status if final_run is not None else "created"
+            actual_status = final_run.status if final_run is not None else "submitted"
         finally:
             uow4.close()
         return SubmitRunResult(run_id=run_id, status=actual_status)

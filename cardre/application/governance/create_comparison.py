@@ -7,10 +7,10 @@ that owns its own UoW.
 from __future__ import annotations
 
 import json
-import uuid
 from dataclasses import dataclass, field
 from typing import Any
 
+from cardre.application.ports.id_generator import IdGeneratorPort
 from cardre.domain.diagnostics import utc_now_iso
 from cardre.domain.errors import CardreError, GovernanceNotEnabled
 
@@ -52,8 +52,10 @@ class CreateComparisonResult:
 class CreateComparison:
     """Create a comparison intent between a baseline and one or more challenger branches."""
 
-    def __init__(self, uow_factory: Any, governance_enabled: bool = True) -> None:
+    def __init__(self, uow_factory: Any, id_generator: IdGeneratorPort,
+                 governance_enabled: bool = True) -> None:
         self._uow_factory = uow_factory
+        self._id_generator = id_generator
         self._governance_enabled = governance_enabled
 
     def __call__(self, command: CreateComparisonCommand) -> CreateComparisonResult:
@@ -112,7 +114,7 @@ class CreateComparison:
 
             now = utc_now_iso()
 
-            comparison_id = str(uuid.uuid4())
+            comparison_id = self._id_generator.new_id()
             uow.comparisons.create_comparison_with_id(
                 comparison_id,
                 command.project_id,

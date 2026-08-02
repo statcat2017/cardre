@@ -60,7 +60,7 @@ def _runner(tmp_path: Path) -> StepRunner:
     return StepRunner(
         _Catalogue(),
         lambda: FsArtifactStore(tmp_path),
-        lambda: object(),
+        lambda: (object(), None),
     )
 
 

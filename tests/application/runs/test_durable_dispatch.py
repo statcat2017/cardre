@@ -18,6 +18,16 @@ from cardre.domain.run import RunStatus
 from cardre.domain.step import StepSpec
 
 
+class _FakeClock:
+    def now_iso(self) -> str:
+        return "2026-01-01T00:00:00Z"
+
+
+class _FakeCapabilityProbe:
+    def project_root_exists(self, root: str) -> bool:
+        return True
+
+
 class _RecordingDispatcher:
     def __init__(self):
         self.dispatched: list[RunRequest] = []
@@ -98,7 +108,7 @@ def test_reconcile_dispatches_after_crash_redispatches_pending_runs(tmp_path):
     )
     result = submit(SubmitRunCommand(plan_version_id=pv_id, run_scope="full_plan"))
 
-    reconcile = ReconcileDispatches(uow_factory, registry, dispatcher)
+    reconcile = ReconcileDispatches(uow_factory, registry, dispatcher, _FakeCapabilityProbe())
     outcome = reconcile()
 
     assert outcome.dispatched >= 1, "pending dispatch must be redispatched on startup"
@@ -136,7 +146,7 @@ def test_reconcile_drops_dispatch_row_for_terminalized_run(tmp_path):
     assert result.run_id not in pending, "cancel must clear the dispatch row"
 
     dispatcher = _RecordingDispatcher()
-    ReconcileDispatches(uow_factory, registry, dispatcher)()
+    ReconcileDispatches(uow_factory, registry, dispatcher, _FakeCapabilityProbe())()
     assert not any(r.run_id == result.run_id for r in dispatcher.dispatched), (
         "terminal run must not be redispatched"
     )
@@ -158,6 +168,7 @@ def test_claim_run_removes_dispatch_row_atomically(tmp_path):
     finalize = FinalizeRun(
         lambda: uow_factory.for_project(project_id),
         type("Pub", (), {"publish": lambda self, run_id, payload: None})(),
+        _FakeClock(),
     )
     executor = ExecuteRun(
         lambda: uow_factory.for_project(project_id),
@@ -243,7 +254,7 @@ def test_reconcile_with_full_worker_pool_does_not_strand_pending_runs(tmp_path):
 
     dispatcher = ThreadRunDispatcher(blocking_execute, max_workers=1)
     try:
-        ReconcileDispatches(uow_factory, registry, dispatcher)()
+        ReconcileDispatches(uow_factory, registry, dispatcher, _FakeCapabilityProbe())()
         # First run occupies the sole worker; second is queued, not stranded.
         assert dispatcher.active_count == 1
         assert dispatcher.queued_count == 1, "second run must be queued"
@@ -271,6 +282,7 @@ def test_finalize_run_clears_dispatch_row_for_preclaim_terminal_run(tmp_path):
     finalize = FinalizeRun(
         lambda: uow_factory.for_project(project_id),
         type("Pub", (), {"publish": lambda self, run_id, payload: None})(),
+        _FakeClock(),
     )
     # Simulate the async dispatch-failure path: SubmitRun finalizes the created
     # run as failed with RUN_DISPATCH_FAILED.
@@ -297,11 +309,11 @@ def test_reconcile_clears_terminal_run_row_defensively(tmp_path):
     # Manually terminalize WITHOUT clearing the dispatch row (simulating a path
     # that predates the FinalizeRun fix).
     with uow_factory.for_project(project_id) as uow:
-        uow.runs.transition(run_id, RunStatus.FAILED, expected_from=(RunStatus.CREATED,))
+        uow.runs.transition(run_id, RunStatus.FAILED, expected_from=(RunStatus.SUBMITTED,))
         uow.commit()
 
     dispatcher = _RecordingDispatcher()
-    outcome = ReconcileDispatches(uow_factory, registry, dispatcher)()
+    outcome = ReconcileDispatches(uow_factory, registry, dispatcher, _FakeCapabilityProbe())()
     assert not any(r.run_id == run_id for r in dispatcher.dispatched), (
         "terminal run must not be redispatched"
     )

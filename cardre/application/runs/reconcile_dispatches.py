@@ -2,7 +2,7 @@
 
 A run's dispatch intent is committed durably in the same transaction as run
 creation. If the process exits after that commit but before the in-memory
-dispatch, the run stays ``created``/``queued`` with a pending dispatch row and
+dispatch, the run stays ``submitted`` with a pending dispatch row and
 blocks normal resubmission of its plan version. On startup this drains pending
 rows through the dispatcher so the run either executes or (if it was
 terminalized meanwhile) simply has its stale row dropped.
@@ -11,8 +11,9 @@ terminalized meanwhile) simply has its stale row dropped.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Any
+
+from cardre.application.ports.capability_probe import CapabilityProbePort
 
 
 @dataclass
@@ -38,10 +39,12 @@ class ReconcileDispatches:
         uow_factory: Any,
         project_registry: Any,
         dispatcher: Any,
+        capability_probe: CapabilityProbePort,
     ) -> None:
         self._uow_factory = uow_factory
         self._project_registry = project_registry
         self._dispatcher = dispatcher
+        self._capability_probe = capability_probe
 
     def __call__(self) -> ReconcileDispatchOutcome:
         outcome = ReconcileDispatchOutcome()
@@ -49,7 +52,7 @@ class ReconcileDispatches:
         from cardre.domain.run import RunStatus
 
         for project_id, root in self._project_registry.list_all().items():
-            if not (Path(root) / "project.sqlite").exists():
+            if not self._capability_probe.project_root_exists(root):
                 continue
             try:
                 with self._uow_factory.read_only(project_id) as uow:
@@ -67,7 +70,7 @@ class ReconcileDispatches:
                 except Exception:
                     continue
                 if run is not None and run.status not in (
-                    RunStatus.CREATED.value, RunStatus.QUEUED.value,
+                    RunStatus.SUBMITTED.value,
                 ):
                     with self._uow_factory.for_project(project_id) as uow:
                         uow.dispatches.remove(run_id)

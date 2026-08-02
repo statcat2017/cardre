@@ -112,13 +112,13 @@ async def update_plan_version(project_id: str, plan_version_id: str, body: PlanV
         try:
             uc["update_version"](uc["UpdatePlanVersionCommand"](plan_version_id=plan_version_id, description=body.description))
         except CardreError as exc:
-            if exc.code == "PLAN_VERSION_ALREADY_COMMITTED":
+            if exc.code == ErrorCode.PLAN_VERSION_ALREADY_COMMITTED:
                 raise CardreApiError(
                     code=ErrorCode.PLAN_VERSION_IMMUTABLE,
                     message=str(exc),
                     status_code=409,
                 ) from exc
-            if exc.code == "PLAN_VERSION_NOT_FOUND":
+            if exc.code == ErrorCode.PLAN_VERSION_NOT_FOUND:
                 raise CardreApiError(
                     code=ErrorCode.PLAN_VERSION_NOT_FOUND,
                     message=str(exc),
@@ -138,13 +138,13 @@ async def commit_plan_version(project_id: str, plan_version_id: str, container=D
     try:
         committed = uc["commit_version"](uc["CommitPlanVersionCommand"](plan_version_id=plan_version_id))
     except CardreError as exc:
-        if exc.code == "PLAN_VERSION_ALREADY_COMMITTED":
+        if exc.code == ErrorCode.PLAN_VERSION_ALREADY_COMMITTED:
             raise CardreApiError(
                 code=ErrorCode.PLAN_VERSION_IMMUTABLE,
                 message=str(exc),
                 status_code=409,
             ) from exc
-        if exc.code == "PLAN_VERSION_NOT_FOUND":
+        if exc.code == ErrorCode.PLAN_VERSION_NOT_FOUND:
             raise CardreApiError(
                 code=ErrorCode.PLAN_VERSION_NOT_FOUND,
                 message=str(exc),

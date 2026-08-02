@@ -135,7 +135,7 @@ class ExecuteRun:
 
         with _read_uow(self._read_only_factory) as uow:
             run = uow.runs.get(command.run_id)
-        if run is None or run.status not in ("created", "queued"):
+        if run is None or run.status not in ("submitted",):
             return
 
         pv_id = run.plan_version_id
@@ -194,7 +194,7 @@ class ExecuteRun:
             )
 
     def _claim_run(self, command: ExecuteRunCommand) -> int | None:
-        """Transition created/queued -> running, begin a worker lease, and
+        """Transition submitted -> running, begin a worker lease, and
         atomically remove the durable dispatch row.
 
         Returns the worker generation, or ``None`` if the run was already
@@ -203,7 +203,7 @@ class ExecuteRun:
         with self._uow_factory() as uow:
             claimed = uow.runs.transition(
                 command.run_id, RunStatus.RUNNING,
-                expected_from=(RunStatus.CREATED, RunStatus.QUEUED),
+                expected_from=(RunStatus.SUBMITTED,),
             )
             if not claimed:
                 return None
@@ -213,7 +213,7 @@ class ExecuteRun:
 
     def _finalize_after_pre_exec_failure(self, command: ExecuteRunCommand) -> None:
         # If a cancellation landed while we validated, the run must end
-        # cancelled, not failed (a created/queued run is terminalized by
+        # cancelled, not failed (a submitted run is terminalized by
         # CancelRun before we reach here; a running run is cooperative).
         with _read_uow(self._read_only_factory) as uow:
             cancel_check = uow.runs.get(command.run_id)

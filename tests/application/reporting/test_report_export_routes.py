@@ -57,8 +57,7 @@ def _seed_run(container, project_id, root):
         )
         run_id = uow.runs.create(pv_id)
         run_status = __import__("cardre.domain.run", fromlist=["RunStatus"]).RunStatus
-        uow.runs.transition(run_id, run_status.QUEUED, expected_from=(run_status.CREATED,))
-        uow.runs.transition(run_id, run_status.RUNNING, expected_from=(run_status.QUEUED,))
+        uow.runs.transition(run_id, run_status.RUNNING, expected_from=(run_status.SUBMITTED,))
         uow.runs.transition(run_id, run_status.SUCCEEDED)
         uow.commit()
     return plan_id, pv_id, run_id

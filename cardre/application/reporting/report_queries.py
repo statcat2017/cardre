@@ -39,7 +39,7 @@ class ListReports:
     Database-registered reports (from ``GenerateReport``) are combined with a
     synthesized entry for every published canonical run manifest, so finalized
     runs remain discoverable through the report listings (pre-rewrite
-    behaviour listed ``manifest-*`` directories directly).
+    behaviour listed ``manifests/runs/`` files directly).
     """
 
     def __init__(
@@ -74,7 +74,7 @@ class ListReports:
         ]
 
         # Synthesize an entry per canonical manifest. Manifests are not DB rows,
-        # so discovery scans the filesystem (baseline listed manifest-* dirs).
+        # so discovery scans the filesystem (baseline listed manifests/runs/ dirs).
         if self._manifest_publisher_factory is not None:
             manifests = self._manifest_publisher_factory(project_id).list_manifests()
             manifest_run_ids = [m["run_id"] for m in manifests]

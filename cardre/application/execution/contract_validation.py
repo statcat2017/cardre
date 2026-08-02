@@ -15,6 +15,7 @@ from typing import Any
 
 from cardre.application.ports.artifact_store import StagedArtifact
 from cardre.domain.artifacts import ArtifactRef
+from cardre.domain.errors import CardreError, ErrorCode
 from cardre.domain.evidence.kinds import EvidenceKind, RoleKind, expand_role_kind
 from cardre.nodes.contracts import ArtifactContract
 
@@ -24,7 +25,10 @@ def _kind_value(kind: Any) -> str:
         return kind.value
     if isinstance(kind, RoleKind):
         return kind.label
-    raise TypeError(f"contract kinds must be EvidenceKind or RoleKind, got {kind!r}")
+    raise CardreError(
+        f"contract kinds must be EvidenceKind or RoleKind, got {kind!r}",
+        code=ErrorCode.OUTPUT_CONTRACT_VIOLATION,
+    )
 
 
 def _declared_kinds(spec: Any) -> set[str]:
@@ -41,9 +45,10 @@ def _declared_kinds(spec: Any) -> set[str]:
         elif isinstance(kind, RoleKind):
             allowed.update(k.value for k in expand_role_kind(kind))
         else:
-            raise TypeError(
+            raise CardreError(
                 f"contract kind {kind!r} is not a typed EvidenceKind/RoleKind; "
-                "loose string kinds are no longer valid"
+                "loose string kinds are no longer valid",
+                code=ErrorCode.OUTPUT_CONTRACT_VIOLATION,
             )
     return allowed
 
@@ -90,39 +95,43 @@ def validate_output_contract(
     for staged_artifact in staged:
         role_spec = specs_by_role.get(staged_artifact.role)
         if role_spec is None and staged_artifact.role not in contract.output_roles_list:
-            raise ValueError(
+            raise CardreError(
                 f"Step {step_id or '-'} ({node_type or '-'}) emitted undeclared output "
-                f"role {staged_artifact.role!r}; declared roles: {sorted(declared_roles)}"
+                f"role {staged_artifact.role!r}; declared roles: {sorted(declared_roles)}",
+                code=ErrorCode.OUTPUT_CONTRACT_VIOLATION,
             )
 
         if role_spec is not None:
             allowed = _declared_kinds(role_spec)
             if allowed and staged_artifact.schema_version not in allowed:
-                raise ValueError(
+                raise CardreError(
                     f"Step {step_id or '-'} ({node_type or '-'}) output role "
                     f"{staged_artifact.role!r} has kind "
                     f"{staged_artifact.schema_version!r}, but the contract allows "
-                    f"{sorted(allowed)}"
+                    f"{sorted(allowed)}",
+                    code=ErrorCode.OUTPUT_CONTRACT_VIOLATION,
                 )
 
             # Media type: enforced when the contract explicitly declares it.
             allowed_media = _allowed_media_types(role_spec)
             if allowed_media and staged_artifact.media_type not in allowed_media:
-                raise ValueError(
+                raise CardreError(
                     f"Step {step_id or '-'} ({node_type or '-'}) output role "
                     f"{staged_artifact.role!r} has media type "
                     f"{staged_artifact.media_type!r}, but the contract allows "
-                    f"{sorted(allowed_media)}"
+                    f"{sorted(allowed_media)}",
+                    code=ErrorCode.OUTPUT_CONTRACT_VIOLATION,
                 )
 
             # Schema version: enforced when the contract explicitly declares it.
             allowed_schemas = _allowed_schema_versions(role_spec)
             if allowed_schemas and _staged_schema_version(staged_artifact) not in allowed_schemas:
-                raise ValueError(
+                raise CardreError(
                     f"Step {step_id or '-'} ({node_type or '-'}) output role "
                     f"{staged_artifact.role!r} has schema version "
                     f"{_staged_schema_version(staged_artifact)!r}, but the contract "
-                    f"allows {sorted(allowed_schemas)}"
+                    f"allows {sorted(allowed_schemas)}",
+                    code=ErrorCode.OUTPUT_CONTRACT_VIOLATION,
                 )
 
     # Required roles must all be present (legacy required-role enforcement).
@@ -130,9 +139,10 @@ def validate_output_contract(
     produced_roles = {s.role for s in staged}
     missing = required_roles - produced_roles
     if missing:
-        raise ValueError(
+        raise CardreError(
             f"Step {step_id or '-'} ({node_type or '-'}) missing required output "
-            f"roles: {sorted(missing)}"
+            f"roles: {sorted(missing)}",
+            code=ErrorCode.OUTPUT_CONTRACT_VIOLATION,
         )
 
 
@@ -163,9 +173,10 @@ def validate_input_contract(
         present_roles = {a.role for a in input_artifacts}
         missing = required_roles - present_roles
         if missing:
-            raise ValueError(
+            raise CardreError(
                 f"Step {step_id or '-'} ({node_type or '-'}) missing required input "
-                f"roles: {sorted(missing)}"
+                f"roles: {sorted(missing)}",
+                code=ErrorCode.INPUT_CONTRACT_VIOLATION,
             )
         return
 
@@ -173,9 +184,10 @@ def validate_input_contract(
     present_roles = {a.role for a in input_artifacts}
     missing = required_roles - present_roles
     if missing:
-        raise ValueError(
+        raise CardreError(
             f"Step {step_id or '-'} ({node_type or '-'}) missing required input "
-            f"roles: {sorted(missing)}"
+            f"roles: {sorted(missing)}",
+            code=ErrorCode.INPUT_CONTRACT_VIOLATION,
         )
 
     # Enforce declared media types and versioned schemas on supplied artifacts.
@@ -188,19 +200,21 @@ def validate_input_contract(
             continue
         allowed_media = set(spec.media_types or ())
         if allowed_media and artifact.media_type not in allowed_media:
-            raise ValueError(
+            raise CardreError(
                 f"Step {step_id or '-'} ({node_type or '-'}) input role "
                 f"{artifact.role!r} has media type {artifact.media_type!r}, "
-                f"but the contract allows {sorted(allowed_media)}"
+                f"but the contract allows {sorted(allowed_media)}",
+                code=ErrorCode.INPUT_CONTRACT_VIOLATION,
             )
         allowed_schemas = set(spec.schema_versions or ())
         if allowed_schemas:
             supplied_schema = str(artifact.metadata.get("schema_version", ""))
             if supplied_schema not in allowed_schemas:
-                raise ValueError(
+                raise CardreError(
                     f"Step {step_id or '-'} ({node_type or '-'}) input role "
                     f"{artifact.role!r} has schema version {supplied_schema!r}, "
-                    f"but the contract allows {sorted(allowed_schemas)}"
+                    f"but the contract allows {sorted(allowed_schemas)}",
+                    code=ErrorCode.INPUT_CONTRACT_VIOLATION,
                 )
 
 

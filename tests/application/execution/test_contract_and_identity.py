@@ -30,6 +30,7 @@ from cardre.application.execution.contract_validation import (
 )
 from cardre.application.ports.artifact_store import StagedArtifact
 from cardre.domain.artifacts import ArtifactRef, json_logical_hash
+from cardre.domain.errors import CardreError, ErrorCode
 from cardre.domain.evidence.kinds import EvidenceKind
 from cardre.nodes.contracts import ArtifactContract, ArtifactRoleSpec
 
@@ -327,7 +328,7 @@ def test_wrong_kind_is_rejected(tmp_path):
     """A required role emitted with the wrong evidence kind fails validation."""
     contract = _contract(ArtifactRoleSpec("report", kinds=(EvidenceKind.PROFILE_SUMMARY,)))
     staged = _staged_artifact(tmp_path, role="report", kind=EvidenceKind.MODELLING_METADATA.value)
-    with pytest.raises(ValueError, match="kind"):
+    with pytest.raises(CardreError, match="kind"):
         validate_output_contract(contract, [staged], node_type="test", step_id="s1")
 
 
@@ -336,7 +337,7 @@ def test_wrong_media_type_is_rejected(tmp_path):
     contract = _contract(ArtifactRoleSpec("report", media_types=("application/json",)))
     staged = _staged_artifact(tmp_path, role="report", kind="k",
                               media_type="application/vnd.apache.parquet")
-    with pytest.raises(ValueError, match="media type"):
+    with pytest.raises(CardreError, match="media type"):
         validate_output_contract(contract, [staged], node_type="test", step_id="s1")
 
 
@@ -344,7 +345,7 @@ def test_undeclared_role_is_rejected(tmp_path):
     """A node with an explicit contract cannot emit an undeclared role."""
     contract = _contract(ArtifactRoleSpec("report", required=True))
     staged = _staged_artifact(tmp_path, role="rogue", kind="k")
-    with pytest.raises(ValueError, match="undeclared"):
+    with pytest.raises(CardreError, match="undeclared"):
         validate_output_contract(contract, [staged], node_type="test", step_id="s1")
 
 
@@ -354,7 +355,7 @@ def test_missing_required_role_is_rejected(tmp_path):
         ArtifactRoleSpec("model", required=True),
     )
     staged = _staged_artifact(tmp_path, role="report", kind="k")
-    with pytest.raises(ValueError, match="missing required"):
+    with pytest.raises(CardreError, match="missing required"):
         validate_output_contract(contract, [staged], node_type="test", step_id="s1")
 
 
@@ -395,7 +396,7 @@ def test_loose_string_kind_is_rejected(tmp_path):
 
     contract = _contract(ArtifactRoleSpec("report", kinds=("dataset",)))
     staged = _staged_artifact(tmp_path, role="report", kind=EvidenceKind.MODELLING_METADATA.value)
-    with pytest.raises(TypeError, match="typed"):
+    with pytest.raises(CardreError, match="typed"):
         validate_output_contract(contract, [staged], node_type="test", step_id="s1")
 
 
@@ -415,7 +416,7 @@ def test_role_kind_expands_to_evidence_kinds(tmp_path):
     validate_output_contract(contract, [staged], node_type="test", step_id="s1")  # no raise
 
     bad = _staged_artifact(tmp_path, role="report", kind="not_a_kind")
-    with pytest.raises(ValueError, match="kind"):
+    with pytest.raises(CardreError, match="kind"):
         validate_output_contract(contract, [bad], node_type="test", step_id="s1")
 
 
@@ -443,7 +444,7 @@ def test_schema_version_enforced_from_metadata(tmp_path):
         role="report", artifact_type="profile_summary",
         metadata={"schema_version": "cardre.profile_summary.v9"},
     )
-    with pytest.raises(ValueError, match="schema version"):
+    with pytest.raises(CardreError, match="schema version"):
         validate_output_contract(contract, [bad], node_type="test", step_id="s1")
 
 
@@ -533,8 +534,9 @@ def test_input_wrong_media_type_is_rejected():
         ArtifactRoleSpec("model", required=True, media_types=("application/json",)),
     ))
     bad = _input_ref(role="model", media_type="application/vnd.apache.parquet")
-    with pytest.raises(ValueError, match="media type"):
+    with pytest.raises(CardreError, match="media type") as exc:
         validate_input_contract(contract, [bad], node_type="test", step_id="s1")
+    assert exc.value.code == ErrorCode.INPUT_CONTRACT_VIOLATION
 
 
 def test_input_wrong_schema_version_is_rejected():
@@ -544,8 +546,9 @@ def test_input_wrong_schema_version_is_rejected():
                          schema_versions=("cardre.model_artifact.v1",)),
     ))
     bad = _input_ref(role="model", schema_version="cardre.model_artifact.v9")
-    with pytest.raises(ValueError, match="schema version"):
+    with pytest.raises(CardreError, match="schema version") as exc:
         validate_input_contract(contract, [bad], node_type="test", step_id="s1")
+    assert exc.value.code == ErrorCode.INPUT_CONTRACT_VIOLATION
 
 
 def test_input_valid_media_and_schema_passes():
@@ -563,12 +566,14 @@ def test_input_missing_required_role_is_rejected():
     contract = ArtifactContract(roles=(
         ArtifactRoleSpec("model", required=True),
     ))
-    with pytest.raises(ValueError, match="missing required input"):
+    with pytest.raises(CardreError, match="missing required input") as exc:
         validate_input_contract(contract, [], node_type="test", step_id="s1")
+    assert exc.value.code == ErrorCode.INPUT_CONTRACT_VIOLATION
 
 
 def test_input_legacy_role_list_still_enforced():
     """Legacy nodes declaring only input_roles keep required-role presence."""
     contract = ArtifactContract(input_roles=("model",))
-    with pytest.raises(ValueError, match="missing required input"):
+    with pytest.raises(CardreError, match="missing required input") as exc:
         validate_input_contract(contract, [], node_type="test", step_id="s1")
+    assert exc.value.code == ErrorCode.INPUT_CONTRACT_VIOLATION

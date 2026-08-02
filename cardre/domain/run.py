@@ -2,10 +2,10 @@
 
 Run state machine::
 
-    created → queued → running → succeeded
-                                    → failed
-                                    → cancelled
-                                    → interrupted
+    submitted → running → succeeded
+                          → failed
+                          → cancelled
+                          → interrupted
 
 ``RunStep`` does **not** own ``input_artifact_ids`` or
 ``output_artifact_ids`` — those are derived via
@@ -29,17 +29,14 @@ if TYPE_CHECKING:
 
 class RunStepStatus(enum.Enum):
     """Status values for individual run steps."""
-    PENDING = "pending"
     RUNNING = "running"
     SUCCEEDED = "succeeded"
     FAILED = "failed"
-    SKIPPED = "skipped"
 
 
 class RunStatus(enum.StrEnum):
     """Status values for runs — the run-level state machine."""
-    CREATED = "created"
-    QUEUED = "queued"
+    SUBMITTED = "submitted"
     RUNNING = "running"
     SUCCEEDED = "succeeded"
     FAILED = "failed"
@@ -58,8 +55,7 @@ class RunScope(enum.StrEnum):
 
 
 _VALID_TRANSITIONS: dict[RunStatus, set[RunStatus]] = {
-    RunStatus.CREATED: {RunStatus.QUEUED, RunStatus.RUNNING, RunStatus.FAILED, RunStatus.CANCELLED},
-    RunStatus.QUEUED: {RunStatus.RUNNING, RunStatus.FAILED, RunStatus.CANCELLED},
+    RunStatus.SUBMITTED: {RunStatus.RUNNING, RunStatus.FAILED, RunStatus.CANCELLED},
     RunStatus.RUNNING: {RunStatus.SUCCEEDED, RunStatus.FAILED, RunStatus.CANCELLED, RunStatus.INTERRUPTED},
     RunStatus.SUCCEEDED: set(),
     RunStatus.FAILED: set(),

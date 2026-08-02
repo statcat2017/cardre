@@ -10,16 +10,13 @@ def test_run_transition_sets_terminal_finished_at() -> None:
     run = Run(
         run_id="run-1",
         plan_version_id="pv-1",
-        status="created",
+        status="submitted",
         started_at=utc_now_iso(),
     )
 
-    queued = run.transition_to("queued")
-    running = queued.transition_to("running")
+    running = run.transition_to("running")
     finished = running.transition_to("succeeded")
 
-    assert queued.status == "queued"
-    assert queued.finished_at is None
     assert running.status == "running"
     assert finished.status == "succeeded"
     assert finished.finished_at is not None
@@ -29,7 +26,7 @@ def test_run_rejects_invalid_transition() -> None:
     run = Run(
         run_id="run-1",
         plan_version_id="pv-1",
-        status="created",
+        status="submitted",
         started_at=utc_now_iso(),
     )
 
@@ -45,10 +42,10 @@ def test_run_step_has_no_artifact_arrays() -> None:
         run_id="run-1",
         step_id="step-1",
         plan_version_id="pv-1",
-        status=RunStepStatus.PENDING,
+        status=RunStepStatus.RUNNING,
         started_at=utc_now_iso(),
     )
-    assert step.status is RunStepStatus.PENDING
+    assert step.status is RunStepStatus.RUNNING
 
 
 def _run(status: str = "running", heartbeat_at: str | None = None) -> Run:

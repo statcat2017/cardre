@@ -16,8 +16,9 @@ from dataclasses import dataclass
 from typing import Any
 
 from cardre._version import __version__
+from cardre.application.ports.clock import ClockPort
 from cardre.application.ports.manifest_publisher import ManifestPublisherPort
-from cardre.domain.diagnostics import JsonDict, utc_now_iso
+from cardre.domain.diagnostics import JsonDict
 from cardre.domain.errors import CardreError
 from cardre.domain.manifest import (
     MANIFEST_VERSION,
@@ -43,9 +44,11 @@ class FinalizeRun:
         self,
         uow_factory: Callable[[], Any],
         manifest_publisher: ManifestPublisherPort,
+        clock: ClockPort,
     ) -> None:
         self._uow_factory = uow_factory
         self._manifest_publisher = manifest_publisher
+        self._clock = clock
 
     def __call__(
         self,
@@ -72,7 +75,7 @@ class FinalizeRun:
                     "finalization must prove lease ownership"
                 )
             if target in (RunStatus.FAILED, RunStatus.CANCELLED):
-                expected_from: tuple[RunStatus, ...] = (RunStatus.CREATED, RunStatus.QUEUED, RunStatus.RUNNING)
+                expected_from: tuple[RunStatus, ...] = (RunStatus.SUBMITTED, RunStatus.RUNNING)
             else:
                 expected_from = (RunStatus.RUNNING,)
 
@@ -90,7 +93,7 @@ class FinalizeRun:
                         target = RunStatus.CANCELLED
                         transitioned = uow.runs.transition(
                             run_id, target,
-                            expected_from=(RunStatus.CREATED, RunStatus.QUEUED, RunStatus.RUNNING),
+                            expected_from=(RunStatus.SUBMITTED, RunStatus.RUNNING),
                         )
                         if not transitioned:
                             actual2 = uow.runs.get(run_id)
@@ -286,7 +289,7 @@ class FinalizeRun:
             "project_id": project_id,
             "branch_id": branch_id,
             "started_at": started_at,
-            "finished_at": utc_now_iso(),
+            "finished_at": self._clock.now_iso(),
             "status": status,
             "execution_mode": "full_plan" if branch_id is None else "branch",
             "cardre_version": __version__,

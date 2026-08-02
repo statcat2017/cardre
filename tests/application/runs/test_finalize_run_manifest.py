@@ -26,6 +26,11 @@ from cardre.domain.manifest import (
 )
 
 
+class _FakeClock:
+    def now_iso(self) -> str:
+        return "2026-01-01T00:00:00Z"
+
+
 @pytest.fixture
 def provisioned_project(tmp_path):
     """Provision a real project database using the production stack."""
@@ -61,7 +66,7 @@ def _insert_run_step(uow_factory, project_id, run_id, pv_id, step_id):
     now = utc_now_iso()
     rs_id = f"{run_id}-{step_id}"
     with uow_factory.for_project(project_id) as uow:
-        uow.runs.transition(run_id, RunStatus.RUNNING, expected_from=(RunStatus.CREATED,))
+        uow.runs.transition(run_id, RunStatus.RUNNING, expected_from=(RunStatus.SUBMITTED,))
         uow.run_steps.insert(RunStep(
             run_step_id=rs_id, run_id=run_id, step_id=step_id,
             plan_version_id=pv_id, status=RunStepStatus.SUCCEEDED,
@@ -109,7 +114,7 @@ class TestFinalizeRunManifest:
         _insert_artifact_with_lineage(uow_factory, project_id, run_id, rs_id, pv_id, "step-1", "art-1")
 
         publisher = FsManifestPublisher(root)
-        finalize = FinalizeRun(lambda: uow_factory.for_project(project_id), publisher)
+        finalize = FinalizeRun(lambda: uow_factory.for_project(project_id), publisher, _FakeClock())
         finalize(run_id, "succeeded", worker_generation=_current_generation(uow_factory, project_id, run_id))
 
         result = publisher.verify(run_id)
@@ -133,7 +138,7 @@ class TestFinalizeRunManifest:
         _insert_run_step(uow_factory, project_id, run_id, pv_id, "step-1")
 
         publisher = FsManifestPublisher(root)
-        finalize = FinalizeRun(lambda: uow_factory.for_project(project_id), publisher)
+        finalize = FinalizeRun(lambda: uow_factory.for_project(project_id), publisher, _FakeClock())
         finalize(run_id, "succeeded", worker_generation=_current_generation(uow_factory, project_id, run_id))
 
         data = publisher.read(run_id)
@@ -145,7 +150,7 @@ class TestFinalizeRunManifest:
         _insert_run_step(uow_factory, project_id, run_id, pv_id, "step-1")
 
         publisher = FsManifestPublisher(root)
-        finalize = FinalizeRun(lambda: uow_factory.for_project(project_id), publisher)
+        finalize = FinalizeRun(lambda: uow_factory.for_project(project_id), publisher, _FakeClock())
         finalize(run_id, "succeeded", worker_generation=_current_generation(uow_factory, project_id, run_id))
 
         manifest_path = publisher.manifest_path(run_id)
@@ -169,7 +174,7 @@ class TestFinalizeRunManifest:
         _insert_run_step(uow_factory, project_id, run_id, pv_id, "step-1")
 
         publisher = FsManifestPublisher(root)
-        finalize = FinalizeRun(lambda: uow_factory.for_project(project_id), publisher)
+        finalize = FinalizeRun(lambda: uow_factory.for_project(project_id), publisher, _FakeClock())
         finalize(run_id, "failed", diagnostic=FinalizeDiagnostic(
             code="RUN_EXECUTION_FAILED", message="Step failed",
         ))
@@ -185,7 +190,7 @@ class TestFinalizeRunManifest:
         _insert_run_step(uow_factory, project_id, run_id, pv_id, "step-1")
 
         publisher = FsManifestPublisher(root)
-        finalize = FinalizeRun(lambda: uow_factory.for_project(project_id), publisher)
+        finalize = FinalizeRun(lambda: uow_factory.for_project(project_id), publisher, _FakeClock())
         finalize(run_id, "succeeded", worker_generation=_current_generation(uow_factory, project_id, run_id))
 
         manifest_path = publisher.manifest_path(run_id)
@@ -198,7 +203,7 @@ class TestFinalizeRunManifest:
         _insert_run_step(uow_factory, project_id, run_id, pv_id, "step-1")
 
         publisher = FsManifestPublisher(root)
-        finalize = FinalizeRun(lambda: uow_factory.for_project(project_id), publisher)
+        finalize = FinalizeRun(lambda: uow_factory.for_project(project_id), publisher, _FakeClock())
         finalize(run_id, "succeeded", worker_generation=_current_generation(uow_factory, project_id, run_id))
 
         data = publisher.read(run_id)
@@ -210,7 +215,7 @@ class TestFinalizeRunManifest:
         _insert_run_step(uow_factory, project_id, run_id, pv_id, "step-1")
 
         publisher = FsManifestPublisher(root)
-        finalize = FinalizeRun(lambda: uow_factory.for_project(project_id), publisher)
+        finalize = FinalizeRun(lambda: uow_factory.for_project(project_id), publisher, _FakeClock())
         finalize(run_id, "succeeded", worker_generation=_current_generation(uow_factory, project_id, run_id))
 
         first_manifest = publisher.read(run_id)
@@ -222,11 +227,11 @@ class TestFinalizeRunManifest:
         assert second_manifest == first_manifest
 
     def test_pre_execution_failure_finalises_created_run(self, provisioned_project):
-        """A run in 'created' state can be finalised as failed without transitioning to running."""
+        """A run in 'submitted' state can be finalised as failed without transitioning to running."""
         project_id, plan_id, pv_id, run_id, root, uow_factory, registry = provisioned_project
 
         publisher = FsManifestPublisher(root)
-        finalize = FinalizeRun(lambda: uow_factory.for_project(project_id), publisher)
+        finalize = FinalizeRun(lambda: uow_factory.for_project(project_id), publisher, _FakeClock())
         finalize(run_id, "failed", diagnostic=FinalizeDiagnostic(
             code="RUN_VALIDATION_FAILED", message="Pre-execution validation failed",
         ))
@@ -240,11 +245,11 @@ class TestFinalizeRunManifest:
             assert str(run.status) == "failed"
 
     def test_created_run_cannot_be_succeeded(self, provisioned_project):
-        """A run in 'created' state cannot be finalised as succeeded without executing."""
+        """A run in 'submitted' state cannot be finalised as succeeded without executing."""
         project_id, plan_id, pv_id, run_id, root, uow_factory, registry = provisioned_project
 
         publisher = FsManifestPublisher(root)
-        finalize = FinalizeRun(lambda: uow_factory.for_project(project_id), publisher)
+        finalize = FinalizeRun(lambda: uow_factory.for_project(project_id), publisher, _FakeClock())
 
         with pytest.raises(Exception, match="already finalised"):
             finalize(run_id, "succeeded", worker_generation=_current_generation(uow_factory, project_id, run_id))
@@ -255,7 +260,7 @@ class TestFinalizeRunManifest:
 
         with uow_factory.read_only(project_id) as uow:
             run = uow.runs.get(run_id)
-            assert str(run.status) == "created"
+            assert str(run.status) == "submitted"
 
 
 class TestManifestHashing:
@@ -309,7 +314,7 @@ class TestManifestIntegrityFailures:
         # add a run step so manifest assembly exercises plan-step edges.
         with uow_factory.for_project(project_id) as uow:
             uow.runs.transition(run_id, RunStatus.RUNNING,
-                                expected_from=(RunStatus.CREATED, RunStatus.QUEUED))
+                                expected_from=(RunStatus.SUBMITTED, RunStatus.SUBMITTED))
             uow.run_steps.insert(RunStep(
                 run_step_id=f"{run_id}-step-1", run_id=run_id, step_id="step-1",
                 plan_version_id=_pv_id, status=RunStepStatus.SUCCEEDED,
@@ -355,7 +360,7 @@ class TestManifestIntegrityFailures:
         def broken_factory():
             return _BrokenUow(uow_factory.for_project(project_id))
 
-        finalize = FinalizeRun(broken_factory, publisher)
+        finalize = FinalizeRun(broken_factory, publisher, _FakeClock())
         with pytest.raises(RuntimeError, match="injected integrity failure"):
             finalize(run_id, "succeeded", worker_generation=_current_generation(uow_factory, project_id, run_id))
         # The manifest must not be published on integrity failure.
@@ -383,7 +388,7 @@ class TestSuccessFinalizationCancellationRace:
 
         with uow_factory.for_project(project_id) as uow:
             uow.runs.transition(run_id, RunStatus.RUNNING,
-                                expected_from=(RunStatus.CREATED, RunStatus.QUEUED))
+                                expected_from=(RunStatus.SUBMITTED, RunStatus.SUBMITTED))
             generation = uow.runs.begin_worker_generation(run_id)
             # A cancellation was committed after the worker's final read but
             # before the terminal update.
@@ -391,7 +396,7 @@ class TestSuccessFinalizationCancellationRace:
             uow.commit()
 
         publisher = FsManifestPublisher(root)
-        finalize = FinalizeRun(lambda: uow_factory.for_project(project_id), publisher)
+        finalize = FinalizeRun(lambda: uow_factory.for_project(project_id), publisher, _FakeClock())
         finalize(run_id, "succeeded", worker_generation=generation)
 
         with uow_factory.read_only(project_id) as uow:
@@ -408,14 +413,14 @@ class TestSuccessFinalizationCancellationRace:
 
         with uow_factory.for_project(project_id) as uow:
             uow.runs.transition(run_id, RunStatus.RUNNING,
-                                expected_from=(RunStatus.CREATED, RunStatus.QUEUED))
+                                expected_from=(RunStatus.SUBMITTED, RunStatus.SUBMITTED))
             stale = uow.runs.begin_worker_generation(run_id)
             # A recovery bumps the generation, fencing the original worker.
             uow.runs.begin_worker_generation(run_id)
             uow.commit()
 
         publisher = FsManifestPublisher(root)
-        finalize = FinalizeRun(lambda: uow_factory.for_project(project_id), publisher)
+        finalize = FinalizeRun(lambda: uow_factory.for_project(project_id), publisher, _FakeClock())
         with pytest.raises(Exception, match="already finalised"):
             finalize(run_id, "succeeded", worker_generation=stale)
 
@@ -434,7 +439,7 @@ class TestManifestMissingIntegrityData:
 
         with uow_factory.for_project(project_id) as uow:
             uow.runs.transition(run_id, RunStatus.RUNNING,
-                                expected_from=(RunStatus.CREATED, RunStatus.QUEUED))
+                                expected_from=(RunStatus.SUBMITTED, RunStatus.SUBMITTED))
             uow.commit()
 
         class _NoPlanPlans:
@@ -470,7 +475,7 @@ class TestManifestMissingIntegrityData:
         def factory():
             return _NoPlanUow(uow_factory.for_project(project_id))
 
-        finalize = FinalizeRun(factory, publisher)
+        finalize = FinalizeRun(factory, publisher, _FakeClock())
         with pytest.raises(Exception, match="no plan record"):
             finalize(run_id, "succeeded", worker_generation=_current_generation(uow_factory, project_id, run_id))
         assert publisher.read(run_id) is None
@@ -482,7 +487,7 @@ class TestManifestMissingIntegrityData:
 
         with uow_factory.for_project(project_id) as uow:
             uow.runs.transition(run_id, RunStatus.RUNNING,
-                                expected_from=(RunStatus.CREATED, RunStatus.QUEUED))
+                                expected_from=(RunStatus.SUBMITTED, RunStatus.SUBMITTED))
             # Insert a run step whose step_id is NOT in the plan spec.
             uow.run_steps.insert(RunStep(
                 run_step_id=f"{run_id}-ghost", run_id=run_id, step_id="ghost-step",
@@ -493,7 +498,7 @@ class TestManifestMissingIntegrityData:
             uow.commit()
 
         publisher = FsManifestPublisher(root)
-        finalize = FinalizeRun(lambda: uow_factory.for_project(project_id), publisher)
+        finalize = FinalizeRun(lambda: uow_factory.for_project(project_id), publisher, _FakeClock())
         with pytest.raises(Exception, match="no plan specification"):
             finalize(run_id, "succeeded", worker_generation=_current_generation(uow_factory, project_id, run_id))
         assert publisher.read(run_id) is None

@@ -376,7 +376,7 @@ class TestLaunchPathway:
         )
 
         # 20. Canonical manifest consistency.
-        manifest_path = root / "exports" / f"manifest-{run_id}" / "manifest.json"
+        manifest_path = root / "manifests" / "runs" / f"{run_id}.json"
         assert manifest_path.exists(), f"Manifest not found: {manifest_path}"
         manifest = json.loads(manifest_path.read_text())
         assert manifest["run_id"] == run_id

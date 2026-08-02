@@ -13,6 +13,11 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
+
+class _FakeClock:
+    def now_iso(self) -> str:
+        return "2026-01-01T00:00:00Z"
+
 EXEC = Path(__file__).resolve().parents[3] / "cardre" / "application" / "runs" / "execute_run.py"
 
 
@@ -157,7 +162,7 @@ def _provision_running_run(tmp_path):
         plan_id = uow.plans.create_plan(project_id, "Plan")
         pv_id = uow.plans.create_version(plan_id, [], is_committed=True)
         run_id = uow.runs.create(pv_id)
-        uow.runs.transition(run_id, RunStatus.RUNNING, expected_from=(RunStatus.CREATED,))
+        uow.runs.transition(run_id, RunStatus.RUNNING, expected_from=(RunStatus.SUBMITTED,))
         worker_generation = uow.runs.begin_worker_generation(run_id)
         uow.commit()
     registry.register(project_id, root)
@@ -329,6 +334,7 @@ def test_initial_reads_and_cancellation_use_read_only_uow(tmp_path):
     finalize = FinalizeRun(
         lambda: uow_factory.for_project(project_id),
         type("Pub", (), {"publish": lambda self, run_id, payload: None})(),
+        _FakeClock(),
     )
 
     read_created: list[object] = []
