@@ -64,3 +64,5 @@ class TestNodeVersionEnforcement:
         assert err.persisted_version == "99"
         assert err.current_version == "1"
         assert "s2" in err.message
+        assert "s2" in str(err)
+        assert err.context["mismatches"][1]["step_id"] == "s2"

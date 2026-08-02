@@ -279,10 +279,12 @@ class NodeVersionMismatchError(CardreError):
             persisted=first["persisted_version"],
             current=first["current_version"],
         )
-        err.message = (
+        aggregate = (
             f"{len(mismatches)} step(s) record a node_version that does not match "
             f"the current implementation: {'; '.join(details)}."
         )
+        err.args = (aggregate,)
+        err.message = aggregate
         err.context["mismatches"] = list(mismatches)
         return err
 

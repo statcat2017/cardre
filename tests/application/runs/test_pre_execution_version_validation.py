@@ -85,6 +85,15 @@ def test_mismatch_in_second_step_creates_no_records(tmp_path):
     assert artifacts == 0, f"Expected no artifacts, got {artifacts}"
     assert lineage == 0, f"Expected no lineage, got {lineage}"
 
+    with uow_factory.for_project(project_id) as uow:
+        diagnostics = uow.runs.get_diagnostics(result.run_id)
+    assert diagnostics, "failed run must carry a diagnostic"
+    codes = {d["code"] for d in diagnostics}
+    assert "NODE_VERSION_MISMATCH" in codes, f"Expected NODE_VERSION_MISMATCH diagnostic, got {diagnostics}"
+    mismatch = next(d for d in diagnostics if d["code"] == "NODE_VERSION_MISMATCH")
+    assert "step-2" in mismatch["message"]
+    assert "99" in mismatch["message"]
+
 
 def test_matching_versions_run_succeeds(tmp_path):
     """A plan whose persisted versions all match executes normally."""
