@@ -119,19 +119,52 @@ export function VersionPanel({
             }}
             style={{ display: "grid", gap: 8 }}
           >
-            <input
-              type="text"
-              value={sourcePath ?? ""}
-              onChange={(event) => onSourcePathChange(event.target.value)}
-              placeholder="Absolute path to your CSV"
+            <label
               style={{
-                width: "100%",
-                padding: "10px 12px",
-                borderRadius: 10,
-                border: `1px solid ${theme.borderStrong}`,
-                boxSizing: "border-box",
+                display: "grid",
+                gridTemplateColumns: "1fr auto",
+                gap: 8,
+                alignItems: "center",
               }}
-            />
+            >
+              <input
+                type="text"
+                value={sourcePath ?? ""}
+                onChange={(event) => onSourcePathChange(event.target.value)}
+                placeholder="Absolute path to your CSV"
+                style={{
+                  width: "100%",
+                  padding: "10px 12px",
+                  borderRadius: 10,
+                  border: `1px solid ${theme.borderStrong}`,
+                  boxSizing: "border-box",
+                }}
+              />
+              <input
+                type="file"
+                accept=".csv,.parquet"
+                onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  const path = (file as unknown as { path?: string } | null)?.path;
+                  if (path) onSourcePathChange(path);
+                }}
+                style={{ display: "none" }}
+                id="csv-file-picker"
+              />
+              <label
+                htmlFor="csv-file-picker"
+                style={{
+                  padding: "10px 12px",
+                  borderRadius: 10,
+                  border: `1px solid ${theme.borderStrong}`,
+                  background: theme.canvasSoft,
+                  cursor: "pointer",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                Browse…
+              </label>
+            </label>
             <button
               type="submit"
               disabled={!sourcePath?.trim() || generatePathwayPending}

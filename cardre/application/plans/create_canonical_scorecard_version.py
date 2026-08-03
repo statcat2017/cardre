@@ -7,21 +7,32 @@ from pathlib import Path
 from typing import Any
 
 from cardre.application.ports.node_catalogue import NodeCataloguePort
-from cardre.domain.artifacts import json_logical_hash
 from cardre.domain.errors import CardreError, ErrorCode
-from cardre.domain.plans.scorecard_pathway import build_canonical_scorecard_steps
-from cardre.domain.step import StepSpec
+from cardre.domain.plans.scorecard_pathway import (
+    build_canonical_scorecard_steps,
+    configure_canonical_scorecard,
+)
 
 
 @dataclass
 class CreateCanonicalScorecardVersionCommand:
     plan_id: str
     source_path: str
-    # Optional overrides for the two steps users always touch first.
-    # All None means "use the canonical defaults from scorecard_pathway.py".
+    # Optional target configuration. All None means "use the canonical
+    # defaults from scorecard_pathway.py". target_column propagates to every
+    # target-dependent step (define-metadata, validate-target, split).
     target_column: str | None = None
     good_values: list[str] | None = None
     bad_values: list[str] | None = None
+    # Optional business metadata for the define-metadata step. The production
+    # template leaves these empty; a real project supplies them before commit.
+    product: str | None = None
+    segment: str | None = None
+    observation_window: str | None = None
+    performance_window: str | None = None
+    reject_inference_position: str | None = None
+    accept_automated: bool | None = None
+    smoothing: dict[str, Any] | None = None
 
 
 class CreateCanonicalScorecardVersion:
@@ -54,27 +65,22 @@ class CreateCanonicalScorecardVersion:
                 self._node_catalogue.resolve,
             )
 
-            # 3. Apply optional overrides to the define-metadata step.
-            if command.target_column or command.good_values or command.bad_values:
-                for i, step in enumerate(steps):
-                    if step.canonical_step_id == "define-metadata":
-                        params = dict(step.params)
-                        if command.target_column is not None:
-                            params["target_column"] = command.target_column
-                        if command.good_values is not None:
-                            params["good_values"] = list(command.good_values)
-                        if command.bad_values is not None:
-                            params["bad_values"] = list(command.bad_values)
-                        steps[i] = StepSpec(
-                            step_id=step.step_id, node_type=step.node_type,
-                            node_version=step.node_version, category=step.category,
-                            params=params, params_hash=json_logical_hash(params),
-                            parent_step_ids=step.parent_step_ids,
-                            branch_label=step.branch_label, position=step.position,
-                            canonical_step_id=step.canonical_step_id,
-                            branch_id=step.branch_id,
-                        )
-                        break
+            # 3. Apply optional configuration through the single canonical
+            #    pathway config function, which propagates target to every
+            #    target-dependent step.
+            steps = configure_canonical_scorecard(
+                steps,
+                target_column=command.target_column,
+                good_values=command.good_values,
+                bad_values=command.bad_values,
+                product=command.product,
+                segment=command.segment,
+                observation_window=command.observation_window,
+                performance_window=command.performance_window,
+                reject_inference_position=command.reject_inference_position,
+                accept_automated=command.accept_automated,
+                smoothing=command.smoothing,
+            )
 
             # 4. Persist as a draft version. create_version already exists
             #    on PlanRepoPort and the SQLite adapter.

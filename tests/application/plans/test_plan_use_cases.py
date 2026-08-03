@@ -15,6 +15,8 @@ from cardre.application.plans.get_plan_version import GetPlanVersion, GetPlanVer
 from cardre.application.plans.list_plan_versions import ListPlanVersions, ListPlanVersionsCommand
 from cardre.application.plans.list_plans import ListPlans, ListPlansCommand
 from cardre.application.plans.update_plan_version import UpdatePlanVersion, UpdatePlanVersionCommand
+from cardre.bootstrap.node_catalogue import build_default_catalogue
+from cardre.bootstrap.settings import Settings
 from cardre.domain.errors import CardreError
 
 from ..conftest import make_branchable_steps
@@ -24,6 +26,10 @@ def _factory(uow_factory, project_id):
     def factory():
         return uow_factory.for_project(project_id)
     return factory
+
+
+def _catalogue():
+    return build_default_catalogue(Settings())
 
 
 class TestCreatePlan:
@@ -105,13 +111,13 @@ class TestCommitPlanVersion:
                 plan_id, make_branchable_steps(), is_committed=False,
             )
             uow.commit()
-        use_case = CommitPlanVersion(_factory(uow_factory, project_id))
+        use_case = CommitPlanVersion(_factory(uow_factory, project_id), _catalogue())
         committed = use_case(CommitPlanVersionCommand(plan_version_id=pv_id))
         assert committed.is_committed is True
 
     def test_raises_on_nonexistent_version(self, provisioned_project):
         project_id, uow_factory, _, _ = provisioned_project
-        use_case = CommitPlanVersion(_factory(uow_factory, project_id))
+        use_case = CommitPlanVersion(_factory(uow_factory, project_id), _catalogue())
         with pytest.raises(CardreError, match="not found"):
             use_case(CommitPlanVersionCommand(plan_version_id="nonexistent"))
 
@@ -123,7 +129,7 @@ class TestCommitPlanVersion:
                 plan_id, make_branchable_steps(), is_committed=True,
             )
             uow.commit()
-        use_case = CommitPlanVersion(_factory(uow_factory, project_id))
+        use_case = CommitPlanVersion(_factory(uow_factory, project_id), _catalogue())
         with pytest.raises(CardreError, match="already committed"):
             use_case(CommitPlanVersionCommand(plan_version_id=pv_id))
 

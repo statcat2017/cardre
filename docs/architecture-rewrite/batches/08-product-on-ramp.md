@@ -48,6 +48,65 @@ an HTTP `POST` to the new endpoint, and the test header comment that says
   `validate_topology`, and the node catalogue all already exist. This batch
   is pure wiring at the application/API boundary.
 
+## Review remediation (PR 385)
+
+The first review of this batch raised three blocking findings (target
+propagation, parameter validation before immutable commit, and
+acceptance-fixture assumptions baked into the production template) plus a
+release-gap finding. All are addressed in the revised batch:
+
+**P1 — Custom target column now propagates consistently.** A single
+`configure_canonical_scorecard()` function in
+`cardre/domain/plans/scorecard_pathway.py` propagates `target_column` to
+*every* target-dependent step (`define-metadata`, `validate-target`,
+`split`) and is the sole place target/business decisions are applied. The
+acceptance test now runs the full pathway with a non-default target column
+name (`outcome`) and asserts every target step received it. The unit test
+`test_target_propagates_to_all_target_dependent_steps` covers the regression
+directly.
+
+**P1 — Invalid parameters cannot be committed as immutable.** 
+`UpdateStepParams` and `CommitPlanVersion` now resolve each step's node and
+run both schema normalization (`normalize_node_params`) and the node's
+`validate_params` before persisting/committing. Invalid edits leave the
+version a draft and return a structured `422 PARAMETER_VALIDATION_ERROR`
+with the step and field errors. `CommitPlanVersion` defensively validates
+every step — not just topology — so a bad edit is caught at commit time,
+not at run time. Tests cover an out-of-range edit (`min_iv < 0`) being
+rejected without mutating the draft.
+
+**P1 — Production template separated from acceptance-fixture config.** The
+production canonical template no longer bakes fixture decisions: business
+metadata (`product`, `segment`, windows, `reject_inference_position`) is
+empty until supplied, `manual-binning.accept_automated` defaults to `False`,
+and `final-woe-iv` carries no smoothing. The acceptance fixture's specific
+decisions (additive smoothing for the tiny sample, automated-bin acceptance,
+term-loan/retail metadata) now live in
+`tests/acceptance/fixture_pathway.py` and are applied by the fixture tests;
+the acceptance test supplies them through the API edit loop before commit —
+exactly what a real user does. `test_production_template_is_neutral` guards
+the separation.
+
+**P2 — Release claim narrowed; the accessible journey is exercised.**
+- The acceptance test now submits the run **asynchronously** and polls to a
+  terminal state, exercising the async UI journey rather than `sync=true`.
+- The frontend gains report/export discovery: `listReports`, `listExports`,
+  and `getRunManifest` client operations and a "Reports / Exports" section
+  in `RunDetailsPanel` showing the generated scorer, scorecard table, and
+  report paths.
+- CSV selection uses a browser file input that reads `File.path` in the
+  Tauri webview (with a text-entry fallback for plain browsers).
+
+**Remaining launch blockers (tracked, not silently claimed):**
+- The packaged Tauri build does not yet wire the native `@tauri-apps/plugin-dialog`
+  or a "reveal in filesystem" action; file selection relies on the webview's
+  file input + `File.path`.
+- "Open/download the exported artifacts" from the UI is limited to showing
+  the artifact paths; a download endpoint or `shell.open` action is a
+  follow-up.
+These are recorded here and in the PR so the release gate sentence does not
+overstate what a packaged install can do today.
+
 ## Existing seams this batch builds on (do NOT re-implement these)
 
 Every piece of machinery this batch needs already exists. The work is to

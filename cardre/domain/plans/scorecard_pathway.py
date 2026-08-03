@@ -23,11 +23,14 @@ _CANONICAL_SCORECARD_STEPS: list[tuple[str, str, list[str], dict[str, Any]]] = [
             "good_values": ["good"],
             "bad_values": ["bad"],
             "purpose": "application_credit_scorecard",
-            "product": "term_loan",
-            "segment": "retail",
-            "observation_window": "2024-01_to_2024-06",
-            "performance_window": "2024-07_to_2024-12",
-            "reject_inference_position": "not_applied",
+            # Business metadata is deliberately empty in the production
+            # template: a real project must supply product, segment, windows
+            # and reject-inference position before the version can commit.
+            "product": "",
+            "segment": "",
+            "observation_window": "",
+            "performance_window": "",
+            "reject_inference_position": "",
         },
     ),
     (
@@ -98,7 +101,7 @@ _CANONICAL_SCORECARD_STEPS: list[tuple[str, str, list[str], dict[str, Any]]] = [
         "manual-binning",
         "cardre.manual_binning",
         ["automatic-binning", "variable-selection"],
-        {"accept_automated": True},
+        {"accept_automated": False},
     ),
     (
         "final-woe-iv",
@@ -106,11 +109,6 @@ _CANONICAL_SCORECARD_STEPS: list[tuple[str, str, list[str], dict[str, Any]]] = [
         ["explicit-missing-outlier-treatment", "manual-binning", "define-metadata"],
         {
             "purpose": "final",
-            "smoothing": {
-                "method": "additive",
-                "alpha": 0.5,
-                "rationale": "Acceptance fixture uses a tiny synthetic sample with sparse terminal bins",
-            },
         },
     ),
     (
@@ -255,6 +253,75 @@ def canonical_scorecard_step_ids() -> list[str]:
     return [step_id for step_id, _, _, _ in _CANONICAL_SCORECARD_STEPS]
 
 
+def _rebuild_step(step: StepSpec, params: dict[str, Any]) -> StepSpec:
+    """Rebuild a canonical step with new params, recomputing params_hash."""
+    return StepSpec(
+        step_id=step.step_id, node_type=step.node_type,
+        node_version=step.node_version, category=step.category,
+        params=params, params_hash=json_logical_hash(params),
+        parent_step_ids=step.parent_step_ids,
+        branch_label=step.branch_label, position=step.position,
+        canonical_step_id=step.canonical_step_id, branch_id=step.branch_id,
+    )
+
+
+def configure_canonical_scorecard(
+    steps: list[StepSpec],
+    *,
+    target_column: str | None = None,
+    good_values: list[str] | None = None,
+    bad_values: list[str] | None = None,
+    product: str | None = None,
+    segment: str | None = None,
+    observation_window: str | None = None,
+    performance_window: str | None = None,
+    reject_inference_position: str | None = None,
+    accept_automated: bool | None = None,
+    smoothing: dict[str, Any] | None = None,
+) -> list[StepSpec]:
+    """Apply optional user configuration to a canonical pathway's steps.
+
+    ``target_column`` is propagated to *every* target-dependent step
+    (``define-metadata``, ``validate-target``, ``split``), so a custom
+    target stays internally consistent across the pathway. All other
+    options target the specific step that owns them. Unaffected steps are
+    returned unchanged. A new list is returned; the input is not mutated.
+    """
+    result: list[StepSpec] = []
+    for step in steps:
+        params = dict(step.params)
+        if step.canonical_step_id == "define-metadata":
+            if target_column is not None:
+                params["target_column"] = target_column
+            if good_values is not None:
+                params["good_values"] = list(good_values)
+            if bad_values is not None:
+                params["bad_values"] = list(bad_values)
+            for key, value in (
+                ("product", product),
+                ("segment", segment),
+                ("observation_window", observation_window),
+                ("performance_window", performance_window),
+                ("reject_inference_position", reject_inference_position),
+            ):
+                if value is not None:
+                    params[key] = value
+        elif step.canonical_step_id in ("validate-target", "split"):
+            if target_column is not None:
+                params["target_column"] = target_column
+        elif step.canonical_step_id == "manual-binning":
+            if accept_automated is not None:
+                params["accept_automated"] = bool(accept_automated)
+        elif step.canonical_step_id == "final-woe-iv":
+            if smoothing is not None:
+                params["smoothing"] = dict(smoothing)
+        if params != step.params:
+            result.append(_rebuild_step(step, params))
+        else:
+            result.append(step)
+    return result
+
+
 def build_canonical_scorecard_steps(
     source_path: str | Path,
     resolve_node: Callable[[str], Any],
@@ -284,4 +351,4 @@ def build_canonical_scorecard_steps(
     return result
 
 
-__all__ = ["build_canonical_scorecard_steps", "canonical_scorecard_step_ids"]
+__all__ = ["build_canonical_scorecard_steps", "canonical_scorecard_step_ids", "configure_canonical_scorecard"]

@@ -6,6 +6,8 @@ from dataclasses import dataclass
 from typing import Any
 
 from cardre.application.execution.topology import validate_topology
+from cardre.application.plans.param_validation import validate_step_params
+from cardre.application.ports.node_catalogue import NodeCataloguePort
 from cardre.domain.errors import CardreError, ErrorCode
 
 
@@ -15,8 +17,13 @@ class CommitPlanVersionCommand:
 
 
 class CommitPlanVersion:
-    def __init__(self, uow_factory: Callable[[], Any]) -> None:
+    def __init__(
+        self,
+        uow_factory: Callable[[], Any],
+        node_catalogue: NodeCataloguePort,
+    ) -> None:
         self._uow_factory = uow_factory
+        self._node_catalogue = node_catalogue
 
     def __call__(self, command: CommitPlanVersionCommand) -> Any:
         uow = self._uow_factory()
@@ -37,6 +44,27 @@ class CommitPlanVersion:
 
             steps = uow.plans.get_version_steps(command.plan_version_id)
             validate_topology(steps)
+
+            # Defensive: validate every step's parameter set against its
+            # resolved node before the version becomes immutable. A committed
+            # version cannot be corrected, so a bad edit must be caught here.
+            errors_by_step: list[dict[str, Any]] = []
+            for step in steps:
+                node_cls = self._node_catalogue.resolve(step.node_type)
+                _, errors = validate_step_params(node_cls, step.params)
+                if errors:
+                    errors_by_step.append({
+                        "step_id": step.step_id,
+                        "canonical_step_id": step.canonical_step_id,
+                        "errors": errors,
+                    })
+            if errors_by_step:
+                raise CardreError(
+                    "Plan version contains steps with invalid parameters.",
+                    code=ErrorCode.PARAMETER_VALIDATION_ERROR,
+                    context={"errors": errors_by_step},
+                    status_code=422,
+                )
 
             uow.plans.commit_version(command.plan_version_id)
             uow.commit()

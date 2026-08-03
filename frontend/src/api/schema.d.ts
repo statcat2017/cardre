@@ -712,6 +712,22 @@ export interface components {
             good_values?: string[] | null;
             /** Bad Values */
             bad_values?: string[] | null;
+            /** Product */
+            product?: string | null;
+            /** Segment */
+            segment?: string | null;
+            /** Observation Window */
+            observation_window?: string | null;
+            /** Performance Window */
+            performance_window?: string | null;
+            /** Reject Inference Position */
+            reject_inference_position?: string | null;
+            /** Accept Automated */
+            accept_automated?: boolean | null;
+            /** Smoothing */
+            smoothing?: {
+                [key: string]: unknown;
+            } | null;
         };
         /** ChampionAssignmentRequest */
         ChampionAssignmentRequest: {

@@ -25,6 +25,7 @@ const EDITABLE_STEPS: Record<string, FieldSpec[]> = {
     { key: "segment", label: "Segment" },
     { key: "observation_window", label: "Observation window" },
     { key: "performance_window", label: "Performance window" },
+    { key: "reject_inference_position", label: "Reject-inference position" },
   ],
   "apply-exclusions": [],
   "sample-definition": [
@@ -33,6 +34,15 @@ const EDITABLE_STEPS: Record<string, FieldSpec[]> = {
     { key: "sample_description", label: "Sample description" },
   ],
   split: [{ key: "target_column", label: "Target column" }],
+  "manual-binning": [
+    { key: "accept_automated", label: "Accept automated bins", type: "checkbox" },
+    { key: "reviewed", label: "Bin review complete", type: "checkbox" },
+  ],
+  "final-woe-iv": [
+    { key: "smoothing_method", label: "Smoothing method", type: "text" },
+    { key: "smoothing_alpha", label: "Smoothing alpha", type: "text" },
+    { key: "smoothing_rationale", label: "Smoothing rationale", type: "text" },
+  ],
   "validation-metrics": [
     { key: "fail_on_missing_score", label: "Fail on missing score", type: "checkbox" },
     { key: "require_test", label: "Require test set", type: "checkbox" },
@@ -65,6 +75,28 @@ function fromEditableValue(
       .filter(Boolean);
   }
   return typeof raw === "string" ? raw : "";
+}
+
+// final-woe-iv carries smoothing as a nested object
+// ({method, alpha, rationale}); the editor flattens it into
+// smoothing_method / smoothing_alpha / smoothing_rationale keys.
+function smoothingParamValue(params: Record<string, unknown>, key: string): string | boolean {
+  const smoothing = (params.smoothing ?? {}) as Record<string, unknown>;
+  const suffix = key.replace("smoothing_", "");
+  return toEditableValue(smoothing[suffix], "text");
+}
+
+function applySmoothingField(
+  merged: Record<string, unknown>,
+  key: string,
+  value: string | boolean,
+): void {
+  const smoothing = { ...((merged.smoothing as Record<string, unknown> | undefined) ?? {}) };
+  const suffix = key.replace("smoothing_", "");
+  smoothing[suffix] = fromEditableValue(value, "text");
+  if (Object.keys(smoothing).length) {
+    merged.smoothing = smoothing;
+  }
 }
 
 export function StepParamsEditor({ steps, stepsLoading, onSaveStep, savePending }: Props) {
@@ -114,7 +146,9 @@ export function StepParamsEditor({ steps, stepsLoading, onSaveStep, savePending 
                   const value =
                     field.key in draft
                       ? draft[field.key]
-                      : toEditableValue(current[field.key], field.type);
+                      : field.key.startsWith("smoothing_")
+                        ? smoothingParamValue(current, field.key)
+                        : toEditableValue(current[field.key], field.type);
                   return (
                     <label
                       key={field.key}
@@ -167,10 +201,14 @@ export function StepParamsEditor({ steps, stepsLoading, onSaveStep, savePending 
                 const merged: Record<string, unknown> = { ...step.params };
                 for (const field of fields) {
                   if (field.key in draft) {
-                    merged[field.key] = fromEditableValue(
-                      draft[field.key] as string | boolean,
-                      field.type,
-                    );
+                    if (field.key.startsWith("smoothing_")) {
+                      applySmoothingField(merged, field.key, draft[field.key] as string | boolean);
+                    } else {
+                      merged[field.key] = fromEditableValue(
+                        draft[field.key] as string | boolean,
+                        field.type,
+                      );
+                    }
                   }
                 }
                 onSaveStep(step.step_id, merged);

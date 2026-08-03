@@ -365,6 +365,29 @@ export const api = {
           }),
         );
       },
+      listReports: async (runId?: string) => {
+        const client = makeClient();
+        if (runId) {
+          return requireData(
+            await client.GET("/projects/{project_id}/runs/{run_id}/reports", {
+              params: { path: { project_id: pid, run_id: runId } },
+            }),
+          );
+        }
+        return requireData(
+          await client.GET("/projects/{project_id}/reports", {
+            params: { path: { project_id: pid } },
+          }),
+        );
+      },
+      listExports: async (runId?: string) => {
+        const client = makeClient();
+        return requireData(
+          await client.GET("/projects/{project_id}/exports", {
+            params: { path: { project_id: pid }, query: runId ? { run_id: runId } : undefined },
+          }),
+        );
+      },
       listPlanVersions: async (planId: string) => {
         const client = makeClient();
         return requireData(

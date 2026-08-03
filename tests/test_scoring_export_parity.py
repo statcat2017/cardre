@@ -18,7 +18,7 @@ import pytest
 from cardre.bootstrap.node_catalogue import build_default_catalogue
 from cardre.bootstrap.settings import Settings
 from cardre.domain.evidence.schemas import SCHEMA_SCORING_EXPORT_PYTHON, SCHEMA_SCORING_EXPORT_SQL
-from cardre.domain.plans.scorecard_pathway import build_canonical_scorecard_steps
+from tests.acceptance.fixture_pathway import build_acceptance_fixture_steps
 
 
 def _write_input_csv(path: Path) -> Path:
@@ -54,7 +54,7 @@ def test_scoring_export_parity(api_client, tmp_path):
 
     container = api_client.app.state.container
     cat = build_default_catalogue(Settings(launch_mode=True))
-    steps = build_canonical_scorecard_steps(csv_path, cat.resolve)
+    steps = build_acceptance_fixture_steps(csv_path, cat)
 
     with container.uow_factory.for_project(project_id) as uow:
         plan_version_id = uow.plans.create_version(

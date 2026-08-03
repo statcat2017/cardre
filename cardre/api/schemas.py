@@ -92,6 +92,13 @@ class CanonicalScorecardVersionRequest(BaseModel):
     target_column: str | None = None
     good_values: list[str] | None = None
     bad_values: list[str] | None = None
+    product: str | None = None
+    segment: str | None = None
+    observation_window: str | None = None
+    performance_window: str | None = None
+    reject_inference_position: str | None = None
+    accept_automated: bool | None = None
+    smoothing: dict[str, Any] | None = None
 
 
 class PlanVersionResponse(BaseModel):

@@ -18,7 +18,7 @@ from cardre.application.runs.submit_run import SubmitRunCommand
 from cardre.bootstrap.container import build_container
 from cardre.bootstrap.node_catalogue import build_default_catalogue
 from cardre.bootstrap.settings import Settings
-from cardre.domain.plans.scorecard_pathway import build_canonical_scorecard_steps
+from tests.acceptance.fixture_pathway import build_acceptance_fixture_steps
 
 
 def _write_input_csv(path):
@@ -53,7 +53,7 @@ def audit_run(tmp_path):
 
     csv_path = _write_input_csv(tmp_path / "input.csv")
     cat = build_default_catalogue(Settings(launch_mode=True))
-    steps = build_canonical_scorecard_steps(csv_path, cat.resolve)
+    steps = build_acceptance_fixture_steps(csv_path, cat)
 
     with uow_factory.for_project(project_id) as uow:
         pv_id = uow.plans.create_version(plan_id, steps, is_committed=True)

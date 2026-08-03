@@ -84,6 +84,18 @@ export function useProjectWorkspace(scope: ProjectScope) {
     enabled: !!effectiveSelectedRunId,
   });
 
+  const reportsQuery = useQuery({
+    queryKey: ["runReports", scope.projectId, effectiveSelectedRunId],
+    queryFn: () => scoped.listReports(effectiveSelectedRunId!),
+    enabled: !!effectiveSelectedRunId,
+  });
+
+  const exportsQuery = useQuery({
+    queryKey: ["runExports", scope.projectId, effectiveSelectedRunId],
+    queryFn: () => scoped.listExports(effectiveSelectedRunId!),
+    enabled: !!effectiveSelectedRunId,
+  });
+
   const selectedRunStatus = selectedRunQuery.data?.status;
 
   useEffect(() => {
@@ -214,6 +226,8 @@ export function useProjectWorkspace(scope: ProjectScope) {
     { key: "run", error: selectedRunQuery.error },
     { key: "runSteps", error: runStepsQuery.error },
     { key: "runEvidence", error: runEvidenceQuery.error },
+    { key: "runReports", error: reportsQuery.error },
+    { key: "runExports", error: exportsQuery.error },
     { key: "planVersionSteps", error: stepsQuery.error },
   ];
   const errored = queryErrorEntries.find((e) => e.error);
@@ -227,6 +241,8 @@ export function useProjectWorkspace(scope: ProjectScope) {
     selectedRunQuery,
     runStepsQuery,
     runEvidenceQuery,
+    reportsQuery,
+    exportsQuery,
     stepsQuery,
     effectiveSelectedPlanId,
     effectiveSelectedVersionId,

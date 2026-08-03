@@ -160,6 +160,10 @@ export function ProjectView({ projectId, onBack }: Props) {
               steps={ws.runStepsQuery.data}
               evidenceLoading={ws.runEvidenceQuery.isLoading}
               evidence={ws.runEvidenceQuery.data}
+              reportsLoading={ws.reportsQuery.isLoading}
+              reports={ws.reportsQuery.data?.reports}
+              exportsLoading={ws.exportsQuery.isLoading}
+              exports={ws.exportsQuery.data?.exports}
             />
           </section>
         </section>

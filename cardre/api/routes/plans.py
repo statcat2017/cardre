@@ -64,8 +64,8 @@ def _uc(container: Container, project_id: str):
         "get_version": GetPlanVersion(_read_factory),
         "list_versions": ListPlanVersions(_read_factory),
         "update_version": UpdatePlanVersion(_factory),
-        "update_step_params": UpdateStepParams(_factory),
-        "commit_version": CommitPlanVersion(_factory),
+        "update_step_params": UpdateStepParams(_factory, container.node_catalogue),
+        "commit_version": CommitPlanVersion(_factory, container.node_catalogue),
         "CreatePlanCommand": CreatePlanCommand,
         "CreateCanonicalScorecardVersionCommand": CreateCanonicalScorecardVersionCommand,
         "GetPlanCommand": GetPlanCommand,
@@ -110,6 +110,13 @@ async def create_canonical_scorecard_version(
                 target_column=body.target_column,
                 good_values=body.good_values,
                 bad_values=body.bad_values,
+                product=body.product,
+                segment=body.segment,
+                observation_window=body.observation_window,
+                performance_window=body.performance_window,
+                reject_inference_position=body.reject_inference_position,
+                accept_automated=body.accept_automated,
+                smoothing=body.smoothing,
             )
         )
     except CardreError as exc:
@@ -195,6 +202,13 @@ async def commit_plan_version(project_id: str, plan_version_id: str, container=D
                 message=str(exc),
                 status_code=404,
             ) from exc
+        if exc.code == ErrorCode.PARAMETER_VALIDATION_ERROR:
+            raise CardreApiError(
+                code=ErrorCode.PARAMETER_VALIDATION_ERROR,
+                message=str(exc),
+                status_code=422,
+                context=exc.context,
+            ) from exc
         raise
     return plan_version_to_response(committed)
 
@@ -236,6 +250,13 @@ async def update_step_params(
                 code=ErrorCode.STEP_NOT_FOUND,
                 message=str(exc),
                 status_code=404,
+            ) from exc
+        if exc.code == ErrorCode.PARAMETER_VALIDATION_ERROR:
+            raise CardreApiError(
+                code=ErrorCode.PARAMETER_VALIDATION_ERROR,
+                message=str(exc),
+                status_code=422,
+                context=exc.context,
             ) from exc
         raise
     pv = uc["get_version"](uc["GetPlanVersionCommand"](plan_version_id=plan_version_id))

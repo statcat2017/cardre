@@ -29,6 +29,8 @@ describe("ProjectView", () => {
     listRunSteps: vi.fn(),
     listRunEvidence: vi.fn(),
     cancelRun: vi.fn(),
+    listReports: vi.fn().mockResolvedValue({ reports: [] }),
+    listExports: vi.fn().mockResolvedValue({ exports: [] }),
   };
 
   beforeEach(() => {

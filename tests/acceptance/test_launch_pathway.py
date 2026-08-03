@@ -44,7 +44,10 @@ def _write_input_csv(path: Path) -> Path:
             "credit_amount": 1000 + i * 50,
             "age_years": 25 + (i % 30),
             "duration_months": 6 + (i % 36),
-            "credit_risk_class": "good" if i % 3 != 0 else "bad",
+            # Non-default target column name: the canonical pathway must
+            # propagate the configured target to every target-dependent step,
+            # not hardcode "credit_risk_class".
+            "outcome": "good" if i % 3 != 0 else "bad",
         })
     with open(path, "w", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=list(rows[0].keys()))
@@ -87,24 +90,53 @@ def acceptance_env(tmp_path):
     plan_id = resp.json()["plan_id"]
 
     # 5. Generate the canonical pathway through the API: a draft version is
-    #    created and populated with the full canonical step set.
+    #    created and populated with the full canonical step set. The target
+    #    is supplied at generation and must propagate to every target step.
     resp = client.post(
         f"/projects/{project_id}/plans/{plan_id}/canonical-version",
-        json={"source_path": str(csv_path)},
+        json={
+            "source_path": str(csv_path),
+            "target_column": "outcome",
+            "good_values": ["good"],
+            "bad_values": ["bad"],
+        },
     )
     assert resp.status_code == 201, resp.text
     pv_id = resp.json()["plan_version_id"]
 
-    # 5b. Edit the define-metadata step through the API, proving the
-    #     user-reachable parameter-edit loop on a draft version.
+    # 5b. Configure the pathway through the API edit loop. The production
+    #     template deliberately leaves business metadata empty, automated-bin
+    #     acceptance off, and WOE smoothing unset; a user (here, the
+    #     acceptance fixture) supplies these decisions before commit.
     steps = client.get(f"/projects/{project_id}/plan-versions/{pv_id}/steps")
     assert steps.status_code == 200, steps.text
-    meta_step = next(s for s in steps.json() if s["canonical_step_id"] == "define-metadata")
-    patch_resp = client.patch(
-        f"/projects/{project_id}/plan-versions/{pv_id}/steps/{meta_step['step_id']}",
-        json={"params": {**meta_step["params"], "target_column": "credit_risk_class"}},
-    )
-    assert patch_resp.status_code == 200, patch_resp.text
+    by_canonical = {s["canonical_step_id"]: s for s in steps.json()}
+
+    def _patch_params(canonical_step_id: str, extra: dict) -> dict:
+        step = by_canonical[canonical_step_id]
+        merged = {**step["params"], **extra}
+        resp = client.patch(
+            f"/projects/{project_id}/plan-versions/{pv_id}/steps/{step['step_id']}",
+            json={"params": merged},
+        )
+        assert resp.status_code == 200, resp.text
+        return resp.json()
+
+    _patch_params("define-metadata", {
+        "product": "term_loan",
+        "segment": "retail",
+        "observation_window": "2024-01_to_2024-06",
+        "performance_window": "2024-07_to_2024-12",
+        "reject_inference_position": "not_applied",
+    })
+    _patch_params("manual-binning", {"accept_automated": True})
+    _patch_params("final-woe-iv", {
+        "smoothing": {
+            "method": "additive",
+            "alpha": 0.5,
+            "rationale": "Acceptance fixture uses a tiny synthetic sample with sparse terminal bins",
+        },
+    })
 
     # 6. Commit the immutable plan version through the API.
     resp = client.post(f"/projects/{project_id}/plan-versions/{pv_id}/commit")
@@ -123,14 +155,28 @@ class TestLaunchPathway:
 
         store = FsArtifactStore(root)
 
-        # 7–8. Submit + execute the launch pathway (sync).
+        # 7–8. Submit the launch pathway asynchronously and poll until the
+        #     run reaches a terminal state — the user-reachable async journey.
         resp = client.post(
             f"/projects/{project_id}/runs",
-            json={"plan_version_id": pv_id, "sync": True, "force": True},
+            json={"plan_version_id": pv_id, "sync": False, "force": True},
         )
         assert resp.status_code == 201, resp.text
         run_id = resp.json()["run_id"]
-        assert resp.json()["status"] == "succeeded", resp.text
+        assert resp.json()["status"] in ("submitted", "running"), resp.text
+
+        import time
+
+        for _ in range(120):
+            poll = client.get(f"/projects/{project_id}/runs/{run_id}")
+            assert poll.status_code == 200, poll.text
+            status = poll.json()["status"]
+            if status in ("succeeded", "failed", "cancelled", "interrupted"):
+                break
+            time.sleep(0.1)
+        else:
+            raise AssertionError(f"Run {run_id} did not reach a terminal state")
+        assert status == "succeeded", f"Run did not succeed: {poll.text}"
 
         with uow_factory.for_project(project_id) as uow:
             run_steps = uow.run_steps.get_for_run(run_id)

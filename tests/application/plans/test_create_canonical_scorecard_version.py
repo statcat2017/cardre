@@ -75,6 +75,53 @@ class TestCreateCanonicalScorecardVersion:
         imp = next(s for s in steps if s.canonical_step_id == "import")
         assert imp.params["source_path"] == str(csv_path)
 
+    def test_target_propagates_to_all_target_dependent_steps(self, provisioned_project, tmp_path):
+        """A custom target must reach define-metadata, validate-target AND
+        split — the review regression: target was only applied to
+        define-metadata, leaving validate-target/split on the hardcoded
+        default."""
+        project_id, uow_factory, _, _ = provisioned_project
+        with uow_factory.for_project(project_id) as uow:
+            plan_id = uow.plans.create_plan(project_id, "P")
+            uow.commit()
+        catalogue = build_default_catalogue(Settings())
+        uc = CreateCanonicalScorecardVersion(_factory(uow_factory, project_id), catalogue)
+        csv_path = _write_csv(tmp_path / "in.csv")
+        pv = uc(CreateCanonicalScorecardVersionCommand(
+            plan_id=plan_id, source_path=str(csv_path), target_column="outcome",
+        ))
+        with uow_factory.for_project(project_id) as uow:
+            steps = uow.plans.get_version_steps(pv.plan_version_id)
+        for step in steps:
+            if step.canonical_step_id in ("define-metadata", "validate-target", "split"):
+                assert step.params["target_column"] == "outcome", (
+                    f"{step.canonical_step_id} did not receive the target override"
+                )
+
+    def test_production_template_is_neutral(self, provisioned_project, tmp_path):
+        """The production template must not bake acceptance-fixture decisions:
+        no smoothing, no auto-accepted bins, no hardcoded business metadata."""
+        project_id, uow_factory, _, _ = provisioned_project
+        with uow_factory.for_project(project_id) as uow:
+            plan_id = uow.plans.create_plan(project_id, "P")
+            uow.commit()
+        catalogue = build_default_catalogue(Settings())
+        uc = CreateCanonicalScorecardVersion(_factory(uow_factory, project_id), catalogue)
+        csv_path = _write_csv(tmp_path / "in.csv")
+        pv = uc(CreateCanonicalScorecardVersionCommand(
+            plan_id=plan_id, source_path=str(csv_path),
+        ))
+        with uow_factory.for_project(project_id) as uow:
+            steps = uow.plans.get_version_steps(pv.plan_version_id)
+        meta = next(s for s in steps if s.canonical_step_id == "define-metadata")
+        assert meta.params["product"] == ""
+        assert meta.params["segment"] == ""
+        assert meta.params["reject_inference_position"] == ""
+        manual = next(s for s in steps if s.canonical_step_id == "manual-binning")
+        assert manual.params.get("accept_automated") is False
+        final = next(s for s in steps if s.canonical_step_id == "final-woe-iv")
+        assert "smoothing" not in final.params
+
     def test_raises_on_unknown_plan(self, provisioned_project):
         project_id, uow_factory, _, _ = provisioned_project
         catalogue = build_default_catalogue(Settings())
