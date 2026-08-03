@@ -15,31 +15,29 @@ Evidence is resolved by canonical step IDs defined in `cardre/application/report
 | `variable-clustering` | Variable clustering evidence |
 | `technical-manifest` | Technical manifest (comparison mode) |
 
-## Legacy Aliases
-
-| Legacy ID | Current ID |
-|-----------|------------|
-| `logistic-regression` | `model-fit` |
-
 ## Required Steps by Report Mode
+
+The canonical required-step lists are defined in
+`cardre/application/reporting/contracts.py`:
 
 | Mode | Required Steps |
 |------|---------------|
-| Branch report | `final-woe-iv`, `model-fit`, `score-scaling`, `validation-metrics` |
-| Champion report | `final-woe-iv`, `model-fit`, `score-scaling`, `validation-metrics` |
-| Full collector | `final-woe-iv`, `model-fit`, `score-scaling`, `validation-metrics`, `cutoff-analysis`, `manual-binning`, `variable-clustering` |
+| Branch report | `final-woe-iv`, `model-fit`, `score-scaling`, `validation-metrics`, `cutoff-analysis` |
+| Champion report | `final-woe-iv`, `model-fit`, `score-scaling`, `freeze-scorecard-bundle`, `apply-model`, `validation-metrics`, `cutoff-analysis`, `scorecard-table-export`, `scoring-export-python`, `scoring-export-sql` |
+| Full collector | everything in Champion plus `manual-binning`, `variable-clustering`, `coefficient-sign-check`, `separation-diagnostics`, `vif-diagnostics`, `calibration-diagnostics`, `apply-exclusions`, `sample-definition`, `explicit-missing-outlier-treatment`, `initial-woe-iv`, `model-limitations`, `apply-woe` |
 | Comparison | `final-woe-iv`, `model-fit`, `score-scaling`, `validation-metrics`, `cutoff-analysis`, `technical-manifest` |
 
 ## Evidence Kinds
 
-The `ArtifactEvidenceReader` (`cardre/domain/evidence/` and `cardre/adapters/evidence/`) supports the following evidence kinds,
-defined in `cardre/domain/evidence/kinds.py`. This table lists the most commonly used kinds;
-the full enum has 43 members covering all artifact types in the engine.
+The `EvidenceReader` (`cardre/adapters/evidence/reader.py`) resolves artifacts as
+typed evidence via the profiles and parsers in `cardre/adapters/evidence/`. The
+following kinds are defined in `cardre/domain/evidence/kinds.py`. This table lists
+the most commonly used kinds; the full enum covers all artifact types in the engine.
 
 | Kind | Schema | Typed Model |
 |------|--------|-------------|
 | `MODELLING_METADATA` | `cardre.modelling_metadata.v1` | `ModellingMetadata` |
-| `MODEL_ARTIFACT` | `cardre.model_artifact.v1` | `ModelArtifact` |
+| `MODEL_ARTIFACT` | `cardre.model_artifact.v1` | `ModelArtifactV1` |
 | `SCORE_SCALING` | `cardre.score_scaling.v1` | `ScoreScaling` |
 | `BIN_DEFINITION` | `cardre.bin_definition.v1` | `BinDefinition` |
 | `WOE_TABLE` | `cardre.woe_table.v1` | `WoeTable` |
@@ -48,9 +46,9 @@ the full enum has 43 members covering all artifact types in the engine.
 | `EXCLUSION_SUMMARY` | `cardre.exclusion_summary.v1` | `ExclusionSummary` |
 | `SCORED_DATASET` | `cardre.scored_dataset.v1` | `ScoredDataset` |
 | `EXPLAINABILITY_REPORT` | `cardre.explainability_report.v1` | `ExplainabilityReport` |
-| `CALIBRATION_REPORT` | `cardre.calibration_report.v1` | `CalibrationReport` |
-| `VARIABLE_CLUSTERING` | `cardre.variable_clustering_evidence.v1` | `VariableClustering` |
-| `FROZEN_SCORECARD_BUNDLE` | `cardre.frozen_scorecard_bundle.v1` | `FrozenScorecardBundle` |
+| `CALIBRATION_REPORT` | `cardre.calibration_report.v1` | (raw dict) |
+| `VARIABLE_CLUSTERING` | `cardre.variable_clustering_evidence.v1` | `VariableClusteringEvidence` |
+| `FROZEN_SCORECARD_BUNDLE` | `cardre.frozen_scorecard_bundle.v1` | (raw dict) |
 | `MANUAL_BINNING_OVERRIDES` | `cardre.manual_binning_overrides.v1` | `ManualBinningOverrides` |
 | `COEFFICIENT_SIGN_DIAGNOSTICS` | `cardre.coefficient_sign_diagnostics.v1` | `CoefficientSignDiagnostics` |
 | `SEPARATION_DIAGNOSTICS` | `cardre.separation_diagnostics.v1` | `SeparationDiagnostics` |
@@ -59,9 +57,9 @@ the full enum has 43 members covering all artifact types in the engine.
 | `FEATURE_SELECTION_EVIDENCE` | `cardre.feature_selection_evidence.v1` | `FeatureSelectionEvidence` |
 | `CUTOFF_ANALYSIS` | `cardre.cutoff_analysis.v1` | `CutoffAnalysis` |
 | `VALIDATION_METRICS` | `cardre.validation_metrics.v1` | `ValidationMetrics` |
-| `SCORE_TABLE` | `cardre.scorecard_table.v1` | `ScoreTable` |
-| `SCORING_EXPORT_PYTHON` | `cardre.scoring_export_python.v1` | `ScoringExportPython` |
-| `SCORING_EXPORT_SQL` | `cardre.scoring_export_sql.v1` | `ScoringExportSQL` |
+| `SCORE_TABLE` | `cardre.scorecard_table.v1` | (raw dict) |
+| `SCORING_EXPORT_PYTHON` | `cardre.scoring_export_python.v1` | (raw dict) |
+| `SCORING_EXPORT_SQL` | `cardre.scoring_export_sql.v1` | (raw dict) |
 
 The 4 diagnostics kinds (`COEFFICIENT_SIGN_DIAGNOSTICS`, `SEPARATION_DIAGNOSTICS`,
 `VIF_DIAGNOSTICS`, `CALIBRATION_DIAGNOSTICS`) and `MANUAL_BINNING_OVERRIDES` were
@@ -69,7 +67,13 @@ added during the thermo-nuclear quality sprint (PR2).
 
 ## Resolution Rules
 
-- Evidence is resolved by canonical step ID, not by step instance ID.
-- Legacy aliases are resolved via `LEGACY_CANONICAL_ALIASES`.
-- The collector uses `resolve_canonical_step_id()` to map legacy IDs to current canonical forms.
-- `canonical_alias_candidates()` returns both current and legacy IDs for flexible matching.
+- Evidence is resolved by canonical step ID, not by step instance ID. The
+  canonical IDs and their evidence kinds are defined in
+  `cardre/application/reporting/contracts.py`.
+- `canonical_step_id` is a **reporting identifier**: report readiness and
+  evidence collection resolve a persisted step's canonical ID to the canonical
+  set in `contracts.py`. `StepSpec` requires it to be non-empty but the current
+  pre-execution validation does not compare it to a canonical identity — it
+  validates topology, node availability, and `node_version`. An obsolete
+  canonical ID on a current-version step therefore surfaces as missing report
+  evidence, not as a pre-execution rejection.

@@ -2,16 +2,16 @@
 
 ## SQLite Metadata Store
 
-All metadata is stored in a single SQLite database per project. The store is implemented as `ProjectStore` in `cardre/store/project_store.py` with specialized repository classes for focused access:
+All metadata is stored in a single SQLite database per project. The schema is defined in `cardre/adapters/sqlite/schema.py` and accessed through specialized repository classes in `cardre/adapters/sqlite/`:
 
 | Repository | File | Responsibility |
 |------------|------|----------------|
-| `ProjectStore` | `project_store.py` | Compatibility facade, top-level CRUD |
-| `ArtifactRepository` | `artifact_repo.py` | Artifact records, hashes, paths |
-| `PlanRepository` | `plan_repo.py` | Plans, plan versions, steps |
-| `RunRepository` | `run_repo.py` | Runs, run steps, status |
-| `BranchRepository` | `branch_repo.py` | Branches, branch step maps |
-| `ProjectRepository` | `project_repo.py` | Project records |
+| `ProjectRepo` | `project_repo.py` | Project records |
+| `PlanRepo` | `plan_repo.py` | Plans, plan versions, steps |
+| `StepRepo` | `step_repo.py` | Plan steps and edges |
+| `RunRepo` | `run_repo.py` | Runs, run steps, status |
+| `BranchRepo` | `branch_repo.py` | Branches, branch step maps |
+| `ArtifactRepo` | `artifact_repo.py` | Artifact records, hashes, paths |
 
 ## Storage Model
 
@@ -30,9 +30,22 @@ The database schema is defined in `cardre/adapters/sqlite/schema.py` and include
 - Branches, branch step maps
 - Comparisons, comparison snapshots
 - Champions, champion assignments
+- Evidence edges and artifacts, reviews, publications, dispatch
 
-Branch-related tables are created separately via `BRANCH_TABLES_SQL` and are only present when governance features are enabled.
+Every project store is created by `SqliteProjectProvisioner.initialize()` running
+the full `ALL_TABLES_SQL` script, which always includes the branch, evidence and
+review tables. Governance is a capability gated at the application/API layer
+(e.g. `CARDRE_GOVERNANCE`), not by omitting tables.
 
 ## Migrations
 
-Schema migrations are handled by `cardre/adapters/sqlite/schema.py` which includes version checks and migration logic. The store checks the schema version on open and applies any pending migrations.
+Cardre has not launched, so there is **no migration chain** before the first real
+deployment. Each project store is created from the current `ALL_TABLES_SQL` with a
+recorded `schema_family` / `schema_version` in `store_meta`.
+
+Those values are currently **recorded but not yet enforced on open**:
+`SqliteUnitOfWorkFactory` verifies only that the project root and
+`project.sqlite` file exist before connecting. A future release will add a
+schema-identity check that rejects stores whose recorded family/version differ
+from the application, replacing in-place migration until a real compatibility
+policy exists (see ADR 0015).

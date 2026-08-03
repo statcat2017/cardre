@@ -10,7 +10,7 @@ of truth. This page is the operator-facing guide.
 
 - An artifact is storage: a file on disk plus metadata in the store.
 - Evidence is a typed interpretation of an artifact, produced by
-  `EvidenceReader`.
+  `EvidenceReader` (`cardre/adapters/evidence/reader.py`).
 - Production code should consume evidence, not raw files.
 
 The main rule is simple: if code needs meaning, it should go through the reader.
@@ -57,13 +57,10 @@ Only these reasons are allowed on a line comment of the form
   - Example: a modelling node reading the train parquet before building features.
 - `artifact-byte-download`
   - Legitimate when a route or export helper streams artifact bytes without interpreting them.
-  - Example: a sidecar download endpoint copying the file to an HTTP response.
+  - Example: an export endpoint copying the file to an HTTP response.
 - `low-level-evidence-parser`
   - Legitimate only inside `cardre/domain/evidence/` and `cardre/adapters/evidence/` or other approved low-level IO code.
   - Example: the reader opening a file before typed parsing.
-- `serialization-compatibility-test`
-  - Legitimate only in isolated compatibility tests that assert persisted raw layout.
-  - Example: a test that checks a JSON artifact still round-trips to the expected dict.
 
 ## Adding A New Evidence Kind
 
@@ -71,75 +68,95 @@ When introducing a new evidence type, update all of these:
 
 1. Add an `EvidenceKind` enum member in `cardre/domain/evidence/kinds.py`.
 2. Add a `SCHEMA_<KIND>` constant in `cardre/domain/evidence/schemas.py`.
-3. Add a typed dataclass and `from_json` in `cardre/domain/evidence/models/` (in the appropriate family module, e.g. `models/binning.py`, `models/model.py`). Re-export it from `cardre/domain/evidence/models/__init__.py`.
+3. Add a typed dataclass and `from_json` in `cardre/domain/evidence/models/` (in the appropriate family module, e.g. `models/binning.py`, `models/model.py`).
 4. Add an `EVIDENCE_PROFILES` entry in `cardre/adapters/evidence/profiles.py`.
-5. Add an `AdapterSpec` entry in the `EVIDENCE_ADAPTERS` table in `cardre/adapters/evidence/__init__.py`. Most adapters are a one-liner `AdapterSpec(profile=..., parse=lambda path, art, store: Model.from_json(...))`. Only add a custom class if the parse logic is non-trivial (e.g. `WoeTable`, `IvTable`, `ScoredDataset`).
+5. Add an `AdapterSpec` entry in the `EVIDENCE_ADAPTERS` table in `cardre/adapters/evidence/parsers.py`. Most adapters are a one-liner `AdapterSpec(profile=..., parse=lambda path, art, store: Model.from_json(...))`. Only add a custom class if the parse logic is non-trivial (e.g. `WoeTable`, `IvTable`, `ScoredDataset`).
 6. Add fixture-backed parse coverage in `tests/test_evidence_adapters.py`.
-7. Add a parametrized profile assertion in `tests/test_evidence_profiles.py`.
 
-Minimal parser rule: prefer schema/version validation first, then role/type/media/profile validation inside `cardre/domain/evidence/` and `cardre/adapters/evidence/`, never bespoke parsing in product nodes.
+Minimal parser rule: the current versioned schema is the single accepted shape.
+Adapters validate schema first, then role/type/media, and reject anything that
+is not the canonical identity (see ADR 0015). No fallback readers or legacy-shape
+branches may be added.
 
 ## Writing A Node That Consumes Artifacts
 
-Use the reader first and fail clearly if the evidence is missing:
+Nodes receive typed evidence through `InputCollection`
+(`cardre/application/execution/input_collection.py`). `by_role` returns
+`ArtifactRef`s; `by_kind` returns already-parsed typed evidence. Fail clearly if
+the evidence is missing:
 
 ```python
-reader = ArtifactEvidenceReader(store)
-try:
-    model = reader.find(input_artifacts, EvidenceKind.MODEL_ARTIFACT)
-except EvidenceNotFoundError as exc:
-    raise NodeInputError(
-        "Model requires cardre.model_artifact.v1 evidence from the "
-        "logistic regression step, but no matching artifact was found."
-    ) from exc
+models = context.inputs.by_kind(EvidenceKind.MODEL_ARTIFACT)
+if not models:
+    raise EvidenceNotFoundError(
+        EvidenceKind.MODEL_ARTIFACT,
+        candidate_artifact_ids=[],
+    )
+model = models[0]  # already a typed ModelArtifactV1
 ```
 
-If the node needs dataset rows, read parquet as a dataset frame and treat that
-as input data, not evidence interpretation.
+To read a specific `ArtifactRef` as typed evidence, use `read(artifact, kind)`:
+
+```python
+model_art = context.inputs.require("model", self.node_type)
+model = context.inputs.read(model_art, EvidenceKind.MODEL_ARTIFACT)
+```
+
+If the node needs dataset rows, read parquet as a dataset frame (`read_dataframe`)
+and treat that as input data, not evidence interpretation.
+
+## EvidenceReader
+
+The reader is constructed with the artifact reader and the artifact/run-step
+repositories:
+
+```python
+reader = EvidenceReader(
+    store,            # ArtifactReader (resolves artifact paths)
+    uow.artifacts,    # ArtifactRepoPort
+    uow.run_steps,    # RunStepRepoPort
+)
+```
+
+Use `reader.find(artifacts, kind)`, `reader.find_optional(...)`,
+`reader.read(artifact_id, kind)`, or `reader.read_dataframe(artifact)`.
+`reader.read_optional` returns `None` on not-found (ambiguity is still an error).
+Do not call `reader` internals or re-implement matching in product code.
 
 ## Writing A Report Collector
 
-Report collectors must reuse `ArtifactEvidenceReader`.
+Report collectors reuse `EvidenceReader`.
 
 - Call `reader.find(...)` or `reader.read(...)` per needed evidence kind.
 - Do not add custom per-collector JSON parsing.
 - If a shared collector helper exists, prefer it over bespoke layout logic.
 
-## Writing Sidecar Artifact Previews
+## Writing Evidence Routes
 
-For previews and summaries:
+Evidence routes live under `cardre/api/routes/evidence.py` and are project-scoped:
 
-- Use the adapter registry directly: `get_adapter(kind).match()` / `.parse()`.
-- The reader's `summarise_*` methods have been removed; summaries are no longer
-  produced through `ArtifactEvidenceReader`.
+- `GET /projects/{project_id}/steps/{step_id}/evidence` — staleness explanation
+  for a step.
 
-The Phase 4 evidence routes at:
-- ``GET /runs/{run_id}/steps/{step_id}/evidence``
-- ``GET /runs/{run_id}/evidence``
+For previews and summaries, use `EvidenceReader.find` / `read` for typed evidence.
+The reader's `summarise_*` methods have been removed.
 
-also use ``ArtifactEvidenceReader`` via ``_to_item``, routing summarised
-evidence to the frontend without exposing raw artifact paths.
-
-For byte streaming only, `store.artifact_path(art)` is acceptable with the
+For byte streaming only, `store.resolve_path(art)` is acceptable with the
 `artifact-byte-download` suppression. Do not `json.loads` artifact bodies in a route.
 
 ## Writing Tests
 
-- Use `tests/helpers/evidence_assertions.py` for typed assertions.
-- Use raw dict assertions only in the three isolated compatibility files:
-  - `tests/test_artifact_serialization.py`
-  - `tests/test_evidence_reader.py`
-  - `tests/test_legacy_artifact_compatibility.py`
-
-This keeps layout assertions local and keeps production tests focused on typed behavior.
+- Use `tests/test_evidence_adapters.py` for typed matching and parsing assertions
+  against the canonical evidence identities.
+- Use `tests/domain/evidence/` for typed model `from_json` round-trips and strict
+  schema rejection.
 
 ## Legacy Compatibility Policy
 
-Legacy detection belongs in `cardre/domain/evidence/` and `cardre/adapters/evidence/`.
-
-- Product code must not know whether an artifact matched by schema or by role/type/media profile.
-- If a legacy shape exists, teach the adapter/profile/model about it.
-- Do not reintroduce raw JSON fallback in nodes or services.
+There is no legacy-shape support. Per ADR 0015, only the current canonical
+schema identity is accepted by `EvidenceReader`. Do not teach adapters,
+profiles or models about older shapes, and do not reintroduce raw JSON fallback
+in nodes, services, or adapters.
 
 ## Guardrail Link
 

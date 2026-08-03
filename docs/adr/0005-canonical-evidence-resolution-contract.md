@@ -2,13 +2,14 @@
 
 ## Status
 
-Proposed
+Superseded
 
 ## Historical note
 
-PR4 deleted `EvidenceResolver` as dead layering. The surviving contract is that
-`cardre/evidence_locator.py` owns the evidence lookup path and the branch-current
-availability check consumed by launch coordination.
+This proposal's migration targets were removed by the v2 refactor: the current
+evidence lookup lives in `cardre/application/evidence/evidence_resolver.py` and
+`cardre/adapters/evidence/reader.py`. See `docs/architecture/` for the current
+architecture.
 
 ## Context
 

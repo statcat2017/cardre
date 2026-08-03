@@ -2,7 +2,14 @@
 
 ## Status
 
-Proposed
+Superseded
+
+## Historical note
+
+The proposed workflow-guidance services (`cardre/services/*`) and staleness
+module were removed in the v2 refactor. The current branch/run keys and
+readiness vocabulary live in `cardre/application/reporting/` and
+`cardre/application/evidence/`.
 
 ## Context
 
