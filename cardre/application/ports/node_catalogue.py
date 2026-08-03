@@ -17,3 +17,7 @@ class NodeCataloguePort(Protocol):
     def availability(self, node_type: str) -> Any:
         """Return availability info for a node type."""
         ...
+
+    def resolve(self, node_type: str) -> Any:
+        """Resolve a node type name to its node class."""
+        ...

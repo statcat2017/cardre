@@ -86,6 +86,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/projects/{project_id}/plans/{plan_id}/canonical-version": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Canonical Scorecard Version */
+        post: operations["create_canonical_scorecard_version_projects__project_id__plans__plan_id__canonical_version_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/projects/{project_id}/plans/{plan_id}": {
         parameters: {
             query?: never;
@@ -153,6 +170,23 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/projects/{project_id}/plan-versions/{plan_version_id}/steps/{step_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update Step Params */
+        patch: operations["update_step_params_projects__project_id__plan_versions__plan_version_id__steps__step_id__patch"];
         trace?: never;
     };
     "/projects/{project_id}/plan-versions/{plan_version_id}/steps": {
@@ -667,6 +701,17 @@ export interface components {
              * @default
              */
             updated_at: string;
+        };
+        /** CanonicalScorecardVersionRequest */
+        CanonicalScorecardVersionRequest: {
+            /** Source Path */
+            source_path: string;
+            /** Target Column */
+            target_column?: string | null;
+            /** Good Values */
+            good_values?: string[] | null;
+            /** Bad Values */
+            bad_values?: string[] | null;
         };
         /** ChampionAssignmentRequest */
         ChampionAssignmentRequest: {
@@ -1253,6 +1298,13 @@ export interface components {
             /** Missing Evidence */
             missing_evidence?: string[];
         };
+        /** StepParamsUpdate */
+        StepParamsUpdate: {
+            /** Params */
+            params: {
+                [key: string]: unknown;
+            };
+        };
         /**
          * UnavailableProjectResponse
          * @description A registered project that could not be opened (corrupt, missing, etc).
@@ -1459,6 +1511,42 @@ export interface operations {
             };
         };
     };
+    create_canonical_scorecard_version_projects__project_id__plans__plan_id__canonical_version_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                plan_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CanonicalScorecardVersionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlanVersionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_plan_projects__project_id__plans__plan_id__get: {
         parameters: {
             query?: never;
@@ -1602,6 +1690,43 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlanVersionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_step_params_projects__project_id__plan_versions__plan_version_id__steps__step_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                plan_version_id: string;
+                step_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StepParamsUpdate"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {

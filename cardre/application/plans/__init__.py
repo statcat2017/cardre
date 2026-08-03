@@ -7,6 +7,10 @@ from cardre.application.plans.commit_plan_version import (
     CommitPlanVersion,
     CommitPlanVersionCommand,
 )
+from cardre.application.plans.create_canonical_scorecard_version import (
+    CreateCanonicalScorecardVersion,
+    CreateCanonicalScorecardVersionCommand,
+)
 from cardre.application.plans.create_plan import CreatePlan, CreatePlanCommand
 from cardre.application.plans.get_plan import GetPlan, GetPlanCommand
 from cardre.application.plans.get_plan_version import (
@@ -22,14 +26,20 @@ from cardre.application.plans.update_plan_version import (
     UpdatePlanVersion,
     UpdatePlanVersionCommand,
 )
+from cardre.application.plans.update_step_params import (
+    UpdateStepParams,
+    UpdateStepParamsCommand,
+)
 
 __all__ = [
     "CreatePlan", "CreatePlanCommand",
+    "CreateCanonicalScorecardVersion", "CreateCanonicalScorecardVersionCommand",
     "GetPlan", "GetPlanCommand",
     "ListPlans", "ListPlansCommand",
     "GetPlanVersion", "GetPlanVersionCommand",
     "ListPlanVersions", "ListPlanVersionsCommand",
     "UpdatePlanVersion", "UpdatePlanVersionCommand",
+    "UpdateStepParams", "UpdateStepParamsCommand",
     "CommitPlanVersion", "CommitPlanVersionCommand",
     "ApplyManualBinningEdit", "ApplyManualBinningEditCommand", "ApplyManualBinningEditResult",
 ]

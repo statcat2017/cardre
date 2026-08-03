@@ -4,11 +4,10 @@ Drives the complete canonical scorecard workflow through the new API and
 production stack, covering the 20 product-acceptance items from
 ``docs/architecture-rewrite/08-acceptance-and-test-strategy.md``.
 
-Plan creation and plan-version commitment go through the API
-(``POST /projects/{id}/plans`` and ``POST /projects/{id}/plan-versions/{id}/commit``).
-The step graph itself has no public editor endpoint yet (full editor is
-future work), so the constructed canonical step set is persisted via the
-repository before being committed through the API.
+Plan creation, canonical-version generation, commitment, and run submission
+all go through the API (``POST /projects/{id}/plans``,
+``POST /projects/{id}/plans/{plan_id}/canonical-version``,
+``POST /projects/{id}/plan-versions/{id}/commit``).
 
 Supersedes the pre-Batch-05 ``test_launch_pathway.py`` and
 ``test_api_scorecard_launch_pathway.py``.
@@ -26,7 +25,6 @@ import pytest
 from fastapi.testclient import TestClient
 
 from cardre.bootstrap.container import build_container
-from cardre.bootstrap.node_catalogue import build_default_catalogue
 from cardre.bootstrap.settings import Settings
 from cardre.domain.artifacts import json_logical_hash, table_logical_hash
 from cardre.domain.evidence.schemas import (
@@ -37,7 +35,6 @@ from cardre.domain.evidence.schemas import (
     SCHEMA_WOE_IV_EVIDENCE,
     SCHEMA_WOE_TABLE,
 )
-from cardre.domain.plans.scorecard_pathway import build_canonical_scorecard_steps
 
 
 def _write_input_csv(path: Path) -> Path:
@@ -89,13 +86,25 @@ def acceptance_env(tmp_path):
     assert resp.status_code == 201, resp.text
     plan_id = resp.json()["plan_id"]
 
-    # 5. Edit the graph: persist the canonical step set as a draft version.
-    #    (No public step-editor endpoint yet; committed through the API below.)
-    cat = build_default_catalogue(settings)
-    steps = build_canonical_scorecard_steps(csv_path, cat.resolve)
-    with container.uow_factory.for_project(project_id) as uow:
-        pv_id = uow.plans.create_version(plan_id, steps, is_committed=False)
-        uow.commit()
+    # 5. Generate the canonical pathway through the API: a draft version is
+    #    created and populated with the full canonical step set.
+    resp = client.post(
+        f"/projects/{project_id}/plans/{plan_id}/canonical-version",
+        json={"source_path": str(csv_path)},
+    )
+    assert resp.status_code == 201, resp.text
+    pv_id = resp.json()["plan_version_id"]
+
+    # 5b. Edit the define-metadata step through the API, proving the
+    #     user-reachable parameter-edit loop on a draft version.
+    steps = client.get(f"/projects/{project_id}/plan-versions/{pv_id}/steps")
+    assert steps.status_code == 200, steps.text
+    meta_step = next(s for s in steps.json() if s["canonical_step_id"] == "define-metadata")
+    patch_resp = client.patch(
+        f"/projects/{project_id}/plan-versions/{pv_id}/steps/{meta_step['step_id']}",
+        json={"params": {**meta_step["params"], "target_column": "credit_risk_class"}},
+    )
+    assert patch_resp.status_code == 200, patch_resp.text
 
     # 6. Commit the immutable plan version through the API.
     resp = client.post(f"/projects/{project_id}/plan-versions/{pv_id}/commit")

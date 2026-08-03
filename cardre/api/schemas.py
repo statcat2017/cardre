@@ -87,6 +87,13 @@ class PlanCreateRequest(BaseModel):
     name: str
 
 
+class CanonicalScorecardVersionRequest(BaseModel):
+    source_path: str
+    target_column: str | None = None
+    good_values: list[str] | None = None
+    bad_values: list[str] | None = None
+
+
 class PlanVersionResponse(BaseModel):
     plan_version_id: str
     plan_id: str
@@ -102,6 +109,10 @@ class PlanVersionListResponse(BaseModel):
 
 class PlanVersionUpdate(BaseModel):
     description: str | None = None
+
+
+class StepParamsUpdate(BaseModel):
+    params: dict[str, Any]
 
 
 class PlanStepResponse(BaseModel):
@@ -475,6 +486,7 @@ __all__ = [
     "ManualBinningReviewUpdate",
     "NodeTypeListResponse",
     "NodeTypeResponse",
+    "CanonicalScorecardVersionRequest",
     "PlanCreateRequest",
     "PlanListResponse",
     "PlanResponse",
@@ -482,6 +494,7 @@ __all__ = [
     "PlanVersionListResponse",
     "PlanVersionResponse",
     "PlanVersionUpdate",
+    "StepParamsUpdate",
     "ProjectCreateRequest",
     "ProjectListResponse",
     "ProjectResponse",

@@ -21,6 +21,12 @@ interface Props {
   runPending: boolean;
   canRun: boolean;
   onRun: () => void;
+  sourcePath: string | null;
+  onSourcePathChange: (path: string) => void;
+  onGeneratePathway: () => void;
+  generatePathwayPending: boolean;
+  onCommit: () => void;
+  commitPending: boolean;
 }
 
 export function VersionPanel({
@@ -33,7 +39,16 @@ export function VersionPanel({
   runPending,
   canRun,
   onRun,
+  sourcePath,
+  onSourcePathChange,
+  onGeneratePathway,
+  generatePathwayPending,
+  onCommit,
+  commitPending,
 }: Props) {
+  const isDraft = !!selectedVersion && !selectedVersion.is_committed;
+  const showGenerateForm = !versions?.length || !!selectedVersion?.is_committed;
+
   return (
     <>
       <div
@@ -54,22 +69,87 @@ export function VersionPanel({
               : "Choose a plan version to run."}
           </p>
         </div>
-        <button
-          type="button"
-          onClick={onRun}
-          disabled={!canRun || runPending}
-          style={{
-            padding: "10px 14px",
-            borderRadius: 10,
-            border: 0,
-            background: !canRun || runPending ? theme.mutedSoft : theme.text,
-            color: "#fff",
-            cursor: !canRun || runPending ? "not-allowed" : "pointer",
-          }}
-        >
-          {runPending ? "Running..." : canRun ? "Run selected version" : "Commit version to run"}
-        </button>
+        <div style={{ display: "flex", gap: 10 }}>
+          {isDraft && (
+            <button
+              type="button"
+              onClick={onCommit}
+              disabled={commitPending}
+              style={{
+                padding: "10px 14px",
+                borderRadius: 10,
+                border: 0,
+                background: commitPending ? theme.mutedSoft : theme.text,
+                color: "#fff",
+                cursor: commitPending ? "not-allowed" : "pointer",
+              }}
+            >
+              {commitPending ? "Committing..." : "Commit version"}
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={onRun}
+            disabled={!canRun || runPending}
+            style={{
+              padding: "10px 14px",
+              borderRadius: 10,
+              border: 0,
+              background: !canRun || runPending ? theme.mutedSoft : theme.text,
+              color: "#fff",
+              cursor: !canRun || runPending ? "not-allowed" : "pointer",
+            }}
+          >
+            {runPending ? "Running..." : canRun ? "Run selected version" : "Commit version to run"}
+          </button>
+        </div>
       </div>
+
+      {showGenerateForm && (
+        <section style={{ ...pageCardStyle, padding: 18, display: "grid", gap: 10 }}>
+          <h3 style={{ marginTop: 0, fontSize: 16 }}>Generate launch pathway</h3>
+          <p style={{ margin: 0, color: theme.muted, fontSize: 13 }}>
+            Point Cardre at a CSV, and it will generate the full canonical scorecard pathway as a
+            draft version.
+          </p>
+          <form
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (sourcePath?.trim()) onGeneratePathway();
+            }}
+            style={{ display: "grid", gap: 8 }}
+          >
+            <input
+              type="text"
+              value={sourcePath ?? ""}
+              onChange={(event) => onSourcePathChange(event.target.value)}
+              placeholder="Absolute path to your CSV"
+              style={{
+                width: "100%",
+                padding: "10px 12px",
+                borderRadius: 10,
+                border: `1px solid ${theme.borderStrong}`,
+                boxSizing: "border-box",
+              }}
+            />
+            <button
+              type="submit"
+              disabled={!sourcePath?.trim() || generatePathwayPending}
+              style={{
+                padding: "10px 12px",
+                borderRadius: 10,
+                border: 0,
+                background:
+                  !sourcePath?.trim() || generatePathwayPending ? theme.mutedSoft : theme.text,
+                color: "#fff",
+                cursor: !sourcePath?.trim() || generatePathwayPending ? "not-allowed" : "pointer",
+              }}
+            >
+              {generatePathwayPending ? "Generating..." : "Generate launch pathway"}
+            </button>
+          </form>
+        </section>
+      )}
 
       <section style={{ ...pageCardStyle, padding: 18 }}>
         <h3 style={{ marginTop: 0, fontSize: 16 }}>Plan Versions</h3>

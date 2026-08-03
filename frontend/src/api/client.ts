@@ -319,6 +319,52 @@ export const api = {
           }),
         );
       },
+      createCanonicalVersion: async (
+        planId: string,
+        body: components["schemas"]["CanonicalScorecardVersionRequest"],
+      ) => {
+        const client = makeClient();
+        return requireData(
+          await client.POST("/projects/{project_id}/plans/{plan_id}/canonical-version", {
+            params: { path: { project_id: pid, plan_id: planId } },
+            body,
+          }),
+        );
+      },
+      getPlanVersionSteps: async (planVersionId: string) => {
+        const client = makeClient();
+        return requireData(
+          await client.GET("/projects/{project_id}/plan-versions/{plan_version_id}/steps", {
+            params: { path: { project_id: pid, plan_version_id: planVersionId } },
+          }),
+        );
+      },
+      updateStepParams: async (
+        planVersionId: string,
+        stepId: string,
+        body: components["schemas"]["StepParamsUpdate"],
+      ) => {
+        const client = makeClient();
+        return requireData(
+          await client.PATCH(
+            "/projects/{project_id}/plan-versions/{plan_version_id}/steps/{step_id}",
+            {
+              params: {
+                path: { project_id: pid, plan_version_id: planVersionId, step_id: stepId },
+              },
+              body,
+            },
+          ),
+        );
+      },
+      commitPlanVersion: async (planVersionId: string) => {
+        const client = makeClient();
+        return requireData(
+          await client.POST("/projects/{project_id}/plan-versions/{plan_version_id}/commit", {
+            params: { path: { project_id: pid, plan_version_id: planVersionId } },
+          }),
+        );
+      },
       listPlanVersions: async (planId: string) => {
         const client = makeClient();
         return requireData(
