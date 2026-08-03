@@ -245,6 +245,112 @@ class TestCommitPlanVersion:
         )
         assert "target_column must agree" in joined
 
+    def test_commit_rejects_overlapping_good_bad(self, provisioned_project):
+        """A semantically contradictory target definition (good and bad share
+        a value) must not become immutable — it would fail at first run."""
+        from cardre.domain.artifacts import json_logical_hash
+
+        project_id, uow_factory, _, _ = provisioned_project
+        pv_id = self._canonical_draft(uow_factory, project_id, ready=True)
+
+        with uow_factory.for_project(project_id) as uow:
+            steps = uow.plans.get_version_steps(pv_id)
+            meta = next(s for s in steps if s.canonical_step_id == "define-metadata")
+            params = dict(meta.params)
+            params["good_values"] = ["default"]
+            params["bad_values"] = ["default"]
+            uow.plans.update_step_params(pv_id, meta.step_id, params, json_logical_hash(params))
+            uow.commit()
+
+        use_case = CommitPlanVersion(_factory(uow_factory, project_id), _catalogue())
+        with pytest.raises(CardreError) as exc:
+            use_case(CommitPlanVersionCommand(plan_version_id=pv_id))
+        assert exc.value.code == "PARAMETER_VALIDATION_ERROR"
+        joined = " ".join(
+            msg for e in exc.value.context.get("errors", []) for msg in e.get("errors", [])
+        )
+        assert "must be disjoint" in joined
+
+    def test_commit_rejects_blank_good_values(self, provisioned_project):
+        from cardre.domain.artifacts import json_logical_hash
+
+        project_id, uow_factory, _, _ = provisioned_project
+        pv_id = self._canonical_draft(uow_factory, project_id, ready=True)
+
+        with uow_factory.for_project(project_id) as uow:
+            steps = uow.plans.get_version_steps(pv_id)
+            meta = next(s for s in steps if s.canonical_step_id == "define-metadata")
+            params = dict(meta.params)
+            params["good_values"] = ["  "]
+            uow.plans.update_step_params(pv_id, meta.step_id, params, json_logical_hash(params))
+            uow.commit()
+
+        use_case = CommitPlanVersion(_factory(uow_factory, project_id), _catalogue())
+        with pytest.raises(CardreError) as exc:
+            use_case(CommitPlanVersionCommand(plan_version_id=pv_id))
+        assert exc.value.code == "PARAMETER_VALIDATION_ERROR"
+        joined = " ".join(
+            msg for e in exc.value.context.get("errors", []) for msg in e.get("errors", [])
+        )
+        assert "good_values must contain at least one non-blank value" in joined
+
+    def test_commit_rejects_missing_target_key(self, provisioned_project):
+        """A legacy/direct-repo state where a target-dependent step has no
+        target_column key at all must be rejected: schema normalization would
+        supply the default, so readiness must not see a bare absent key as
+        consistent."""
+        from cardre.domain.artifacts import json_logical_hash
+
+        project_id, uow_factory, _, _ = provisioned_project
+        pv_id = self._canonical_draft(uow_factory, project_id, ready=True)
+
+        with uow_factory.for_project(project_id) as uow:
+            steps = uow.plans.get_version_steps(pv_id)
+            vt = next(s for s in steps if s.canonical_step_id == "validate-target")
+            params = dict(vt.params)
+            params.pop("target_column", None)
+            uow.plans.update_step_params(pv_id, vt.step_id, params, json_logical_hash(params))
+            uow.commit()
+
+        use_case = CommitPlanVersion(_factory(uow_factory, project_id), _catalogue())
+        with pytest.raises(CardreError) as exc:
+            use_case(CommitPlanVersionCommand(plan_version_id=pv_id))
+        assert exc.value.code == "PARAMETER_VALIDATION_ERROR"
+        joined = " ".join(
+            msg for e in exc.value.context.get("errors", []) for msg in e.get("errors", [])
+        )
+        assert "target_column must agree" in joined
+
+    def test_commit_rejects_accept_automated_with_overrides(self, provisioned_project):
+        """accept_automated=True contradicting the binning actually executed
+        (manual overrides present) must be rejected before commit."""
+        from cardre.domain.artifacts import json_logical_hash
+
+        project_id, uow_factory, _, _ = provisioned_project
+        pv_id = self._canonical_draft(uow_factory, project_id, ready=True)
+
+        with uow_factory.for_project(project_id) as uow:
+            steps = uow.plans.get_version_steps(pv_id)
+            manual = next(s for s in steps if s.canonical_step_id == "manual-binning")
+            params = dict(manual.params)
+            params["overrides"] = [{
+                "variable": "x",
+                "action": "merge_bins",
+                "reason": "manual change",
+                "source_bin_ids": ["a", "b"],
+            }]
+            uow.plans.update_step_params(pv_id, manual.step_id, params, json_logical_hash(params))
+            uow.commit()
+
+        use_case = CommitPlanVersion(_factory(uow_factory, project_id), _catalogue())
+        with pytest.raises(CardreError) as exc:
+            use_case(CommitPlanVersionCommand(plan_version_id=pv_id))
+        assert exc.value.code == "PARAMETER_VALIDATION_ERROR"
+        joined = " ".join(
+            msg for e in exc.value.context.get("errors", []) for msg in e.get("errors", [])
+        )
+        assert "accept_automated cannot be true when overrides" in joined
+
 
 class TestUpdatePlanVersion:
     def test_updates_draft_description(self, provisioned_project):

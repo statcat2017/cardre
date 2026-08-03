@@ -145,6 +145,40 @@ stale empty results after an async run. Covered by
 now renders the `errors` context from `ApiError` (step + field messages),
 so an invalid edit shows *why* it failed, not just the status line.
 
+## Third-review remediation (PR 385, head 46a4b52)
+
+**P1 — Overlapping/blank target definitions cannot become immutable.**
+`DefineModellingMetadataNode.validate_params()` now performs the
+data-independent target-definition checks that previously lived only in
+`run()`: non-blank `target_column`, non-blank good/bad value lists (blank
+members dropped and duplicates normalized), and disjoint good/bad/
+indeterminate sets. `validate_canonical_readiness()` applies the same rules
+at commit, so a draft with `good_values=["default"], bad_values=["default"]`
+is rejected before it can be committed. Covered by
+`test_commit_rejects_overlapping_good_bad`,
+`test_commit_rejects_blank_good_values`, and node-level tests in
+`tests/nodes/test_canonical_decision_gates.py`.
+
+**P1 — `accept_automated` cannot contradict executed binning.**
+`ManualBinningNode.validate_params()` now rejects
+`accept_automated=True` combined with non-empty `overrides`, and its `run()`
+defensively raises the same way. `validate_canonical_readiness()` enforces
+the rule at commit. Covered by
+`test_commit_rejects_accept_automated_with_overrides` and the node tests.
+
+**P2 — Fast runs refresh reports/exports too.** The refresh now invalidates
+reports/exports the *first time any terminal status is observed per run ID*
+(rather than only on a non-terminal → terminal transition), closing the race
+where a fast run's first status response is already terminal. Covered by
+`refreshes reports and exports when the first status is already terminal`.
+
+**P2 — Readiness validates normalized parameters.** `CommitPlanVersion`
+passes the schema-normalized parameter sets to `validate_canonical_readiness`,
+so an absent or `None` target key (which normalization would default) cannot
+slip past the consistency check. All three target-dependent steps must exist
+and carry the same stripped, non-empty target column. Covered by
+`test_commit_rejects_missing_target_key`.
+
 ## Existing seams this batch builds on (do NOT re-implement these)
 
 Every piece of machinery this batch needs already exists. The work is to

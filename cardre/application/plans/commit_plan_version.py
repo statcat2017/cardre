@@ -50,9 +50,11 @@ class CommitPlanVersion:
             # resolved node before the version becomes immutable. A committed
             # version cannot be corrected, so a bad edit must be caught here.
             errors_by_step: list[dict[str, Any]] = []
+            normalized_by_step: dict[str, dict[str, Any]] = {}
             for step in steps:
                 node_cls = self._node_catalogue.resolve(step.node_type)
-                _, errors = validate_step_params(node_cls, step.params)
+                normalized, errors = validate_step_params(node_cls, step.params)
+                normalized_by_step[step.step_id] = normalized
                 if errors:
                     errors_by_step.append({
                         "step_id": step.step_id,
@@ -61,9 +63,15 @@ class CommitPlanVersion:
                     })
 
             # Canonical-pathway readiness: explicit modelling decisions beyond
-            # generic node validation (business metadata, manual-binning
-            # outcome, consistent target) must be recorded before commit.
-            errors_by_step.extend(validate_canonical_readiness(steps))
+            # generic node validation (business metadata, target definition,
+            # manual-binning outcome, consistent target) must be recorded
+            # before commit. Run against the normalized parameter sets so an
+            # absent/null target key cannot slip past the check.
+            errors_by_step.extend(
+                validate_canonical_readiness(
+                    steps, normalized_params=normalized_by_step,
+                )
+            )
 
             if errors_by_step:
                 raise CardreError(

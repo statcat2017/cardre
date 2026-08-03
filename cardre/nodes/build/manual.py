@@ -101,7 +101,15 @@ class ManualBinningNode(NodeType):
 
     def validate_params(self, params: dict[str, Any]) -> list[str]:
         errors: list[str] = []
-        for i, override in enumerate(list(params.get("overrides", []))):
+        overrides = list(params.get("overrides", []))
+        accept_automated = bool(params.get("accept_automated"))
+        reviewed = bool(params.get("reviewed"))
+        if accept_automated and overrides:
+            errors.append(
+                "accept_automated cannot be true when overrides are present: "
+                "accepting automated bins discards manual overrides"
+            )
+        for i, override in enumerate(overrides):
             prefix = f"overrides[{i}]"
             if not isinstance(override, dict):
                 errors.append(f"{prefix} must be a dict")
@@ -121,13 +129,19 @@ class ManualBinningNode(NodeType):
                 errors.append(f"{prefix}: source_bin_ids must be a list")
             if action == "merge_bins" and len(source_bin_ids) < 2:
                 errors.append(f"{prefix}: merge_bins requires at least 2 source bins")
-        if params.get("reviewed") and params.get("accept_automated"):
+        if reviewed and accept_automated:
             errors.append("reviewed and accept_automated cannot both be true.")
         return errors
 
     def run(self, context: NodeContext) -> NodeResult:
         params = context.params
         overrides = params.get("overrides", [])
+        accept_automated = bool(params.get("accept_automated"))
+        if accept_automated and overrides:
+            raise ValueError(
+                "accept_automated is true but manual overrides are present; "
+                "automated-bin acceptance discards overrides and cannot be combined"
+            )
 
         bin_def_list = context.inputs.by_kind(EvidenceKind.BIN_DEFINITION)
         if not bin_def_list:

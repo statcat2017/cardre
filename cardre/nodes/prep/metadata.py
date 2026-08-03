@@ -14,6 +14,61 @@ from cardre.nodes.contracts import (
 )
 
 
+def _normalize_target_values(values: Any) -> list[str]:
+    """Strip, drop blanks, and dedupe a target value list."""
+    if not isinstance(values, list):
+        return []
+    seen: list[str] = []
+    for value in values:
+        text = str(value).strip()
+        if text and text not in seen:
+            seen.append(text)
+    return seen
+
+
+def _validate_target_definition(params: dict[str, Any]) -> list[str]:
+    """Data-independent validation of the target definition.
+
+    These checks do not require the dataset: they validate the shape of the
+    declared target, good, bad and indeterminate value sets so a semantically
+    contradictory definition cannot be committed as immutable.
+    """
+    errors: list[str] = []
+
+    target_column = params.get("target_column")
+    if not isinstance(target_column, str) or not target_column.strip():
+        errors.append("target_column must be non-whitespace text")
+
+    good_values = _normalize_target_values(params.get("good_values"))
+    bad_values = _normalize_target_values(params.get("bad_values"))
+    indeterminate_values = _normalize_target_values(params.get("indeterminate_values"))
+
+    if not good_values:
+        errors.append("good_values must contain at least one non-blank value")
+    if not bad_values:
+        errors.append("bad_values must contain at least one non-blank value")
+
+    good_set = set(good_values)
+    bad_set = set(bad_values)
+    indeterminate_set = set(indeterminate_values)
+
+    overlap_gb = good_set & bad_set
+    if overlap_gb:
+        errors.append(f"good_values and bad_values must be disjoint; overlap: {sorted(overlap_gb)}")
+    overlap_gi = good_set & indeterminate_set
+    if overlap_gi:
+        errors.append(
+            f"good_values and indeterminate_values must be disjoint; overlap: {sorted(overlap_gi)}"
+        )
+    overlap_bi = bad_set & indeterminate_set
+    if overlap_bi:
+        errors.append(
+            f"bad_values and indeterminate_values must be disjoint; overlap: {sorted(overlap_bi)}"
+        )
+
+    return errors
+
+
 class DefineModellingMetadataNode(NodeType):
     node_type = "cardre.define_modelling_metadata"
     version = "1"
@@ -48,6 +103,9 @@ class DefineModellingMetadataNode(NodeType):
                 "reject_inference_position must be one of "
                 f"{sorted(self.VALID_REJECT_INFERENCE_POSITIONS)}, got {reject_inference_position!r}"
             )
+        # Data-independent target-definition validation. Data-dependent
+        # checks (values present in the actual dataset) stay in run().
+        errors.extend(_validate_target_definition(params))
         return errors
 
     def run(self, context: NodeContext) -> NodeResult:

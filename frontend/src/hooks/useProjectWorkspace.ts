@@ -120,25 +120,25 @@ export function useProjectWorkspace(scope: ProjectScope) {
     return () => window.clearInterval(intervalId);
   }, [effectiveSelectedRunId, selectedRunStatus, queryClient, scope.projectId]);
 
-  // Reports and exports are produced at finalization. Refresh them once the
-  // run transitions from a non-terminal state to a terminal one, so the
-  // "Reports / Exports" panels do not keep showing stale empty results.
-  const prevRunStatusRef = useRef<string | null>(null);
+  // Reports and exports are produced at finalization. Refresh them the first
+  // time any terminal status is observed for a run (regardless of the
+  // preceding status), so the "Reports / Exports" panels do not keep showing
+  // stale empty results — including for fast runs whose first status response
+  // is already terminal.
+  const terminalRefreshRef = useRef<Set<string>>(new Set());
   useEffect(() => {
     const runId = effectiveSelectedRunId;
-    if (!runId || !selectedRunStatus) return;
-    const prev = prevRunStatusRef.current;
-    prevRunStatusRef.current = selectedRunStatus;
-    if (prev && !isTerminalRun(prev) && isTerminalRun(selectedRunStatus)) {
-      void Promise.all([
-        queryClient.invalidateQueries({
-          queryKey: ["runReports", scope.projectId, runId],
-        }),
-        queryClient.invalidateQueries({
-          queryKey: ["runExports", scope.projectId, runId],
-        }),
-      ]);
-    }
+    if (!runId || !selectedRunStatus || !isTerminalRun(selectedRunStatus)) return;
+    if (terminalRefreshRef.current.has(runId)) return;
+    terminalRefreshRef.current.add(runId);
+    void Promise.all([
+      queryClient.invalidateQueries({
+        queryKey: ["runReports", scope.projectId, runId],
+      }),
+      queryClient.invalidateQueries({
+        queryKey: ["runExports", scope.projectId, runId],
+      }),
+    ]);
   }, [effectiveSelectedRunId, selectedRunStatus, queryClient, scope.projectId]);
 
   const createPlanMutation = useMutation({
