@@ -57,9 +57,9 @@ the most commonly used kinds; the full enum covers all artifact types in the eng
 | `FEATURE_SELECTION_EVIDENCE` | `cardre.feature_selection_evidence.v1` | `FeatureSelectionEvidence` |
 | `CUTOFF_ANALYSIS` | `cardre.cutoff_analysis.v1` | `CutoffAnalysis` |
 | `VALIDATION_METRICS` | `cardre.validation_metrics.v1` | `ValidationMetrics` |
-| `SCORE_TABLE` | `cardre.scorecard_table.v1` | `ScoreTable` |
-| `SCORING_EXPORT_PYTHON` | `cardre.scoring_export_python.v1` | `ScoringExportPython` |
-| `SCORING_EXPORT_SQL` | `cardre.scoring_export_sql.v1` | `ScoringExportSQL` |
+| `SCORE_TABLE` | `cardre.scorecard_table.v1` | (raw dict) |
+| `SCORING_EXPORT_PYTHON` | `cardre.scoring_export_python.v1` | (raw dict) |
+| `SCORING_EXPORT_SQL` | `cardre.scoring_export_sql.v1` | (raw dict) |
 
 The 4 diagnostics kinds (`COEFFICIENT_SIGN_DIAGNOSTICS`, `SEPARATION_DIAGNOSTICS`,
 `VIF_DIAGNOSTICS`, `CALIBRATION_DIAGNOSTICS`) and `MANUAL_BINNING_OVERRIDES` were
@@ -70,7 +70,10 @@ added during the thermo-nuclear quality sprint (PR2).
 - Evidence is resolved by canonical step ID, not by step instance ID. The
   canonical IDs and their evidence kinds are defined in
   `cardre/application/reporting/contracts.py`.
-- A persisted step's `canonical_step_id` must be exactly the current canonical
-  ID. There are no legacy aliases or fallback readers (see ADR 0015): a step
-  whose `node_version` or canonical identity is not the current one is rejected
-  before execution.
+- `canonical_step_id` is a **reporting identifier**: report readiness and
+  evidence collection resolve a persisted step's canonical ID to the canonical
+  set in `contracts.py`. `StepSpec` requires it to be non-empty but the current
+  pre-execution validation does not compare it to a canonical identity — it
+  validates topology, node availability, and `node_version`. An obsolete
+  canonical ID on a current-version step therefore surfaces as missing report
+  evidence, not as a pre-execution rejection.
