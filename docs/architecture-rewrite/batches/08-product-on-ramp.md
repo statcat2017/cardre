@@ -210,6 +210,25 @@ definition checks before appending reject-inference errors; an absent or
 malformed `reject_inference_position` no longer short-circuits the target
 checks. Covered by `test_target_checks_run_even_without_reject_inference`.
 
+## Fifth-review remediation (PR 385, head 20c9e09)
+
+**P1 — Explicit `null` in an optional target list is rejected.** 
+`target_list_errors()` now distinguishes an absent key (`key not in params`,
+valid) from an explicit `null` (`params[key] is None`, rejected as "must be a
+list"). `DefineModellingMetadataNode.run()` and
+`ModellingMetadata.from_json()` defensively treat a null as empty so legacy
+persisted state cannot crash execution. Covered by
+`test_rejects_explicit_null_indeterminate_values`,
+`test_commit_rejects_explicit_null_indeterminate_values`, and
+`test_patch_null_indeterminate_values_rejected`; valid omitted/empty
+indeterminate lists still run (node + commit tests).
+
+**Non-blocking — target-definition validation consolidated.** The target
+definition checks now live once in `cardre/domain/plans/target_definition.py`
+and are shared by the node validator, the canonical readiness gate, and the
+commit path. `CommitPlanVersion` merges per-step errors so a message reported
+by both the node validator and the readiness gate appears once.
+
 ## Existing seams this batch builds on (do NOT re-implement these)
 
 Every piece of machinery this batch needs already exists. The work is to

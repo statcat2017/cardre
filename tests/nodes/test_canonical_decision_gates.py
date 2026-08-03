@@ -91,6 +91,38 @@ class TestDefineModellingMetadataTargetDefinition:
         # still rejected.
         assert not any("target_column must be non-whitespace text" in e for e in errors)
 
+    def test_rejects_explicit_null_indeterminate_values(self):
+        """An explicit null for an optional list must be rejected: runtime
+        iterates the value, so a null would crash execution."""
+        node = DefineModellingMetadataNode()
+        errors = node.validate_params({
+            "reject_inference_position": "not_applied",
+            "target_column": "outcome",
+            "good_values": ["good"],
+            "bad_values": ["bad"],
+            "indeterminate_values": None,
+        })
+        assert any("indeterminate_values must be a list" in e for e in errors), errors
+
+    def test_accepts_omitted_and_empty_indeterminate_values(self):
+        """An absent or empty indeterminate list is valid."""
+        node = DefineModellingMetadataNode()
+        omitted = node.validate_params({
+            "reject_inference_position": "not_applied",
+            "target_column": "outcome",
+            "good_values": ["good"],
+            "bad_values": ["bad"],
+        })
+        empty = node.validate_params({
+            "reject_inference_position": "not_applied",
+            "target_column": "outcome",
+            "good_values": ["good"],
+            "bad_values": ["bad"],
+            "indeterminate_values": [],
+        })
+        assert omitted == []
+        assert empty == []
+
 
 class TestManualBinningAutomatedAcceptance:
     def test_rejects_accept_automated_with_overrides(self):

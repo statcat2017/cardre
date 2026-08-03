@@ -17,6 +17,32 @@ class CommitPlanVersionCommand:
     plan_version_id: str
 
 
+def _merge_errors_by_step(
+    errors_by_step: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Merge per-step validation errors, keeping each message once.
+
+    The node validator and the canonical readiness gate both run the shared
+    target-definition checks on the same normalized params, so the same error
+    can be reported by both. Collapse entries with the same ``step_id``.
+    """
+    merged: dict[str, dict[str, Any]] = {}
+    for entry in errors_by_step:
+        step_id = entry["step_id"]
+        existing = merged.get(step_id)
+        if existing is None:
+            merged[step_id] = {
+                "step_id": step_id,
+                "canonical_step_id": entry.get("canonical_step_id", ""),
+                "errors": list(entry.get("errors", [])),
+            }
+            continue
+        for message in entry.get("errors", []):
+            if message not in existing["errors"]:
+                existing["errors"].append(message)
+    return list(merged.values())
+
+
 class CommitPlanVersion:
     def __init__(
         self,
@@ -72,6 +98,12 @@ class CommitPlanVersion:
                     steps, normalized_params=normalized_by_step,
                 )
             )
+
+            # The node validator and the readiness gate both run the shared
+            # target-definition checks on the same normalized params, so the
+            # same error can be reported by both. Merge per step and keep each
+            # message once, in order.
+            errors_by_step = _merge_errors_by_step(errors_by_step)
 
             if errors_by_step:
                 raise CardreError(

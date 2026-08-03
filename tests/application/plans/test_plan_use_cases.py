@@ -420,6 +420,51 @@ class TestCommitPlanVersion:
             msg for e in exc.value.context.get("errors", []) for msg in e.get("errors", [])
         )
         assert "product must be non-whitespace text" in joined
+
+    def test_commit_rejects_explicit_null_indeterminate_values(self, provisioned_project):
+        """An explicit null for an optional target list must be rejected at
+        commit — runtime iterates the value, so a null would crash after the
+        version became immutable."""
+        from cardre.domain.artifacts import json_logical_hash
+
+        project_id, uow_factory, _, _ = provisioned_project
+        pv_id = self._canonical_draft(uow_factory, project_id, ready=True)
+
+        with uow_factory.for_project(project_id) as uow:
+            steps = uow.plans.get_version_steps(pv_id)
+            meta = next(s for s in steps if s.canonical_step_id == "define-metadata")
+            params = dict(meta.params)
+            params["indeterminate_values"] = None
+            uow.plans.update_step_params(pv_id, meta.step_id, params, json_logical_hash(params))
+            uow.commit()
+
+        use_case = CommitPlanVersion(_factory(uow_factory, project_id), _catalogue())
+        with pytest.raises(CardreError) as exc:
+            use_case(CommitPlanVersionCommand(plan_version_id=pv_id))
+        assert exc.value.code == "PARAMETER_VALIDATION_ERROR"
+        joined = " ".join(
+            msg for e in exc.value.context.get("errors", []) for msg in e.get("errors", [])
+        )
+        assert "indeterminate_values must be a list" in joined
+
+    def test_commit_accepts_empty_indeterminate_values(self, provisioned_project):
+        """An empty (but present) indeterminate list commits and runs
+        successfully."""
+        project_id, uow_factory, _, _ = provisioned_project
+        pv_id = self._canonical_draft(uow_factory, project_id, ready=True)
+
+        from cardre.domain.artifacts import json_logical_hash
+        with uow_factory.for_project(project_id) as uow:
+            steps = uow.plans.get_version_steps(pv_id)
+            meta = next(s for s in steps if s.canonical_step_id == "define-metadata")
+            params = dict(meta.params)
+            params["indeterminate_values"] = []
+            uow.plans.update_step_params(pv_id, meta.step_id, params, json_logical_hash(params))
+            uow.commit()
+
+        use_case = CommitPlanVersion(_factory(uow_factory, project_id), _catalogue())
+        committed = use_case(CommitPlanVersionCommand(plan_version_id=pv_id))
+        assert committed.is_committed is True
         """accept_automated=True contradicting the binning actually executed
         (manual overrides present) must be rejected before commit."""
         from cardre.domain.artifacts import json_logical_hash

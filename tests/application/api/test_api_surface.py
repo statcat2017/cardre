@@ -364,6 +364,50 @@ def test_patch_unknown_step_returns_404(app_env, tmp_path):
     assert resp.json()["detail"]["code"] == "STEP_NOT_FOUND"
 
 
+def test_patch_null_indeterminate_values_rejected(app_env, tmp_path):
+    """The step editor accepts arbitrary JSON params; an explicit null for an
+    optional target list must be rejected with a structured 422."""
+    import csv
+    import json
+
+    from cardre.application.plans.create_canonical_scorecard_version import (
+        CreateCanonicalScorecardVersion,
+        CreateCanonicalScorecardVersionCommand,
+    )
+    from cardre.bootstrap.node_catalogue import build_default_catalogue
+    from cardre.bootstrap.settings import Settings
+
+    client, container = app_env
+    pid, _ = provision(container, tmp_path)
+    plan_resp = client.post(f"/projects/{pid}/plans", json={"name": "P"})
+    plan_id = plan_resp.json()["plan_id"]
+    csv_path = tmp_path / "in.csv"
+    with open(csv_path, "w", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=["x", "outcome"])
+        w.writeheader()
+        w.writerow({"x": 1, "outcome": "good"})
+        w.writerow({"x": 2, "outcome": "bad"})
+    cat = build_default_catalogue(Settings())
+    create = CreateCanonicalScorecardVersion(
+        lambda: container.uow_factory.for_project(pid), cat,
+    )
+    pv = create(CreateCanonicalScorecardVersionCommand(
+        plan_id=plan_id, source_path=str(csv_path), target_column="outcome",
+        good_values=["good"], bad_values=["bad"],
+    ))
+    pv_id = pv.plan_version_id
+    steps = client.get(f"/projects/{pid}/plan-versions/{pv_id}/steps").json()
+    meta = next(s for s in steps if s["canonical_step_id"] == "define-metadata")
+
+    resp = client.patch(
+        f"/projects/{pid}/plan-versions/{pv_id}/steps/{meta['step_id']}",
+        json={"params": {**meta["params"], "indeterminate_values": None}},
+    )
+    assert resp.status_code == 422
+    assert resp.json()["detail"]["code"] == "PARAMETER_VALIDATION_ERROR"
+    assert "indeterminate_values must be a list" in json.dumps(resp.json())
+
+
 def test_branch_scope_without_branch_id_rejected(app_env, tmp_path):
     client, container = app_env
     pid, _ = provision(container, tmp_path)

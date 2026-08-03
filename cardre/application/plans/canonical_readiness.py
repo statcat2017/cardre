@@ -27,6 +27,7 @@ from __future__ import annotations
 from typing import Any
 
 from cardre.domain.plans.scorecard_pathway import TARGET_DEPENDENT_STEP_IDS
+from cardre.domain.plans.target_definition import validate_target_definition
 
 # Business metadata a real project must supply before an auditable scorecard
 # can be committed. The production template deliberately leaves these empty.
@@ -37,74 +38,6 @@ _ESSENTIAL_METADATA_KEYS = (
     "performance_window",
     "reject_inference_position",
 )
-
-
-def _normalize_target_values(values: Any) -> list[str]:
-    """Return the exact string representation of each non-blank, non-null
-    member (duplicates collapse via the caller's set)."""
-    if not isinstance(values, list):
-        return []
-    return [str(v) for v in values if v is not None and str(v).strip()]
-
-
-def _target_list_errors(params: dict[str, Any], key: str) -> list[str]:
-    """Reject null or blank members in a target value list.
-
-    Execution consumes each member verbatim (``str(v)`` without stripping),
-    so a blank or null member would become a spurious declared category.
-    """
-    errors: list[str] = []
-    values = params.get(key)
-    if values is None:
-        return errors
-    if not isinstance(values, list):
-        return [f"{key} must be a list"]
-    for i, value in enumerate(values):
-        if value is None:
-            errors.append(f"{key}[{i}] must not be null")
-        elif isinstance(value, str) and not value.strip():
-            errors.append(f"{key}[{i}] must not be blank")
-    return errors
-
-
-def _target_definition_errors(params: dict[str, Any]) -> list[str]:
-    errors: list[str] = []
-
-    target_column = params.get("target_column")
-    if not isinstance(target_column, str) or not target_column.strip():
-        errors.append("target_column must be non-whitespace text")
-
-    for key in ("good_values", "bad_values", "indeterminate_values"):
-        errors.extend(_target_list_errors(params, key))
-
-    good_values = _normalize_target_values(params.get("good_values"))
-    bad_values = _normalize_target_values(params.get("bad_values"))
-    indeterminate_values = _normalize_target_values(params.get("indeterminate_values"))
-
-    if not good_values:
-        errors.append("good_values must contain at least one non-blank value")
-    if not bad_values:
-        errors.append("bad_values must contain at least one non-blank value")
-
-    good_set = set(good_values)
-    bad_set = set(bad_values)
-    indeterminate_set = set(indeterminate_values)
-
-    overlap_gb = good_set & bad_set
-    if overlap_gb:
-        errors.append(f"good_values and bad_values must be disjoint; overlap: {sorted(overlap_gb)}")
-    overlap_gi = good_set & indeterminate_set
-    if overlap_gi:
-        errors.append(
-            f"good_values and indeterminate_values must be disjoint; overlap: {sorted(overlap_gi)}"
-        )
-    overlap_bi = bad_set & indeterminate_set
-    if overlap_bi:
-        errors.append(
-            f"bad_values and indeterminate_values must be disjoint; overlap: {sorted(overlap_bi)}"
-        )
-
-    return errors
 
 
 def validate_canonical_readiness(
@@ -143,7 +76,7 @@ def validate_canonical_readiness(
         value = meta_params.get(key)
         if not isinstance(value, str) or not value.strip():
             meta_errors.append(f"{key} must be non-whitespace text")
-    meta_errors.extend(_target_definition_errors(meta_params))
+    meta_errors.extend(validate_target_definition(meta_params))
     if meta_errors:
         errors_by_step.append({
             "step_id": meta.step_id,
