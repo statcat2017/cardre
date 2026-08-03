@@ -23,6 +23,12 @@ interface Props {
   onRun: () => void;
   sourcePath: string | null;
   onSourcePathChange: (path: string) => void;
+  targetColumn: string;
+  onTargetColumnChange: (value: string) => void;
+  goodValues: string;
+  onGoodValuesChange: (value: string) => void;
+  badValues: string;
+  onBadValuesChange: (value: string) => void;
   onGeneratePathway: () => void;
   generatePathwayPending: boolean;
   onCommit: () => void;
@@ -41,6 +47,12 @@ export function VersionPanel({
   onRun,
   sourcePath,
   onSourcePathChange,
+  targetColumn,
+  onTargetColumnChange,
+  goodValues,
+  onGoodValuesChange,
+  badValues,
+  onBadValuesChange,
   onGeneratePathway,
   generatePathwayPending,
   onCommit,
@@ -110,7 +122,8 @@ export function VersionPanel({
           <h3 style={{ marginTop: 0, fontSize: 16 }}>Generate launch pathway</h3>
           <p style={{ margin: 0, color: theme.muted, fontSize: 13 }}>
             Point Cardre at a CSV, and it will generate the full canonical scorecard pathway as a
-            draft version.
+            draft version. If your target column differs from the default
+            <code> credit_risk_class</code>, set it here — it is propagated to every step.
           </p>
           <form
             onSubmit={(event) => {
@@ -165,6 +178,59 @@ export function VersionPanel({
                 Browse…
               </label>
             </label>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr 1fr",
+                gap: 8,
+              }}
+            >
+              <label style={{ display: "grid", gap: 4, fontSize: 12 }}>
+                <span style={{ color: theme.muted }}>Target column</span>
+                <input
+                  type="text"
+                  value={targetColumn}
+                  onChange={(event) => onTargetColumnChange(event.target.value)}
+                  placeholder="credit_risk_class"
+                  style={{
+                    padding: "10px 12px",
+                    borderRadius: 10,
+                    border: `1px solid ${theme.borderStrong}`,
+                    boxSizing: "border-box",
+                  }}
+                />
+              </label>
+              <label style={{ display: "grid", gap: 4, fontSize: 12 }}>
+                <span style={{ color: theme.muted }}>Good values (comma-separated)</span>
+                <input
+                  type="text"
+                  value={goodValues}
+                  onChange={(event) => onGoodValuesChange(event.target.value)}
+                  placeholder="good"
+                  style={{
+                    padding: "10px 12px",
+                    borderRadius: 10,
+                    border: `1px solid ${theme.borderStrong}`,
+                    boxSizing: "border-box",
+                  }}
+                />
+              </label>
+              <label style={{ display: "grid", gap: 4, fontSize: 12 }}>
+                <span style={{ color: theme.muted }}>Bad values (comma-separated)</span>
+                <input
+                  type="text"
+                  value={badValues}
+                  onChange={(event) => onBadValuesChange(event.target.value)}
+                  placeholder="bad"
+                  style={{
+                    padding: "10px 12px",
+                    borderRadius: 10,
+                    border: `1px solid ${theme.borderStrong}`,
+                    boxSizing: "border-box",
+                  }}
+                />
+              </label>
+            </div>
             <button
               type="submit"
               disabled={!sourcePath?.trim() || generatePathwayPending}

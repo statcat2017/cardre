@@ -253,6 +253,11 @@ def canonical_scorecard_step_ids() -> list[str]:
     return [step_id for step_id, _, _, _ in _CANONICAL_SCORECARD_STEPS]
 
 
+# Target-dependent canonical steps: a custom target must reach all three for
+# the pathway to be internally consistent.
+TARGET_DEPENDENT_STEP_IDS = ("define-metadata", "validate-target", "split")
+
+
 def _rebuild_step(step: StepSpec, params: dict[str, Any]) -> StepSpec:
     """Rebuild a canonical step with new params, recomputing params_hash."""
     return StepSpec(
@@ -351,4 +356,4 @@ def build_canonical_scorecard_steps(
     return result
 
 
-__all__ = ["build_canonical_scorecard_steps", "canonical_scorecard_step_ids", "configure_canonical_scorecard"]
+__all__ = ["build_canonical_scorecard_steps", "canonical_scorecard_step_ids", "configure_canonical_scorecard", "TARGET_DEPENDENT_STEP_IDS"]

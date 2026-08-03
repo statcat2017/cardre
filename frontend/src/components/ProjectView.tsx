@@ -136,6 +136,12 @@ export function ProjectView({ projectId, onBack }: Props) {
               onRun={() => ws.runMutation.mutate()}
               sourcePath={ws.sourcePath}
               onSourcePathChange={ws.setSourcePath}
+              targetColumn={ws.targetColumn}
+              onTargetColumnChange={ws.setTargetColumn}
+              goodValues={ws.goodValues}
+              onGoodValuesChange={ws.setGoodValues}
+              badValues={ws.badValues}
+              onBadValuesChange={ws.setBadValues}
               onGeneratePathway={() => ws.createCanonicalVersionMutation.mutate()}
               generatePathwayPending={ws.createCanonicalVersionMutation.isPending}
               onCommit={() => ws.commitVersionMutation.mutate()}

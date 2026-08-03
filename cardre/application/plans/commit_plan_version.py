@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from cardre.application.execution.topology import validate_topology
+from cardre.application.plans.canonical_readiness import validate_canonical_readiness
 from cardre.application.plans.param_validation import validate_step_params
 from cardre.application.ports.node_catalogue import NodeCataloguePort
 from cardre.domain.errors import CardreError, ErrorCode
@@ -58,6 +59,12 @@ class CommitPlanVersion:
                         "canonical_step_id": step.canonical_step_id,
                         "errors": errors,
                     })
+
+            # Canonical-pathway readiness: explicit modelling decisions beyond
+            # generic node validation (business metadata, manual-binning
+            # outcome, consistent target) must be recorded before commit.
+            errors_by_step.extend(validate_canonical_readiness(steps))
+
             if errors_by_step:
                 raise CardreError(
                     "Plan version contains steps with invalid parameters.",

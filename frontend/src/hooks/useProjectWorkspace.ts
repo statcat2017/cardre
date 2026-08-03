@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { api, toErrorMessage, type ProjectScope } from "../api/client";
 import { useSelectedEntity } from "./useSelectedEntity";
@@ -17,6 +17,9 @@ export function useProjectWorkspace(scope: ProjectScope) {
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [newPlanName, setNewPlanName] = useState("Scorecard Pathway");
   const [sourcePath, setSourcePath] = useState<string | null>(null);
+  const [targetColumn, setTargetColumn] = useState<string>("");
+  const [goodValues, setGoodValues] = useState<string>("");
+  const [badValues, setBadValues] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
 
   const scoped = api.forProject(scope);
@@ -117,6 +120,27 @@ export function useProjectWorkspace(scope: ProjectScope) {
     return () => window.clearInterval(intervalId);
   }, [effectiveSelectedRunId, selectedRunStatus, queryClient, scope.projectId]);
 
+  // Reports and exports are produced at finalization. Refresh them once the
+  // run transitions from a non-terminal state to a terminal one, so the
+  // "Reports / Exports" panels do not keep showing stale empty results.
+  const prevRunStatusRef = useRef<string | null>(null);
+  useEffect(() => {
+    const runId = effectiveSelectedRunId;
+    if (!runId || !selectedRunStatus) return;
+    const prev = prevRunStatusRef.current;
+    prevRunStatusRef.current = selectedRunStatus;
+    if (prev && !isTerminalRun(prev) && isTerminalRun(selectedRunStatus)) {
+      void Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: ["runReports", scope.projectId, runId],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ["runExports", scope.projectId, runId],
+        }),
+      ]);
+    }
+  }, [effectiveSelectedRunId, selectedRunStatus, queryClient, scope.projectId]);
+
   const createPlanMutation = useMutation({
     mutationFn: () => scoped.createPlan({ name: newPlanName.trim() }),
     onSuccess: (plan) => {
@@ -165,7 +189,26 @@ export function useProjectWorkspace(scope: ProjectScope) {
 
   const createCanonicalVersionMutation = useMutation({
     mutationFn: () =>
-      scoped.createCanonicalVersion(effectiveSelectedPlanId!, { source_path: sourcePath! }),
+      scoped.createCanonicalVersion(effectiveSelectedPlanId!, {
+        source_path: sourcePath!,
+        ...(targetColumn.trim() ? { target_column: targetColumn.trim() } : {}),
+        ...(goodValues.trim()
+          ? {
+              good_values: goodValues
+                .split(",")
+                .map((v) => v.trim())
+                .filter(Boolean),
+            }
+          : {}),
+        ...(badValues.trim()
+          ? {
+              bad_values: badValues
+                .split(",")
+                .map((v) => v.trim())
+                .filter(Boolean),
+            }
+          : {}),
+      }),
     onSuccess: (pv) => {
       setError(null);
       setSelectedVersionId(pv.plan_version_id);
@@ -255,6 +298,12 @@ export function useProjectWorkspace(scope: ProjectScope) {
     setNewPlanName,
     sourcePath,
     setSourcePath,
+    targetColumn,
+    setTargetColumn,
+    goodValues,
+    setGoodValues,
+    badValues,
+    setBadValues,
     error,
     setError,
     queryErrorMessage,

@@ -43,7 +43,25 @@ export class ApiError extends Error {
 }
 
 export function toErrorMessage(err: unknown): string {
-  if (err instanceof ApiError) return err.detail;
+  if (err instanceof ApiError) {
+    const parts = [err.detail];
+    const contextErrors = err.context?.errors;
+    if (Array.isArray(contextErrors) && contextErrors.length) {
+      for (const entry of contextErrors) {
+        if (typeof entry === "string") {
+          parts.push(`• ${entry}`);
+        } else if (entry && typeof entry === "object") {
+          const e = entry as Record<string, unknown>;
+          const step = e.step_id ?? e.canonical_step_id;
+          const subErrors = Array.isArray(e.errors) ? e.errors : [];
+          for (const sub of subErrors) {
+            parts.push(`• ${step ? `${step}: ` : ""}${String(sub)}`);
+          }
+        }
+      }
+    }
+    return parts.join("\n");
+  }
   if (err instanceof Error) return err.message;
   return String(err);
 }

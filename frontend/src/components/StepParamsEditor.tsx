@@ -28,6 +28,7 @@ const EDITABLE_STEPS: Record<string, FieldSpec[]> = {
     { key: "reject_inference_position", label: "Reject-inference position" },
   ],
   "apply-exclusions": [],
+  "validate-target": [{ key: "target_column", label: "Target column" }],
   "sample-definition": [
     { key: "sample_method", label: "Sample method" },
     { key: "sample_domain", label: "Sample domain" },

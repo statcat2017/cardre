@@ -467,4 +467,82 @@ describe("useProjectWorkspace", () => {
     expect(mockScoped.listRuns.mock.calls.length).toBe(runsAfterCancelled);
     expect(mockScoped.getRun.mock.calls.length).toBe(getRunAfterCancelled);
   });
+
+  it("refreshes reports and exports when the run becomes terminal", async () => {
+    mockScoped.listRuns.mockResolvedValue({ runs: SAMPLE_RUNS });
+    mockScoped.listPlans.mockResolvedValue({
+      plans: [{ plan_id: "pl-1", name: "Plan", project_id: "p-1", created_at: "" }],
+    });
+    mockScoped.listPlanVersions.mockResolvedValue({
+      versions: [
+        {
+          plan_version_id: "v-other",
+          plan_id: "pl-1",
+          is_committed: true,
+          version_number: 1,
+          created_at: "",
+        },
+      ],
+    });
+    const runningRun = {
+      run_id: "r-2",
+      plan_version_id: "v-other",
+      status: "running",
+      started_at: "2024-01-01T00:00:00",
+    };
+    const succeededRun = {
+      run_id: "r-2",
+      plan_version_id: "v-other",
+      status: "succeeded",
+      started_at: "2024-01-01T00:00:00",
+      finished_at: "2024-01-01T00:01:00",
+    };
+    mockScoped.getRun.mockResolvedValueOnce(runningRun).mockResolvedValue(succeededRun);
+    mockScoped.listRunSteps.mockResolvedValue([]);
+    mockScoped.listRunEvidence.mockResolvedValue([]);
+    mockScoped.listReports.mockResolvedValue({ reports: [] });
+    mockScoped.listExports.mockResolvedValue({ exports: [] });
+
+    const { result } = renderHook(() => useProjectWorkspace({ projectId: "p-1" }), {
+      wrapper: createWrapper(),
+    });
+
+    await waitFor(() => {
+      expect(result.current.effectiveSelectedPlanId).toBe("pl-1");
+    });
+
+    act(() => {
+      result.current.setSelectedVersionId("v-other");
+    });
+    await waitFor(() => {
+      expect(result.current.effectiveSelectedVersionId).toBe("v-other");
+    });
+
+    act(() => {
+      result.current.setSelectedRunId("r-2");
+    });
+    await waitFor(() => {
+      expect(result.current.effectiveSelectedRunId).toBe("r-2");
+    });
+
+    await waitFor(() => {
+      expect(mockScoped.getRun).toHaveBeenCalled();
+    });
+
+    // Baseline: reports/exports were fetched while the run was running.
+    expect(mockScoped.listReports.mock.calls.length).toBeGreaterThan(0);
+    expect(mockScoped.listExports.mock.calls.length).toBeGreaterThan(0);
+    const reportsBaseline = mockScoped.listReports.mock.calls.length;
+    const exportsBaseline = mockScoped.listExports.mock.calls.length;
+
+    // Wait for polling to return the terminal run and for the terminal
+    // transition to invalidate (and thus refetch) reports/exports.
+    await waitFor(() => {
+      expect(mockScoped.getRun.mock.calls.length).toBeGreaterThan(1);
+    });
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+
+    expect(mockScoped.listReports.mock.calls.length).toBeGreaterThan(reportsBaseline);
+    expect(mockScoped.listExports.mock.calls.length).toBeGreaterThan(exportsBaseline);
+  });
 });

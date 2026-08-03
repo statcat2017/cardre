@@ -20,17 +20,22 @@ the acceptance test to go through the API.
 
 ## Release gate (the single sentence this batch must make true)
 
-> A non-developer can install Cardre, create a project, choose a CSV,
-> generate the fixed launch pathway, edit its essential parameters, commit
-> it, run it asynchronously, inspect failures, and export the scorecard and
-> report without direct database or Python access.
+> A non-developer can install Cardre, create a project, choose a CSV, set the
+> target column and good/bad values, generate the fixed launch pathway, edit
+> its essential parameters, commit it, run it asynchronously, inspect
+> failures, and see the generated scorecard exports and report — without
+> direct database or Python access.
+
+The gate deliberately says "see" the exports and report, not "open or
+download" them: the UI currently lists the generated artifact paths
+(Reports / Exports panels). Opening or downloading those files from the
+packaged app is a tracked launch blocker (see "Remaining launch blockers"
+below), so the gate does not claim it.
 
 The acceptance test (`tests/acceptance/test_launch_pathway.py`) is the
-executable proxy for this gate. Today it persists the canonical step set by
-calling `uow.plans.create_version(...)` inside a `with
-container.uow_factory...` block. After this batch, that block is replaced by
-an HTTP `POST` to the new endpoint, and the test header comment that says
-"no public editor endpoint yet" is removed.
+executable proxy for this gate. It drives generation, target propagation,
+parameter editing, commit, async run, and artifact discovery through the
+API and the acceptance-fixture pathway helper.
 
 ## What this batch deliberately does NOT include
 
@@ -90,9 +95,9 @@ the separation.
 **P2 — Release claim narrowed; the accessible journey is exercised.**
 - The acceptance test now submits the run **asynchronously** and polls to a
   terminal state, exercising the async UI journey rather than `sync=true`.
-- The frontend gains report/export discovery: `listReports`, `listExports`,
-  and `getRunManifest` client operations and a "Reports / Exports" section
-  in `RunDetailsPanel` showing the generated scorer, scorecard table, and
+- The frontend gains report/export discovery: `listReports` and
+  `listExports` client operations and a "Reports / Exports" section in
+  `RunDetailsPanel` showing the generated scorer, scorecard table, and
   report paths.
 - CSV selection uses a browser file input that reads `File.path` in the
   Tauri webview (with a text-entry fallback for plain browsers).
@@ -106,6 +111,39 @@ the separation.
   follow-up.
 These are recorded here and in the PR so the release gate sentence does not
 overstate what a packaged install can do today.
+
+## Second-review remediation (PR 385, head 00013b65)
+
+**P1 — Desktop target journey is now atomic.** The generation form collects
+the target column and good/bad values and sends them with the creation
+request, so a non-default target propagates to every target-dependent step
+at generation — no step-editor round-trip required. As defense in depth,
+`UpdateStepParams` propagates a `target_column` edit across all three
+target-dependent steps in one transaction, and `validate-target.target_column`
+is now exposed in the step editor. `CommitPlanVersion` rejects inconsistent
+target fields (a stray direct write diverging one step is caught at commit),
+covered by `test_commit_rejects_inconsistent_target` and
+`test_target_column_propagates_across_target_steps`.
+
+**P1 — Canonical commit-readiness is gated.** New
+`validate_canonical_readiness()` (`cardre/application/plans/canonical_readiness.py`)
+runs at commit on top of generic node validation. It requires essential
+business metadata (product, segment, observation/performance windows,
+reject-inference position, target, good/bad values) and exactly one
+manual-binning outcome (reviewed overrides *or* explicit automated-bin
+acceptance — never neither). A neutral/incomplete draft therefore cannot
+become immutable. Covered by `test_commit_rejects_incomplete_canonical_draft`
+and `test_commit_accepts_complete_canonical_draft`.
+
+**P2 — Reports/exports refresh on run completion.** The reports and exports
+queries are invalidated when the selected run transitions from a
+non-terminal state to a terminal one, so the panels do not keep showing
+stale empty results after an async run. Covered by
+`refreshes reports and exports when the run becomes terminal`.
+
+**P2 — Structured validation errors are surfaced.** `toErrorMessage()`
+now renders the `errors` context from `ApiError` (step + field messages),
+so an invalid edit shows *why* it failed, not just the status line.
 
 ## Existing seams this batch builds on (do NOT re-implement these)
 

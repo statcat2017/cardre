@@ -1,10 +1,15 @@
-"""UpdateStepParams — edit a single draft step's parameters.
+"""UpdateStepParams — edit draft step parameters, propagating target atomically.
 
 The full supplied parameter set is validated against the resolved node
 (schema normalization + node-level ``validate_params``) before it is
 persisted. Invalid values leave the version as a draft and raise a
 structured ``PARAMETER_VALIDATION_ERROR`` carrying the step and field
 errors.
+
+A target-column change on any target-dependent canonical step
+(``define-metadata``, ``validate-target``, ``split``) is propagated to all
+three in the same transaction, so the pathway never commits with a target
+that only reaches some steps.
 """
 from __future__ import annotations
 
@@ -16,6 +21,7 @@ from cardre.application.plans.param_validation import validate_step_params
 from cardre.application.ports.node_catalogue import NodeCataloguePort
 from cardre.domain.artifacts import json_logical_hash
 from cardre.domain.errors import CardreError, ErrorCode
+from cardre.domain.plans.scorecard_pathway import TARGET_DEPENDENT_STEP_IDS
 
 
 @dataclass
@@ -74,11 +80,42 @@ class UpdateStepParams:
                     status_code=422,
                 )
 
-            params_hash = json_logical_hash(normalized)
-            uow.plans.update_step_params(
-                command.plan_version_id, command.step_id,
-                normalized, params_hash,
-            )
+            # Atomic target propagation: a target-column edit on any
+            # target-dependent canonical step must reach all of them, or the
+            # pathway would validate/split on a different column than it
+            # defines.
+            target_column = normalized.get("target_column")
+            is_target_dependent = step.canonical_step_id in TARGET_DEPENDENT_STEP_IDS
+            if target_column is not None and is_target_dependent:
+                updates: dict[str, dict[str, Any]] = {command.step_id: normalized}
+                for other in steps:
+                    if (
+                        other.step_id != command.step_id
+                        and other.canonical_step_id in TARGET_DEPENDENT_STEP_IDS
+                    ):
+                        merged = dict(other.params)
+                        merged["target_column"] = target_column
+                        other_cls = self._node_catalogue.resolve(other.node_type)
+                        _, other_errors = validate_step_params(other_cls, merged)
+                        if other_errors:
+                            raise CardreError(
+                                f"Step {other.step_id!r} parameters are invalid after target propagation.",
+                                code=ErrorCode.PARAMETER_VALIDATION_ERROR,
+                                context={"step_id": other.step_id, "errors": other_errors},
+                                status_code=422,
+                            )
+                        updates[other.step_id] = merged
+
+                for step_id, params in updates.items():
+                    uow.plans.update_step_params(
+                        command.plan_version_id, step_id,
+                        params, json_logical_hash(params),
+                    )
+            else:
+                uow.plans.update_step_params(
+                    command.plan_version_id, command.step_id,
+                    normalized, json_logical_hash(normalized),
+                )
             uow.commit()
         except Exception:
             uow.rollback()
