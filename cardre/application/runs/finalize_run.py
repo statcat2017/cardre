@@ -18,6 +18,7 @@ from typing import Any
 from cardre._version import __version__
 from cardre.application.ports.clock import ClockPort
 from cardre.application.ports.manifest_publisher import ManifestPublisherPort
+from cardre.application.publications.publisher import PublicationPublisher
 from cardre.domain.diagnostics import JsonDict
 from cardre.domain.errors import CardreError
 from cardre.domain.manifest import (
@@ -44,10 +45,12 @@ class FinalizeRun:
         self,
         uow_factory: Callable[[], Any],
         manifest_publisher: ManifestPublisherPort,
+        publication_publisher: PublicationPublisher,
         clock: ClockPort,
     ) -> None:
         self._uow_factory = uow_factory
         self._manifest_publisher = manifest_publisher
+        self._publication_publisher = publication_publisher
         self._clock = clock
 
     def __call__(
@@ -147,19 +150,13 @@ class FinalizeRun:
             )
 
         # The transaction above committed (terminal run row + outbox record are
-        # durable). Only now do we touch the filesystem. On failure the outbox
-        # row records the durable failure so reconciliation can retry.
-        try:
-            self._manifest_publisher.publish(run_id, payload)
-        except Exception as exc:
-            with self._uow_factory() as mark_uow:
-                mark_uow.publications.mark_failed(outbox_id, str(exc))
-                mark_uow.commit()
-            raise
-        else:
-            with self._uow_factory() as mark_uow:
-                mark_uow.publications.mark_published(outbox_id)
-                mark_uow.commit()
+        # durable). Only now do we touch the filesystem via the publication
+        # protocol, which runs the manifest write then marks the row (and marks
+        # it failed + re-raises on error so the caller's failure path runs).
+        self._publication_publisher.publish(
+            outbox_id,
+            lambda: self._manifest_publisher.publish(run_id, payload),
+        )
 
     @staticmethod
     def _complete_payload_hashes(payload: JsonDict) -> None:

@@ -5,10 +5,15 @@ the filesystem side of each publication: artifact staging files are moved to
 their content-addressed object path, and manifests are republished from the
 stored canonical payload. Idempotent — republishing an already-written
 manifest or finalizing an already-present object is a no-op.
+
+The per-publication protocol (finalize + mark_published / mark_failed) is
+owned by ``PublicationPublisher``; this module is the thin startup driver
+that lists pending rows, dispatches each by kind, and collects outcomes.
 """
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -41,11 +46,13 @@ class ReconcilePublications:
         self,
         uow_factory: Any,
         project_registry: Any,
-        artifact_store_factory: Any,
-        manifest_publisher_factory: Any,
+        publication_publisher_factory: Callable[[str], Any],
+        artifact_store_factory: Callable[[str], Any],
+        manifest_publisher_factory: Callable[[str], Any],
     ) -> None:
         self._uow_factory = uow_factory
         self._project_registry = project_registry
+        self._publication_publisher_factory = publication_publisher_factory
         self._artifact_store_factory = artifact_store_factory
         self._manifest_publisher_factory = manifest_publisher_factory
 
@@ -59,45 +66,58 @@ class ReconcilePublications:
                     pending = uow.publications.list_pending()
             except Exception:
                 continue
+            publisher = self._publication_publisher_factory(project_id)
             for row in pending:
                 if row["kind"] == "artifact":
-                    outcome.results.append(self._reconcile_artifact(project_id, row))
+                    outcome.results.append(self._reconcile_artifact(project_id, publisher, row))
                 elif row["kind"] == "manifest":
-                    outcome.results.append(self._reconcile_manifest(project_id, row))
+                    outcome.results.append(self._reconcile_manifest(project_id, publisher, row))
         return outcome
 
-    def _reconcile_artifact(self, project_id: str, row: dict[str, Any]) -> ReconcileResult:
+    def _reconcile_artifact(
+        self, project_id: str, publisher: Any, row: dict[str, Any]
+    ) -> ReconcileResult:
         outbox_id = row["outbox_id"]
-        artifact_store = self._artifact_store_factory(project_id)
         try:
-            artifact_store.finalize_staged_file(row["staging_source"], row["physical_hash"])
+            store = self._artifact_store_factory(project_id)
+            publisher.publish(
+                outbox_id,
+                lambda: store.finalize_staged_file(
+                    row["staging_source"],
+                    row["physical_hash"],
+                ),
+            )
+            return ReconcileResult(row["run_id"], "artifact", outbox_id, "published")
         except Exception as exc:
-            self._mark(project_id, outbox_id, "failed", str(exc))
             return ReconcileResult(row["run_id"], "artifact", outbox_id, "failed", str(exc))
-        self._mark(project_id, outbox_id, "published", "")
-        return ReconcileResult(row["run_id"], "artifact", outbox_id, "published")
 
-    def _reconcile_manifest(self, project_id: str, row: dict[str, Any]) -> ReconcileResult:
+    def _reconcile_manifest(
+        self, project_id: str, publisher: Any, row: dict[str, Any]
+    ) -> ReconcileResult:
         outbox_id = row["outbox_id"]
         payload = row.get("manifest_payload")
         if payload is None:
             msg = "manifest outbox row has no stored payload"
-            self._mark(project_id, outbox_id, "failed", msg)
+            self._mark_failed(project_id, outbox_id, msg)
             return ReconcileResult(row["run_id"], "manifest", outbox_id, "failed", msg)
         try:
-            self._manifest_publisher_factory(project_id).publish(row["run_id"], payload)
+            manifest_publisher = self._manifest_publisher_factory(project_id)
+            publisher.publish(
+                outbox_id,
+                lambda: manifest_publisher.publish(row["run_id"], payload),
+            )
+            return ReconcileResult(row["run_id"], "manifest", outbox_id, "published")
         except Exception as exc:
-            self._mark(project_id, outbox_id, "failed", str(exc))
             return ReconcileResult(row["run_id"], "manifest", outbox_id, "failed", str(exc))
-        self._mark(project_id, outbox_id, "published", "")
-        return ReconcileResult(row["run_id"], "manifest", outbox_id, "published")
 
-    def _mark(self, project_id: str, outbox_id: str, state: str, error: str) -> None:
+    def _mark_failed(self, project_id: str, outbox_id: str, error: str) -> None:
+        """Mark a row failed directly for a data-integrity guard (no payload).
+
+        This is not a publish attempt, so the publisher's failure protocol
+        does not apply — there is nothing to finalize.
+        """
         with self._uow_factory.for_project(project_id) as uow:
-            if state == "published":
-                uow.publications.mark_published(outbox_id)
-            else:
-                uow.publications.mark_failed(outbox_id, error)
+            uow.publications.mark_failed(outbox_id, error)
             uow.commit()
 
 

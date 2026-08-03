@@ -286,11 +286,18 @@ def _submit_with_finalize(uow_factory, project_id):
     """A SubmitRun wired with a real FinalizeRun so the stale sweep can
     publish interrupted manifests."""
     from cardre.adapters.filesystem.manifest_publisher import FsManifestPublisher
+    from cardre.application.publications.publisher import PublicationPublisher
     from cardre.application.runs.finalize_run import FinalizeRun
     from cardre.application.runs.submit_run import SubmitRun
 
     root = uow_factory._registry.resolve_root(project_id)
-    finalize = FinalizeRun(lambda: uow_factory.for_project(project_id), FsManifestPublisher(root), _FakeClock())
+    uow_lambda = lambda: uow_factory.for_project(project_id)  # noqa: E731
+    finalize = FinalizeRun(
+        uow_lambda,
+        FsManifestPublisher(root),
+        PublicationPublisher(uow_lambda),
+        _FakeClock(),
+    )
     return SubmitRun(
         lambda: uow_factory.for_project(project_id), _NoopDispatcher(), None, finalize,
         governance_enabled=True, project_id=project_id,
@@ -444,10 +451,17 @@ def test_sweep_stale_malformed_heartbeat_defeated_by_renewal(committed_plan):
 def _finalize_for(uow_factory, project_id):
     """A FinalizeRun wired to the real publisher for the project."""
     from cardre.adapters.filesystem.manifest_publisher import FsManifestPublisher
+    from cardre.application.publications.publisher import PublicationPublisher
     from cardre.application.runs.finalize_run import FinalizeRun
 
     root = uow_factory._registry.resolve_root(project_id)
-    return FinalizeRun(lambda: uow_factory.for_project(project_id), FsManifestPublisher(root), _FakeClock())
+    uow_lambda = lambda: uow_factory.for_project(project_id)  # noqa: E731
+    return FinalizeRun(
+        uow_lambda,
+        FsManifestPublisher(root),
+        PublicationPublisher(uow_lambda),
+        _FakeClock(),
+    )
 
 
 def test_stale_finalization_loses_after_heartbeat_renewal(committed_plan):
@@ -671,11 +685,18 @@ def test_sweep_stale_uses_configured_threshold(committed_plan):
     hard-coded 300s window (F6)."""
     project_id, uow_factory, pv_id = committed_plan
     from cardre.adapters.filesystem.manifest_publisher import FsManifestPublisher
+    from cardre.application.publications.publisher import PublicationPublisher
     from cardre.application.runs.finalize_run import FinalizeRun
     from cardre.application.runs.submit_run import SubmitRun
 
     root = uow_factory._registry.resolve_root(project_id)
-    finalize = FinalizeRun(lambda: uow_factory.for_project(project_id), FsManifestPublisher(root), _FakeClock())
+    uow_lambda = lambda: uow_factory.for_project(project_id)  # noqa: E731
+    finalize = FinalizeRun(
+        uow_lambda,
+        FsManifestPublisher(root),
+        PublicationPublisher(uow_lambda),
+        _FakeClock(),
+    )
     submit = SubmitRun(
         lambda: uow_factory.for_project(project_id), _NoopDispatcher(), None, finalize,
         governance_enabled=True, project_id=project_id,

@@ -32,6 +32,24 @@ from cardre.application.governance.comparison_builders import (
 )
 
 
+def _stub_publisher_factory(uow_factory):
+    """A publication-publisher factory for governance tests.
+
+    The publisher is the protocol seam only — the writer (artifact finalize or
+    manifest publish) is supplied by the use case, so the factory needs only
+    the UoW factory for the ``mark_published`` / ``mark_failed`` write.
+    """
+    from cardre.application.publications.publisher import PublicationPublisher
+
+    def factory(project_id=None):
+        def _uow_lambda():
+            return uow_factory.for_project(project_id) if project_id else uow_factory()
+
+        return PublicationPublisher(_uow_lambda)
+
+    return factory
+
+
 def _provision(tmp_path):
     registry = JsonProjectRegistry(tmp_path / "registry.json")
     provisioner = SqliteProjectProvisioner()
@@ -386,7 +404,13 @@ def test_refresh_comparison_reaches_snapshot_ops_not_conn():
                 "roles": {},
             }
 
-    uc = RefreshComparison(_FakeUoWFactory(uow), _Evidence(), _Writer(), governance_enabled=True)
+    uc = RefreshComparison(
+        _FakeUoWFactory(uow),
+        _Evidence(),
+        _Writer(),
+        _stub_publisher_factory(_FakeUoWFactory(uow)),
+        governance_enabled=True,
+    )
     # Stub readiness so the snapshot path is exercised deterministically.
     uc._check_readiness = lambda uow, branch_id, pv_id, *, is_baseline=False: []  # type: ignore[method-assign]
     result = uc(RefreshComparisonCommand(project_id="proj", comparison_id="cmp-1"))
@@ -523,7 +547,13 @@ def test_refresh_comparison_one_finalize_failure_does_not_block_others():
         def find_typed(self, step_map, cs, pv_id, evidence_branch_id, kinds):
             return {"variables": [], "model_family": "logistic_regression", "model_payload": {}, "roles": {}}
 
-    uc = RefreshComparison(_FakeUoWFactory(uow), _Evidence(), _Writer(), governance_enabled=True)
+    uc = RefreshComparison(
+        _FakeUoWFactory(uow),
+        _Evidence(),
+        _Writer(),
+        _stub_publisher_factory(_FakeUoWFactory(uow)),
+        governance_enabled=True,
+    )
     uc._check_readiness = lambda uow, branch_id, pv_id, *, is_baseline=False: []  # type: ignore[method-assign]
     result = uc(RefreshComparisonCommand(project_id="proj", comparison_id="cmp-1"))
     assert result.ready is True
@@ -739,7 +769,13 @@ def test_refresh_comparison_database_failure_leaves_no_orphan_object(tmp_path):
             return _BombUow(uow_factory.for_project(project_id))
 
     evidence = ComparisonEvidenceReader(uow_factory, store, project_id)
-    uc = RefreshComparison(_BombFactory(), evidence, store, governance_enabled=True)
+    uc = RefreshComparison(
+        _BombFactory(),
+        evidence,
+        store,
+        _stub_publisher_factory(uow_factory),
+        governance_enabled=True,
+    )
     # Stub readiness so the snapshot/publish path is reached deterministically.
     uc._check_readiness = lambda uow, branch_id, pv_id, *, is_baseline=False: []  # type: ignore[method-assign]
 

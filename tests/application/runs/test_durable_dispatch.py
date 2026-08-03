@@ -23,6 +23,13 @@ class _FakeClock:
         return "2026-01-01T00:00:00Z"
 
 
+class _NoopManifestPublisher:
+    """Manifest publisher that records no writes (stub for publication protocol)."""
+
+    def publish(self, run_id, payload):
+        return None
+
+
 class _FakeCapabilityProbe:
     def project_root_exists(self, root: str) -> bool:
         return True
@@ -156,6 +163,7 @@ def test_claim_run_removes_dispatch_row_atomically(tmp_path):
     """ExecuteRun._claim_run must remove the durable dispatch row in the same
     transaction that transitions the run to running."""
     from cardre.adapters.filesystem.artifact_store import FsArtifactStore
+    from cardre.application.publications.publisher import PublicationPublisher
     from cardre.application.runs.execute_run import ExecuteRun, ExecuteRunCommand
     from cardre.application.runs.finalize_run import FinalizeRun
 
@@ -165,18 +173,21 @@ def test_claim_run_removes_dispatch_row_atomically(tmp_path):
         uow.dispatches.enqueue(run_id)
         uow.commit()
 
+    uow_lambda = lambda: uow_factory.for_project(project_id)  # noqa: E731
     finalize = FinalizeRun(
-        lambda: uow_factory.for_project(project_id),
-        type("Pub", (), {"publish": lambda self, run_id, payload: None})(),
+        uow_lambda,
+        _NoopManifestPublisher(),
+        PublicationPublisher(uow_lambda),
         _FakeClock(),
     )
     executor = ExecuteRun(
-        lambda: uow_factory.for_project(project_id),
+        uow_lambda,
         lambda: uow_factory.read_only(project_id),
         None,
         None,
         finalize,
-        lambda: FsArtifactStore(root / "objects"),
+        lambda: FsArtifactStore(root),
+        lambda: PublicationPublisher(uow_lambda),
         heartbeat_interval_seconds=0.1,
     )
 
@@ -274,14 +285,17 @@ def test_finalize_run_clears_dispatch_row_for_preclaim_terminal_run(tmp_path):
     """Finding 2: FinalizeRun must clear a created run's dispatch row when it
     terminalizes before claim (dispatch-failure / validation-failure path), so
     reconciliation never redispatches a terminal run."""
+    from cardre.application.publications.publisher import PublicationPublisher
     from cardre.application.runs.finalize_run import FinalizeRun
 
-    project_id, uow_factory, pv_id, _registry, _root = _provision(tmp_path)
+    project_id, uow_factory, pv_id, _registry, root = _provision(tmp_path)
     run_id = _seed_pending_run(uow_factory, project_id, pv_id)
 
+    uow_lambda = lambda: uow_factory.for_project(project_id)  # noqa: E731
     finalize = FinalizeRun(
-        lambda: uow_factory.for_project(project_id),
-        type("Pub", (), {"publish": lambda self, run_id, payload: None})(),
+        uow_lambda,
+        _NoopManifestPublisher(),
+        PublicationPublisher(uow_lambda),
         _FakeClock(),
     )
     # Simulate the async dispatch-failure path: SubmitRun finalizes the created

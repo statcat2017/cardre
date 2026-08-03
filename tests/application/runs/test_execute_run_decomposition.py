@@ -37,6 +37,17 @@ def _fake_node(version: str):
 
     return _FakeNode
 
+
+def _stub_publisher(uow_factory=None):
+    """A PublicationPublisher (protocol seam only).
+
+    ``uow_factory`` defaults to a no-op (the publisher's mark UoW is not
+    exercised unless the test supplies a real one).
+    """
+    from cardre.application.publications.publisher import PublicationPublisher
+
+    return PublicationPublisher(uow_factory if uow_factory is not None else (lambda: None))
+
 EXEC = Path(__file__).resolve().parents[3] / "cardre" / "application" / "runs" / "execute_run.py"
 
 
@@ -194,6 +205,7 @@ def _provision_running_run(tmp_path):
         step_runner=None,
         finalize_run=None,
         artifact_store_factory=lambda: artifact_store,
+        publication_publisher_factory=lambda: _stub_publisher(),
     )
     return {
         "project_id": project_id,
@@ -219,6 +231,9 @@ def test_run_summary_publication_closes_all_uows_on_success(tmp_path):
     ctx["exec_run"]._read_only_factory = _spy_read_factory(
         ctx["uow_factory"], ctx["project_id"], captured,
     )
+    ctx["exec_run"]._publication_publisher_factory = lambda: _stub_publisher(
+        uow_factory=lambda: _spy_write_factory(ctx["uow_factory"], ctx["project_id"], captured)(),
+    )
 
     ref = ctx["exec_run"]._publish_run_summary(
         ExecuteRunCommand(run_id=ctx["run_id"]),
@@ -228,6 +243,7 @@ def test_run_summary_publication_closes_all_uows_on_success(tmp_path):
         run_step_records={},
         worker_generation=ctx["worker_generation"],
         artifact_store=ctx["artifact_store"],
+        publisher=ctx["exec_run"]._publication_publisher_factory(),
     )
 
     assert ref is not None
@@ -279,6 +295,9 @@ def test_run_summary_publication_closes_all_uows_on_failure(tmp_path):
     ctx["exec_run"]._read_only_factory = _spy_read_factory(
         ctx["uow_factory"], ctx["project_id"], captured,
     )
+    ctx["exec_run"]._publication_publisher_factory = lambda: _stub_publisher(
+        uow_factory=failing_write_factory,
+    )
 
     import pytest as _pytest
 
@@ -291,6 +310,7 @@ def test_run_summary_publication_closes_all_uows_on_failure(tmp_path):
             run_step_records={},
             worker_generation=ctx["worker_generation"],
             artifact_store=ctx["artifact_store"],
+            publisher=ctx["exec_run"]._publication_publisher_factory(),
         )
 
     assert fail_captured, "expected the mark-published UoW to be opened"
@@ -351,11 +371,17 @@ def test_initial_reads_and_cancellation_use_read_only_uow(tmp_path):
         def resolve(self, node_type):
             return _fake_node("1")
 
+    from cardre.application.publications.publisher import PublicationPublisher
     from cardre.application.runs.finalize_run import FinalizeRun
+
+    class _NoopManifestPublisher:
+        def publish(self, run_id, payload):
+            return None
 
     finalize = FinalizeRun(
         lambda: uow_factory.for_project(project_id),
-        type("Pub", (), {"publish": lambda self, run_id, payload: None})(),
+        _NoopManifestPublisher(),
+        PublicationPublisher(lambda: uow_factory.for_project(project_id)),
         _FakeClock(),
     )
 
@@ -379,6 +405,7 @@ def test_initial_reads_and_cancellation_use_read_only_uow(tmp_path):
         _NoopRunner(),
         finalize,
         lambda: FsArtifactStore(root / "objects"),
+        lambda: PublicationPublisher(lambda: uow_factory.for_project(project_id)),
         heartbeat_interval_seconds=0.1,
     )
     executor(ExecuteRunCommand(run_id=run_id))

@@ -27,6 +27,7 @@ from cardre.adapters.sqlite.connection import SqliteUnitOfWorkFactory
 from cardre.adapters.sqlite.project_provisioner import SqliteProjectProvisioner
 from cardre.adapters.system.project_registry import JsonProjectRegistry
 from cardre.application.ports.artifact_store import StagedArtifact
+from cardre.application.publications.publisher import PublicationPublisher
 from cardre.application.runs.finalize_run import FinalizeRun
 from cardre.application.runs.reconcile_publications import ReconcilePublications
 from cardre.domain.artifacts import json_logical_hash, physical_hash
@@ -43,6 +44,11 @@ class _FailingManifestPublisher:
 
     def publish(self, run_id: str, payload):
         raise OSError("injected manifest publish failure")
+
+
+def _publisher(uow_factory, project_id) -> PublicationPublisher:
+    """Build a PublicationPublisher for a project (protocol seam only)."""
+    return PublicationPublisher(lambda: uow_factory.for_project(project_id))
 
 
 def _run_generation(uow_factory, project_id, run_id) -> int:
@@ -288,7 +294,12 @@ def test_manifest_publish_failure_leaves_terminal_run_and_failed_outbox(tmp_path
     failed outbox record and no false published manifest."""
     project_id, _plan_id, pv_id, run_id, uow_factory, _registry, _root = _provision(tmp_path)
     failing = _FailingManifestPublisher()
-    finalize = FinalizeRun(lambda: uow_factory.for_project(project_id), failing, _FakeClock())
+    finalize = FinalizeRun(
+        lambda: uow_factory.for_project(project_id),
+        failing,
+        _publisher(uow_factory, project_id),
+        _FakeClock(),
+    )
 
     with pytest.raises(OSError, match="injected manifest publish failure"):
         finalize(run_id, "succeeded", worker_generation=_run_generation(uow_factory, project_id, run_id))
@@ -341,6 +352,7 @@ def test_reconciliation_republishes_pending_manifest(tmp_path):
     reconcile = ReconcilePublications(
         uow_factory,
         registry,
+        lambda pid: _publisher(uow_factory, pid),
         lambda pid: FsArtifactStore(root),
         lambda pid: FsManifestPublisher(root),
     )
@@ -391,6 +403,7 @@ def test_reconciliation_is_idempotent(tmp_path):
     reconcile = ReconcilePublications(
         uow_factory,
         registry,
+        lambda pid: _publisher(uow_factory, pid),
         lambda pid: FsArtifactStore(root),
         lambda pid: FsManifestPublisher(root),
     )
@@ -411,7 +424,12 @@ def test_failed_manifest_outbox_reconciled_with_working_publisher(tmp_path):
     """A previously-failed manifest publication is retried by reconciliation."""
     project_id, _plan_id, pv_id, run_id, uow_factory, registry, root = _provision(tmp_path)
     failing = _FailingManifestPublisher()
-    finalize = FinalizeRun(lambda: uow_factory.for_project(project_id), failing, _FakeClock())
+    finalize = FinalizeRun(
+        lambda: uow_factory.for_project(project_id),
+        failing,
+        _publisher(uow_factory, project_id),
+        _FakeClock(),
+    )
 
     with pytest.raises(OSError):
         finalize(run_id, "succeeded", worker_generation=_run_generation(uow_factory, project_id, run_id))
@@ -419,6 +437,7 @@ def test_failed_manifest_outbox_reconciled_with_working_publisher(tmp_path):
     reconcile = ReconcilePublications(
         uow_factory,
         registry,
+        lambda pid: _publisher(uow_factory, pid),
         lambda pid: FsArtifactStore(root),
         lambda pid: FsManifestPublisher(root),
     )
