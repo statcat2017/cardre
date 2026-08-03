@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { api, toErrorMessage, type ProjectScope } from "../api/client";
 import { useSelectedEntity } from "./useSelectedEntity";
@@ -16,6 +16,10 @@ export function useProjectWorkspace(scope: ProjectScope) {
   const [selectedVersionId, setSelectedVersionId] = useState<string | null>(null);
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [newPlanName, setNewPlanName] = useState("Scorecard Pathway");
+  const [sourcePath, setSourcePath] = useState<string | null>(null);
+  const [targetColumn, setTargetColumn] = useState<string>("");
+  const [goodValues, setGoodValues] = useState<string>("");
+  const [badValues, setBadValues] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
 
   const scoped = api.forProject(scope);
@@ -83,6 +87,18 @@ export function useProjectWorkspace(scope: ProjectScope) {
     enabled: !!effectiveSelectedRunId,
   });
 
+  const reportsQuery = useQuery({
+    queryKey: ["runReports", scope.projectId, effectiveSelectedRunId],
+    queryFn: () => scoped.listReports(effectiveSelectedRunId!),
+    enabled: !!effectiveSelectedRunId,
+  });
+
+  const exportsQuery = useQuery({
+    queryKey: ["runExports", scope.projectId, effectiveSelectedRunId],
+    queryFn: () => scoped.listExports(effectiveSelectedRunId!),
+    enabled: !!effectiveSelectedRunId,
+  });
+
   const selectedRunStatus = selectedRunQuery.data?.status;
 
   useEffect(() => {
@@ -102,6 +118,27 @@ export function useProjectWorkspace(scope: ProjectScope) {
 
     const intervalId = window.setInterval(refresh, 1_000);
     return () => window.clearInterval(intervalId);
+  }, [effectiveSelectedRunId, selectedRunStatus, queryClient, scope.projectId]);
+
+  // Reports and exports are produced at finalization. Refresh them the first
+  // time any terminal status is observed for a run (regardless of the
+  // preceding status), so the "Reports / Exports" panels do not keep showing
+  // stale empty results — including for fast runs whose first status response
+  // is already terminal.
+  const terminalRefreshRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    const runId = effectiveSelectedRunId;
+    if (!runId || !selectedRunStatus || !isTerminalRun(selectedRunStatus)) return;
+    if (terminalRefreshRef.current.has(runId)) return;
+    terminalRefreshRef.current.add(runId);
+    void Promise.all([
+      queryClient.invalidateQueries({
+        queryKey: ["runReports", scope.projectId, runId],
+      }),
+      queryClient.invalidateQueries({
+        queryKey: ["runExports", scope.projectId, runId],
+      }),
+    ]);
   }, [effectiveSelectedRunId, selectedRunStatus, queryClient, scope.projectId]);
 
   const createPlanMutation = useMutation({
@@ -150,12 +187,79 @@ export function useProjectWorkspace(scope: ProjectScope) {
     },
   });
 
+  const createCanonicalVersionMutation = useMutation({
+    mutationFn: () =>
+      scoped.createCanonicalVersion(effectiveSelectedPlanId!, {
+        source_path: sourcePath!,
+        ...(targetColumn.trim() ? { target_column: targetColumn.trim() } : {}),
+        ...(goodValues.trim()
+          ? {
+              good_values: goodValues
+                .split(",")
+                .map((v) => v.trim())
+                .filter(Boolean),
+            }
+          : {}),
+        ...(badValues.trim()
+          ? {
+              bad_values: badValues
+                .split(",")
+                .map((v) => v.trim())
+                .filter(Boolean),
+            }
+          : {}),
+      }),
+    onSuccess: (pv) => {
+      setError(null);
+      setSelectedVersionId(pv.plan_version_id);
+      queryClient.invalidateQueries({
+        queryKey: ["planVersions", scope.projectId, effectiveSelectedPlanId],
+      });
+    },
+    onError: (err) => {
+      setError(toErrorMessage(err));
+    },
+  });
+
+  const updateStepParamsMutation = useMutation({
+    mutationFn: ({ stepId, params }: { stepId: string; params: Record<string, unknown> }) =>
+      scoped.updateStepParams(effectiveSelectedVersionId!, stepId, { params }),
+    onSuccess: () => {
+      setError(null);
+      queryClient.invalidateQueries({
+        queryKey: ["planVersionSteps", scope.projectId, effectiveSelectedVersionId],
+      });
+    },
+    onError: (err) => {
+      setError(toErrorMessage(err));
+    },
+  });
+
+  const commitVersionMutation = useMutation({
+    mutationFn: () => scoped.commitPlanVersion(effectiveSelectedVersionId!),
+    onSuccess: () => {
+      setError(null);
+      queryClient.invalidateQueries({
+        queryKey: ["planVersions", scope.projectId, effectiveSelectedPlanId],
+      });
+    },
+    onError: (err) => {
+      setError(toErrorMessage(err));
+    },
+  });
+
   const selectedPlan =
     plansQuery.data?.plans.find((plan) => plan.plan_id === effectiveSelectedPlanId) ?? null;
   const selectedVersion =
     versionsQuery.data?.versions.find(
       (version) => version.plan_version_id === effectiveSelectedVersionId,
     ) ?? null;
+
+  const stepsQuery = useQuery({
+    queryKey: ["planVersionSteps", scope.projectId, effectiveSelectedVersionId],
+    queryFn: () => scoped.getPlanVersionSteps(effectiveSelectedVersionId!),
+    enabled: !!effectiveSelectedVersionId && !selectedVersion?.is_committed,
+  });
 
   const queryErrorEntries: Array<{ key: string; error: Error | null }> = [
     { key: "project", error: projectQuery.error },
@@ -165,6 +269,9 @@ export function useProjectWorkspace(scope: ProjectScope) {
     { key: "run", error: selectedRunQuery.error },
     { key: "runSteps", error: runStepsQuery.error },
     { key: "runEvidence", error: runEvidenceQuery.error },
+    { key: "runReports", error: reportsQuery.error },
+    { key: "runExports", error: exportsQuery.error },
+    { key: "planVersionSteps", error: stepsQuery.error },
   ];
   const errored = queryErrorEntries.find((e) => e.error);
   const queryErrorMessage = errored ? `[${errored.key}] ${toErrorMessage(errored.error!)}` : null;
@@ -177,6 +284,9 @@ export function useProjectWorkspace(scope: ProjectScope) {
     selectedRunQuery,
     runStepsQuery,
     runEvidenceQuery,
+    reportsQuery,
+    exportsQuery,
+    stepsQuery,
     effectiveSelectedPlanId,
     effectiveSelectedVersionId,
     effectiveSelectedRunId,
@@ -186,6 +296,14 @@ export function useProjectWorkspace(scope: ProjectScope) {
     visibleRuns,
     newPlanName,
     setNewPlanName,
+    sourcePath,
+    setSourcePath,
+    targetColumn,
+    setTargetColumn,
+    goodValues,
+    setGoodValues,
+    badValues,
+    setBadValues,
     error,
     setError,
     queryErrorMessage,
@@ -193,6 +311,9 @@ export function useProjectWorkspace(scope: ProjectScope) {
     setSelectedVersionId,
     setSelectedRunId,
     createPlanMutation,
+    createCanonicalVersionMutation,
+    updateStepParamsMutation,
+    commitVersionMutation,
     runMutation,
     cancelRunMutation,
   };

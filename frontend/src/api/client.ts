@@ -43,7 +43,25 @@ export class ApiError extends Error {
 }
 
 export function toErrorMessage(err: unknown): string {
-  if (err instanceof ApiError) return err.detail;
+  if (err instanceof ApiError) {
+    const parts = [err.detail];
+    const contextErrors = err.context?.errors;
+    if (Array.isArray(contextErrors) && contextErrors.length) {
+      for (const entry of contextErrors) {
+        if (typeof entry === "string") {
+          parts.push(`• ${entry}`);
+        } else if (entry && typeof entry === "object") {
+          const e = entry as Record<string, unknown>;
+          const step = e.step_id ?? e.canonical_step_id;
+          const subErrors = Array.isArray(e.errors) ? e.errors : [];
+          for (const sub of subErrors) {
+            parts.push(`• ${step ? `${step}: ` : ""}${String(sub)}`);
+          }
+        }
+      }
+    }
+    return parts.join("\n");
+  }
   if (err instanceof Error) return err.message;
   return String(err);
 }
@@ -316,6 +334,75 @@ export const api = {
         return requireData(
           await client.GET("/projects/{project_id}/plans/{plan_id}", {
             params: { path: { project_id: pid, plan_id: planId } },
+          }),
+        );
+      },
+      createCanonicalVersion: async (
+        planId: string,
+        body: components["schemas"]["CanonicalScorecardVersionRequest"],
+      ) => {
+        const client = makeClient();
+        return requireData(
+          await client.POST("/projects/{project_id}/plans/{plan_id}/canonical-version", {
+            params: { path: { project_id: pid, plan_id: planId } },
+            body,
+          }),
+        );
+      },
+      getPlanVersionSteps: async (planVersionId: string) => {
+        const client = makeClient();
+        return requireData(
+          await client.GET("/projects/{project_id}/plan-versions/{plan_version_id}/steps", {
+            params: { path: { project_id: pid, plan_version_id: planVersionId } },
+          }),
+        );
+      },
+      updateStepParams: async (
+        planVersionId: string,
+        stepId: string,
+        body: components["schemas"]["StepParamsUpdate"],
+      ) => {
+        const client = makeClient();
+        return requireData(
+          await client.PATCH(
+            "/projects/{project_id}/plan-versions/{plan_version_id}/steps/{step_id}",
+            {
+              params: {
+                path: { project_id: pid, plan_version_id: planVersionId, step_id: stepId },
+              },
+              body,
+            },
+          ),
+        );
+      },
+      commitPlanVersion: async (planVersionId: string) => {
+        const client = makeClient();
+        return requireData(
+          await client.POST("/projects/{project_id}/plan-versions/{plan_version_id}/commit", {
+            params: { path: { project_id: pid, plan_version_id: planVersionId } },
+          }),
+        );
+      },
+      listReports: async (runId?: string) => {
+        const client = makeClient();
+        if (runId) {
+          return requireData(
+            await client.GET("/projects/{project_id}/runs/{run_id}/reports", {
+              params: { path: { project_id: pid, run_id: runId } },
+            }),
+          );
+        }
+        return requireData(
+          await client.GET("/projects/{project_id}/reports", {
+            params: { path: { project_id: pid } },
+          }),
+        );
+      },
+      listExports: async (runId?: string) => {
+        const client = makeClient();
+        return requireData(
+          await client.GET("/projects/{project_id}/exports", {
+            params: { path: { project_id: pid }, query: runId ? { run_id: runId } : undefined },
           }),
         );
       },

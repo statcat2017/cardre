@@ -4,6 +4,7 @@ from typing import Any
 
 from cardre.domain.evidence.kinds import EvidenceKind, RoleKind
 from cardre.domain.evidence.schemas import SCHEMA_MODELLING_METADATA, SCHEMA_SAMPLE_DEFINITION
+from cardre.domain.plans.target_definition import validate_target_definition
 from cardre.nodes.contracts import (
     ArtifactContract,
     ArtifactRoleSpec,
@@ -36,7 +37,10 @@ class DefineModellingMetadataNode(NodeType):
     }
 
     def validate_params(self, params: dict[str, Any]) -> list[str]:
-        errors: list[str] = []
+        # Always run the target-definition checks: they must not be skipped
+        # when reject_inference_position is absent or malformed.
+        errors: list[str] = validate_target_definition(params)
+
         reject_inference_position = params.get("reject_inference_position")
         if reject_inference_position is None:
             return errors
@@ -56,9 +60,12 @@ class DefineModellingMetadataNode(NodeType):
         df = context.inputs.read_dataframe(dataset_artifact)
 
         target_column = params.get("target_column", "")
-        good_values = params.get("good_values", [])
-        bad_values = params.get("bad_values", [])
-        indeterminate_values = params.get("indeterminate_values", [])
+        good_values = list(params.get("good_values") or [])
+        bad_values = list(params.get("bad_values") or [])
+        # Defensive: an explicit null would otherwise crash the set
+        # comprehension below. Validated params never carry null, but legacy
+        # persisted state may.
+        indeterminate_values = list(params.get("indeterminate_values") or [])
 
         if not target_column:
             raise ValueError("Target column must be non-empty")

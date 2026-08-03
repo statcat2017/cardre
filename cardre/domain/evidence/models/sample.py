@@ -20,11 +20,12 @@ class ModellingMetadata:
 
     @classmethod
     def from_json(cls, data: JsonDict, artifact_id: str = "") -> ModellingMetadata:
+        indeterminate = data.get("indeterminate_values")
         return cls(
             target_column=data.get("target_column", ""),
-            good_values=list(data.get("good_values", [])),
-            bad_values=list(data.get("bad_values", [])),
-            indeterminate_values=list(data.get("indeterminate_values", [])),
+            good_values=list(data.get("good_values") or []),
+            bad_values=list(data.get("bad_values") or []),
+            indeterminate_values=list(indeterminate) if indeterminate is not None else [],
             extra={k: v for k, v in data.items()
                    if k not in ("target_column", "good_values", "bad_values", "indeterminate_values")},
             _raw=data,

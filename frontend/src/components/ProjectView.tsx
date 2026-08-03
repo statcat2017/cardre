@@ -2,6 +2,7 @@ import { useProjectWorkspace } from "../hooks/useProjectWorkspace";
 import { theme, pageCardStyle } from "../styles";
 import { PlanSidebar } from "./PlanSidebar";
 import { RunDetailsPanel } from "./RunDetailsPanel";
+import { StepParamsEditor } from "./StepParamsEditor";
 import { VersionPanel } from "./VersionPanel";
 
 interface Props {
@@ -133,7 +134,30 @@ export function ProjectView({ projectId, onBack }: Props) {
               runPending={ws.runMutation.isPending}
               canRun={!!ws.selectedVersion?.is_committed}
               onRun={() => ws.runMutation.mutate()}
+              sourcePath={ws.sourcePath}
+              onSourcePathChange={ws.setSourcePath}
+              targetColumn={ws.targetColumn}
+              onTargetColumnChange={ws.setTargetColumn}
+              goodValues={ws.goodValues}
+              onGoodValuesChange={ws.setGoodValues}
+              badValues={ws.badValues}
+              onBadValuesChange={ws.setBadValues}
+              onGeneratePathway={() => ws.createCanonicalVersionMutation.mutate()}
+              generatePathwayPending={ws.createCanonicalVersionMutation.isPending}
+              onCommit={() => ws.commitVersionMutation.mutate()}
+              commitPending={ws.commitVersionMutation.isPending}
             />
+
+            {ws.selectedVersion && !ws.selectedVersion.is_committed && (
+              <StepParamsEditor
+                steps={ws.stepsQuery.data ?? []}
+                stepsLoading={ws.stepsQuery.isLoading}
+                onSaveStep={(stepId, params) =>
+                  ws.updateStepParamsMutation.mutate({ stepId, params })
+                }
+                savePending={ws.updateStepParamsMutation.isPending}
+              />
+            )}
 
             <RunDetailsPanel
               runLoading={ws.selectedRunQuery.isLoading}
@@ -142,6 +166,10 @@ export function ProjectView({ projectId, onBack }: Props) {
               steps={ws.runStepsQuery.data}
               evidenceLoading={ws.runEvidenceQuery.isLoading}
               evidence={ws.runEvidenceQuery.data}
+              reportsLoading={ws.reportsQuery.isLoading}
+              reports={ws.reportsQuery.data?.reports}
+              exportsLoading={ws.exportsQuery.isLoading}
+              exports={ws.exportsQuery.data?.exports}
             />
           </section>
         </section>

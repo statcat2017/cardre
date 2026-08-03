@@ -27,6 +27,10 @@ describe("useProjectWorkspace", () => {
   const mockScoped = {
     listPlans: vi.fn().mockResolvedValue({ plans: [] }),
     createPlan: vi.fn(),
+    createCanonicalVersion: vi.fn(),
+    getPlanVersionSteps: vi.fn().mockResolvedValue([]),
+    updateStepParams: vi.fn(),
+    commitPlanVersion: vi.fn(),
     listPlanVersions: vi.fn().mockResolvedValue({ versions: [] }),
     listRuns: vi.fn(),
     createRun: vi.fn(),
@@ -34,6 +38,8 @@ describe("useProjectWorkspace", () => {
     listRunSteps: vi.fn(),
     listRunEvidence: vi.fn(),
     cancelRun: vi.fn(),
+    listReports: vi.fn().mockResolvedValue({ reports: [] }),
+    listExports: vi.fn().mockResolvedValue({ exports: [] }),
   };
 
   beforeEach(() => {
@@ -255,6 +261,135 @@ describe("useProjectWorkspace", () => {
     expect(mockScoped.cancelRun).toHaveBeenCalledWith("r-1");
   });
 
+  it("createCanonicalVersionMutation calls scoped.createCanonicalVersion and selects the version", async () => {
+    mockScoped.listRuns.mockResolvedValue({ runs: [] });
+    mockScoped.listPlans.mockResolvedValue({
+      plans: [{ plan_id: "pl-1", name: "Plan", project_id: "p-1", created_at: "" }],
+    });
+    mockScoped.listPlanVersions.mockResolvedValue({
+      versions: [
+        {
+          plan_version_id: "v-new",
+          plan_id: "pl-1",
+          version_number: 1,
+          is_committed: false,
+          created_at: "",
+        },
+      ],
+    });
+    mockScoped.createCanonicalVersion.mockResolvedValue({
+      plan_version_id: "v-new",
+      plan_id: "pl-1",
+      version_number: 1,
+      is_committed: false,
+      created_at: "",
+    });
+
+    const { result } = renderHook(() => useProjectWorkspace({ projectId: "p-1" }), {
+      wrapper: createWrapper(),
+    });
+
+    await waitFor(() => {
+      expect(result.current.effectiveSelectedPlanId).toBe("pl-1");
+    });
+
+    act(() => {
+      result.current.setSourcePath("/tmp/in.csv");
+    });
+
+    await act(async () => {
+      await result.current.createCanonicalVersionMutation.mutateAsync();
+    });
+
+    expect(mockScoped.createCanonicalVersion).toHaveBeenCalledWith("pl-1", {
+      source_path: "/tmp/in.csv",
+    });
+    expect(result.current.effectiveSelectedVersionId).toBe("v-new");
+  });
+
+  it("updateStepParamsMutation calls scoped.updateStepParams and refetches steps", async () => {
+    mockScoped.listRuns.mockResolvedValue({ runs: [] });
+    mockScoped.listPlans.mockResolvedValue({
+      plans: [{ plan_id: "pl-1", name: "Plan", project_id: "p-1", created_at: "" }],
+    });
+    mockScoped.listPlanVersions.mockResolvedValue({
+      versions: [
+        {
+          plan_version_id: "v-draft",
+          plan_id: "pl-1",
+          version_number: 1,
+          is_committed: false,
+          created_at: "",
+        },
+      ],
+    });
+    mockScoped.updateStepParams.mockResolvedValue({
+      plan_version_id: "v-draft",
+      plan_id: "pl-1",
+      version_number: 1,
+      is_committed: false,
+      created_at: "",
+    });
+
+    const { result } = renderHook(() => useProjectWorkspace({ projectId: "p-1" }), {
+      wrapper: createWrapper(),
+    });
+
+    await waitFor(() => {
+      expect(result.current.effectiveSelectedVersionId).toBe("v-draft");
+    });
+
+    await act(async () => {
+      await result.current.updateStepParamsMutation.mutateAsync({
+        stepId: "s1",
+        params: { min_iv: 0.05 },
+      });
+    });
+
+    expect(mockScoped.updateStepParams).toHaveBeenCalledWith("v-draft", "s1", {
+      params: { min_iv: 0.05 },
+    });
+  });
+
+  it("commitVersionMutation calls scoped.commitPlanVersion", async () => {
+    mockScoped.listRuns.mockResolvedValue({ runs: [] });
+    mockScoped.listPlans.mockResolvedValue({
+      plans: [{ plan_id: "pl-1", name: "Plan", project_id: "p-1", created_at: "" }],
+    });
+    mockScoped.listPlanVersions.mockResolvedValue({
+      versions: [
+        {
+          plan_version_id: "v-draft",
+          plan_id: "pl-1",
+          version_number: 1,
+          is_committed: false,
+          created_at: "",
+        },
+      ],
+    });
+    mockScoped.commitPlanVersion.mockResolvedValue({
+      plan_version_id: "v-draft",
+      plan_id: "pl-1",
+      version_number: 1,
+      is_committed: true,
+      created_at: "",
+    });
+
+    const { result } = renderHook(() => useProjectWorkspace({ projectId: "p-1" }), {
+      wrapper: createWrapper(),
+    });
+
+    await waitFor(() => {
+      expect(result.current.effectiveSelectedVersionId).toBe("v-draft");
+    });
+
+    await act(async () => {
+      await result.current.commitVersionMutation.mutateAsync();
+    });
+
+    expect(mockScoped.commitPlanVersion).toHaveBeenCalledWith("v-draft");
+  });
+
   it("polling stops at cancelled status", async () => {
     mockScoped.listRuns.mockResolvedValue({ runs: SAMPLE_RUNS });
     mockScoped.listPlans.mockResolvedValue({
@@ -331,5 +466,94 @@ describe("useProjectWorkspace", () => {
 
     expect(mockScoped.listRuns.mock.calls.length).toBe(runsAfterCancelled);
     expect(mockScoped.getRun.mock.calls.length).toBe(getRunAfterCancelled);
+  });
+
+  it.each([
+    ["running→terminal transition", "running", "succeeded"],
+    ["first status already terminal", "succeeded", "succeeded"],
+  ])("refreshes reports and exports after %s", async (_label, firstStatus, terminalStatus) => {
+    mockScoped.listRuns.mockResolvedValue({ runs: SAMPLE_RUNS });
+    mockScoped.listPlans.mockResolvedValue({
+      plans: [{ plan_id: "pl-1", name: "Plan", project_id: "p-1", created_at: "" }],
+    });
+    mockScoped.listPlanVersions.mockResolvedValue({
+      versions: [
+        {
+          plan_version_id: "v-other",
+          plan_id: "pl-1",
+          is_committed: true,
+          version_number: 1,
+          created_at: "",
+        },
+      ],
+    });
+    const runningRun = {
+      run_id: "r-2",
+      plan_version_id: "v-other",
+      status: firstStatus,
+      started_at: "2024-01-01T00:00:00",
+    };
+    const succeededRun = {
+      run_id: "r-2",
+      plan_version_id: "v-other",
+      status: terminalStatus,
+      started_at: "2024-01-01T00:00:00",
+      finished_at: "2024-01-01T00:00:05",
+    };
+    mockScoped.getRun.mockResolvedValueOnce(runningRun).mockResolvedValue(succeededRun);
+    mockScoped.listRunSteps.mockResolvedValue([]);
+    mockScoped.listRunEvidence.mockResolvedValue([]);
+    const report = {
+      report_id: "rep-1",
+      run_id: "r-2",
+      report_type: "manifest",
+      path: "/tmp/report.json",
+      created_at: "2024-01-01T00:00:05",
+    };
+    const exportItem = {
+      export_id: "exp-1",
+      run_id: "r-2",
+      export_type: "python_scorer",
+      path: "/tmp/scorer.py",
+      created_at: "2024-01-01T00:00:05",
+      size_bytes: 1024,
+    };
+    // First (pre-terminal) fetch returns empty; the terminal refresh returns
+    // the populated outputs.
+    mockScoped.listReports
+      .mockResolvedValueOnce({ reports: [] })
+      .mockResolvedValue({ reports: [report] });
+    mockScoped.listExports
+      .mockResolvedValueOnce({ exports: [] })
+      .mockResolvedValue({ exports: [exportItem] });
+
+    const { result } = renderHook(() => useProjectWorkspace({ projectId: "p-1" }), {
+      wrapper: createWrapper(),
+    });
+
+    await waitFor(() => {
+      expect(result.current.effectiveSelectedPlanId).toBe("pl-1");
+    });
+
+    act(() => {
+      result.current.setSelectedVersionId("v-other");
+    });
+    await waitFor(() => {
+      expect(result.current.effectiveSelectedVersionId).toBe("v-other");
+    });
+
+    act(() => {
+      result.current.setSelectedRunId("r-2");
+    });
+    await waitFor(() => {
+      expect(result.current.effectiveSelectedRunId).toBe("r-2");
+    });
+
+    // Once a terminal status is observed, the panels must end up showing the
+    // populated outputs, not stale empty results.
+    await waitFor(() => {
+      expect(result.current.reportsQuery.data?.reports?.[0]?.report_id).toBe("rep-1");
+      expect(result.current.exportsQuery.data?.exports?.[0]?.export_id).toBe("exp-1");
+    });
   });
 });

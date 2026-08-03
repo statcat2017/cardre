@@ -104,6 +104,46 @@ def test_plan_not_found(app_env, tmp_path):
     assert resp.status_code == 404
 
 
+def test_create_canonical_version_populates_steps(app_env, tmp_path):
+    import csv
+
+    client, container = app_env
+    pid, _ = provision(container, tmp_path)
+    plan_resp = client.post(f"/projects/{pid}/plans", json={"name": "P"})
+    assert plan_resp.status_code == 201, plan_resp.text
+    plan_id = plan_resp.json()["plan_id"]
+
+    csv_path = tmp_path / "in.csv"
+    with open(csv_path, "w", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=["x", "credit_risk_class"])
+        w.writeheader()
+        w.writerow({"x": 1, "credit_risk_class": "good"})
+
+    resp = client.post(
+        f"/projects/{pid}/plans/{plan_id}/canonical-version",
+        json={"source_path": str(csv_path)},
+    )
+    assert resp.status_code == 201, resp.text
+    pv = resp.json()
+    assert pv["is_committed"] is False
+
+    steps = client.get(f"/projects/{pid}/plan-versions/{pv['plan_version_id']}/steps")
+    assert steps.status_code == 200
+    assert len(steps.json()) == 31
+    assert steps.json()[0]["canonical_step_id"] == "import"
+
+
+def test_create_canonical_version_unknown_plan_404(app_env, tmp_path):
+    client, container = app_env
+    pid, _ = provision(container, tmp_path)
+    resp = client.post(
+        f"/projects/{pid}/plans/nonexistent/canonical-version",
+        json={"source_path": "x.csv"},
+    )
+    assert resp.status_code == 404
+    assert resp.json()["detail"]["code"] == "PLAN_NOT_FOUND"
+
+
 def test_plan_version_steps_carry_plan_version_id(app_env, tmp_path):
     client, container = app_env
     pid, _ = provision(container, tmp_path)
@@ -256,6 +296,116 @@ def test_patch_draft_plan_version_succeeds(app_env, tmp_path):
     )
     assert resp.status_code == 200
     assert resp.json()["description"] == "Draft update"
+
+
+def test_patch_draft_step_params_succeeds(app_env, tmp_path):
+    from cardre.domain.artifacts import json_logical_hash
+    from cardre.domain.step import StepSpec
+
+    client, container = app_env
+    pid, _ = provision(container, tmp_path)
+    with container.uow_factory.for_project(pid) as uow:
+        plan_id = uow.plans.create_plan(pid, "DraftPlan")
+        pv_id = uow.plans.create_version(
+            plan_id,
+            [StepSpec(
+                step_id="s1", node_type="cardre.noop", node_version="1",
+                category="transform", params={}, params_hash=json_logical_hash({}),
+                parent_step_ids=[], branch_label="", position=0, canonical_step_id="s1",
+            )],
+            is_committed=False,
+        )
+        uow.commit()
+    resp = client.patch(
+        f"/projects/{pid}/plan-versions/{pv_id}/steps/s1",
+        json={"params": {"min_iv": 0.05}},
+    )
+    assert resp.status_code == 200
+    steps = client.get(f"/projects/{pid}/plan-versions/{pv_id}/steps").json()
+    assert steps[0]["params"] == {"min_iv": 0.05}
+    assert steps[0]["params_hash"] == json_logical_hash({"min_iv": 0.05})
+
+
+def test_patch_committed_step_params_returns_409(app_env, tmp_path):
+    client, container = app_env
+    pid, _ = provision(container, tmp_path)
+    _, pv_id = seed_committed_plan(container, pid)
+    resp = client.patch(
+        f"/projects/{pid}/plan-versions/{pv_id}/steps/s1",
+        json={"params": {"min_iv": 0.05}},
+    )
+    assert resp.status_code == 409
+    assert resp.json()["detail"]["code"] == "PLAN_VERSION_IMMUTABLE"
+
+
+def test_patch_unknown_step_returns_404(app_env, tmp_path):
+    from cardre.domain.artifacts import json_logical_hash
+    from cardre.domain.step import StepSpec
+
+    client, container = app_env
+    pid, _ = provision(container, tmp_path)
+    with container.uow_factory.for_project(pid) as uow:
+        plan_id = uow.plans.create_plan(pid, "DraftPlan")
+        pv_id = uow.plans.create_version(
+            plan_id,
+            [StepSpec(
+                step_id="s1", node_type="cardre.noop", node_version="1",
+                category="transform", params={}, params_hash=json_logical_hash({}),
+                parent_step_ids=[], branch_label="", position=0, canonical_step_id="s1",
+            )],
+            is_committed=False,
+        )
+        uow.commit()
+    resp = client.patch(
+        f"/projects/{pid}/plan-versions/{pv_id}/steps/no-such-step",
+        json={"params": {}},
+    )
+    assert resp.status_code == 404
+    assert resp.json()["detail"]["code"] == "STEP_NOT_FOUND"
+
+
+def test_patch_null_indeterminate_values_rejected(app_env, tmp_path):
+    """The step editor accepts arbitrary JSON params; an explicit null for an
+    optional target list must be rejected with a structured 422."""
+    import csv
+    import json
+
+    from cardre.application.plans.create_canonical_scorecard_version import (
+        CreateCanonicalScorecardVersion,
+        CreateCanonicalScorecardVersionCommand,
+    )
+    from cardre.bootstrap.node_catalogue import build_default_catalogue
+    from cardre.bootstrap.settings import Settings
+
+    client, container = app_env
+    pid, _ = provision(container, tmp_path)
+    plan_resp = client.post(f"/projects/{pid}/plans", json={"name": "P"})
+    plan_id = plan_resp.json()["plan_id"]
+    csv_path = tmp_path / "in.csv"
+    with open(csv_path, "w", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=["x", "outcome"])
+        w.writeheader()
+        w.writerow({"x": 1, "outcome": "good"})
+        w.writerow({"x": 2, "outcome": "bad"})
+    cat = build_default_catalogue(Settings())
+    create = CreateCanonicalScorecardVersion(
+        lambda: container.uow_factory.for_project(pid), cat,
+    )
+    pv = create(CreateCanonicalScorecardVersionCommand(
+        plan_id=plan_id, source_path=str(csv_path), target_column="outcome",
+        good_values=["good"], bad_values=["bad"],
+    ))
+    pv_id = pv.plan_version_id
+    steps = client.get(f"/projects/{pid}/plan-versions/{pv_id}/steps").json()
+    meta = next(s for s in steps if s["canonical_step_id"] == "define-metadata")
+
+    resp = client.patch(
+        f"/projects/{pid}/plan-versions/{pv_id}/steps/{meta['step_id']}",
+        json={"params": {**meta["params"], "indeterminate_values": None}},
+    )
+    assert resp.status_code == 422
+    assert resp.json()["detail"]["code"] == "PARAMETER_VALIDATION_ERROR"
+    assert "indeterminate_values must be a list" in json.dumps(resp.json())
 
 
 def test_branch_scope_without_branch_id_rejected(app_env, tmp_path):

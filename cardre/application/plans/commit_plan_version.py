@@ -6,6 +6,9 @@ from dataclasses import dataclass
 from typing import Any
 
 from cardre.application.execution.topology import validate_topology
+from cardre.application.plans.canonical_readiness import validate_canonical_readiness
+from cardre.application.plans.param_validation import validate_step_params
+from cardre.application.ports.node_catalogue import NodeCataloguePort
 from cardre.domain.errors import CardreError, ErrorCode
 
 
@@ -14,9 +17,40 @@ class CommitPlanVersionCommand:
     plan_version_id: str
 
 
+def _merge_errors_by_step(
+    errors_by_step: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Merge per-step validation errors, keeping each message once.
+
+    The node validator and the canonical readiness gate both run the shared
+    target-definition checks on the same normalized params, so the same error
+    can be reported by both. Collapse entries with the same ``step_id``.
+    """
+    merged: dict[str, dict[str, Any]] = {}
+    for entry in errors_by_step:
+        step_id = entry["step_id"]
+        existing = merged.get(step_id)
+        if existing is None:
+            merged[step_id] = {
+                "step_id": step_id,
+                "canonical_step_id": entry.get("canonical_step_id", ""),
+                "errors": list(entry.get("errors", [])),
+            }
+            continue
+        for message in entry.get("errors", []):
+            if message not in existing["errors"]:
+                existing["errors"].append(message)
+    return list(merged.values())
+
+
 class CommitPlanVersion:
-    def __init__(self, uow_factory: Callable[[], Any]) -> None:
+    def __init__(
+        self,
+        uow_factory: Callable[[], Any],
+        node_catalogue: NodeCataloguePort,
+    ) -> None:
         self._uow_factory = uow_factory
+        self._node_catalogue = node_catalogue
 
     def __call__(self, command: CommitPlanVersionCommand) -> Any:
         uow = self._uow_factory()
@@ -37,6 +71,47 @@ class CommitPlanVersion:
 
             steps = uow.plans.get_version_steps(command.plan_version_id)
             validate_topology(steps)
+
+            # Defensive: validate every step's parameter set against its
+            # resolved node before the version becomes immutable. A committed
+            # version cannot be corrected, so a bad edit must be caught here.
+            errors_by_step: list[dict[str, Any]] = []
+            normalized_by_step: dict[str, dict[str, Any]] = {}
+            for step in steps:
+                node_cls = self._node_catalogue.resolve(step.node_type)
+                normalized, errors = validate_step_params(node_cls, step.params)
+                normalized_by_step[step.step_id] = normalized
+                if errors:
+                    errors_by_step.append({
+                        "step_id": step.step_id,
+                        "canonical_step_id": step.canonical_step_id,
+                        "errors": errors,
+                    })
+
+            # Canonical-pathway readiness: explicit modelling decisions beyond
+            # generic node validation (business metadata, target definition,
+            # manual-binning outcome, consistent target) must be recorded
+            # before commit. Run against the normalized parameter sets so an
+            # absent/null target key cannot slip past the check.
+            errors_by_step.extend(
+                validate_canonical_readiness(
+                    steps, normalized_params=normalized_by_step,
+                )
+            )
+
+            # The node validator and the readiness gate both run the shared
+            # target-definition checks on the same normalized params, so the
+            # same error can be reported by both. Merge per step and keep each
+            # message once, in order.
+            errors_by_step = _merge_errors_by_step(errors_by_step)
+
+            if errors_by_step:
+                raise CardreError(
+                    "Plan version contains steps with invalid parameters.",
+                    code=ErrorCode.PARAMETER_VALIDATION_ERROR,
+                    context={"errors": errors_by_step},
+                    status_code=422,
+                )
 
             uow.plans.commit_version(command.plan_version_id)
             uow.commit()

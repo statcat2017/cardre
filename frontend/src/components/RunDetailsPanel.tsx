@@ -4,6 +4,8 @@ import { theme, pageCardStyle } from "../styles";
 type Run = components["schemas"]["RunResponse"];
 type Step = components["schemas"]["RunStepResponse"];
 type Evidence = components["schemas"]["RunEvidenceEdgeResponse"];
+type Report = components["schemas"]["ReportResponse"];
+type Export = components["schemas"]["ExportResponse"];
 
 interface Props {
   runLoading: boolean;
@@ -12,6 +14,51 @@ interface Props {
   steps: Step[] | null | undefined;
   evidenceLoading: boolean;
   evidence: Evidence[] | null | undefined;
+  reportsLoading: boolean;
+  reports: Report[] | null | undefined;
+  exportsLoading: boolean;
+  exports: Export[] | null | undefined;
+}
+
+function FileList({
+  title,
+  loading,
+  items,
+  renderLine,
+}: {
+  title: string;
+  loading: boolean;
+  items: Array<{ id: string; type: string; path: string }> | null | undefined;
+  renderLine?: (item: { id: string; type: string; path: string }) => React.ReactNode;
+}) {
+  return (
+    <div style={{ display: "grid", gap: 10 }}>
+      <h3 style={{ margin: 0, fontSize: 16 }}>{title}</h3>
+      {loading ? (
+        <div style={{ color: theme.muted }}>Loading...</div>
+      ) : items?.length ? (
+        items.map((item) => (
+          <div
+            key={item.id}
+            style={{
+              padding: 12,
+              borderRadius: 12,
+              border: `1px solid ${theme.border}`,
+              background: theme.canvasSoft,
+            }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
+              <strong>{item.type}</strong>
+              {renderLine?.(item)}
+            </div>
+            <div style={{ color: theme.muted, fontSize: 12, marginTop: 4 }}>{item.path}</div>
+          </div>
+        ))
+      ) : (
+        <div style={{ color: theme.muted }}>None.</div>
+      )}
+    </div>
+  );
 }
 
 export function RunDetailsPanel({
@@ -21,6 +68,10 @@ export function RunDetailsPanel({
   steps,
   evidenceLoading,
   evidence,
+  reportsLoading,
+  reports,
+  exportsLoading,
+  exports,
 }: Props) {
   return (
     <>
@@ -131,6 +182,45 @@ export function RunDetailsPanel({
           ) : (
             <div style={{ color: theme.muted }}>No evidence edges.</div>
           )}
+        </section>
+      </div>
+
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)",
+          gap: 16,
+        }}
+      >
+        <section style={{ ...pageCardStyle, padding: 18 }}>
+          <FileList
+            title="Reports"
+            loading={reportsLoading}
+            items={reports?.map((r) => ({
+              id: r.report_id,
+              type: r.report_type,
+              path: r.path,
+            }))}
+          />
+        </section>
+        <section style={{ ...pageCardStyle, padding: 18 }}>
+          <FileList
+            title="Exports"
+            loading={exportsLoading}
+            items={exports?.map((e) => ({
+              id: e.export_id,
+              type: e.export_type,
+              path: e.path,
+              ...(e.size_bytes ? { size: e.size_bytes } : {}),
+            }))}
+            renderLine={(item) =>
+              "size" in item && typeof item.size === "number" ? (
+                <span style={{ color: theme.muted, fontSize: 12 }}>
+                  {Math.round(item.size / 1024)} KB
+                </span>
+              ) : undefined
+            }
+          />
         </section>
       </div>
     </>

@@ -18,6 +18,10 @@ describe("ProjectView", () => {
   const mockScoped = {
     listPlans: vi.fn().mockResolvedValue({ plans: [] }),
     createPlan: vi.fn(),
+    createCanonicalVersion: vi.fn(),
+    getPlanVersionSteps: vi.fn().mockResolvedValue([]),
+    updateStepParams: vi.fn(),
+    commitPlanVersion: vi.fn(),
     listPlanVersions: vi.fn().mockResolvedValue({ versions: [] }),
     listRuns: vi.fn().mockResolvedValue({ runs: [] }),
     createRun: vi.fn(),
@@ -25,6 +29,8 @@ describe("ProjectView", () => {
     listRunSteps: vi.fn(),
     listRunEvidence: vi.fn(),
     cancelRun: vi.fn(),
+    listReports: vi.fn().mockResolvedValue({ reports: [] }),
+    listExports: vi.fn().mockResolvedValue({ exports: [] }),
   };
 
   beforeEach(() => {
@@ -61,6 +67,20 @@ describe("ProjectView", () => {
     expect(screen.getByText("Runs")).toBeDefined();
     expect(screen.getByText("Plan Versions")).toBeDefined();
     expect(screen.getByText("Run Details")).toBeDefined();
+  });
+
+  it("renders the launch-pathway generator when a plan has no versions", async () => {
+    mockScoped.listPlans.mockResolvedValue({
+      plans: [{ plan_id: "pl-1", name: "Plan", project_id: "p-1", created_at: "" }],
+    });
+
+    render(<ProjectView projectId="p-1" onBack={vi.fn()} />, { wrapper: createWrapper() });
+
+    await waitFor(() => {
+      expect(screen.getAllByText("Generate launch pathway").length).toBeGreaterThan(0);
+    });
+
+    expect(screen.getByPlaceholderText("Absolute path to your CSV")).toBeDefined();
   });
 
   it("renders error banner when present", async () => {

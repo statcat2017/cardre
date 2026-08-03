@@ -8,6 +8,7 @@ from cardre.api.dependencies import get_container
 from cardre.api.errors import CardreApiError, ErrorCode
 from cardre.api.mappers import plan_to_response, plan_version_to_response, step_spec_to_response
 from cardre.api.schemas import (
+    CanonicalScorecardVersionRequest,
     PlanCreateRequest,
     PlanListResponse,
     PlanResponse,
@@ -15,6 +16,7 @@ from cardre.api.schemas import (
     PlanVersionListResponse,
     PlanVersionResponse,
     PlanVersionUpdate,
+    StepParamsUpdate,
 )
 from cardre.bootstrap.container import Container
 
@@ -26,6 +28,10 @@ def _uc(container: Container, project_id: str):
     from cardre.application.plans.commit_plan_version import (
         CommitPlanVersion,
         CommitPlanVersionCommand,
+    )
+    from cardre.application.plans.create_canonical_scorecard_version import (
+        CreateCanonicalScorecardVersion,
+        CreateCanonicalScorecardVersionCommand,
     )
     from cardre.application.plans.create_plan import CreatePlan, CreatePlanCommand
     from cardre.application.plans.get_plan import GetPlan, GetPlanCommand
@@ -39,6 +45,10 @@ def _uc(container: Container, project_id: str):
         UpdatePlanVersion,
         UpdatePlanVersionCommand,
     )
+    from cardre.application.plans.update_step_params import (
+        UpdateStepParams,
+        UpdateStepParamsCommand,
+    )
 
     def _factory():
         return container.uow_factory.for_project(project_id)
@@ -48,18 +58,22 @@ def _uc(container: Container, project_id: str):
 
     return {
         "create": CreatePlan(_factory),
+        "create_canonical_version": CreateCanonicalScorecardVersion(_factory, container.node_catalogue),
         "list": ListPlans(_read_factory),
         "get": GetPlan(_read_factory),
         "get_version": GetPlanVersion(_read_factory),
         "list_versions": ListPlanVersions(_read_factory),
         "update_version": UpdatePlanVersion(_factory),
-        "commit_version": CommitPlanVersion(_factory),
+        "update_step_params": UpdateStepParams(_factory, container.node_catalogue),
+        "commit_version": CommitPlanVersion(_factory, container.node_catalogue),
         "CreatePlanCommand": CreatePlanCommand,
+        "CreateCanonicalScorecardVersionCommand": CreateCanonicalScorecardVersionCommand,
         "GetPlanCommand": GetPlanCommand,
         "GetPlanVersionCommand": GetPlanVersionCommand,
         "ListPlanVersionsCommand": ListPlanVersionsCommand,
         "ListPlansCommand": ListPlansCommand,
         "UpdatePlanVersionCommand": UpdatePlanVersionCommand,
+        "UpdateStepParamsCommand": UpdateStepParamsCommand,
         "CommitPlanVersionCommand": CommitPlanVersionCommand,
     }
 
@@ -76,6 +90,44 @@ async def create_plan(project_id: str, body: PlanCreateRequest, container=Depend
     uc = _uc(container, project_id)
     plan = uc["create"](uc["CreatePlanCommand"](project_id=project_id, name=body.name))
     return plan_to_response(plan)
+
+
+@router.post("/plans/{plan_id}/canonical-version", response_model=PlanVersionResponse, status_code=201)
+async def create_canonical_scorecard_version(
+    project_id: str,
+    plan_id: str,
+    body: CanonicalScorecardVersionRequest,
+    container=Depends(get_container),
+):
+    from cardre.domain.errors import CardreError
+
+    uc = _uc(container, project_id)
+    try:
+        pv = uc["create_canonical_version"](
+            uc["CreateCanonicalScorecardVersionCommand"](
+                plan_id=plan_id,
+                source_path=body.source_path,
+                target_column=body.target_column,
+                good_values=body.good_values,
+                bad_values=body.bad_values,
+                product=body.product,
+                segment=body.segment,
+                observation_window=body.observation_window,
+                performance_window=body.performance_window,
+                reject_inference_position=body.reject_inference_position,
+                accept_automated=body.accept_automated,
+                smoothing=body.smoothing,
+            )
+        )
+    except CardreError as exc:
+        if exc.code == ErrorCode.PLAN_NOT_FOUND:
+            raise CardreApiError(
+                code=ErrorCode.PLAN_NOT_FOUND,
+                message=str(exc),
+                status_code=404,
+            ) from exc
+        raise
+    return plan_version_to_response(pv)
 
 
 @router.get("/plans/{plan_id}", response_model=PlanResponse)
@@ -150,8 +202,67 @@ async def commit_plan_version(project_id: str, plan_version_id: str, container=D
                 message=str(exc),
                 status_code=404,
             ) from exc
+        if exc.code == ErrorCode.PARAMETER_VALIDATION_ERROR:
+            raise CardreApiError(
+                code=ErrorCode.PARAMETER_VALIDATION_ERROR,
+                message=str(exc),
+                status_code=422,
+                context=exc.context,
+            ) from exc
         raise
     return plan_version_to_response(committed)
+
+
+@router.patch("/plan-versions/{plan_version_id}/steps/{step_id}", response_model=PlanVersionResponse)
+async def update_step_params(
+    project_id: str,
+    plan_version_id: str,
+    step_id: str,
+    body: StepParamsUpdate,
+    container=Depends(get_container),
+):
+    from cardre.domain.errors import CardreError
+
+    uc = _uc(container, project_id)
+    try:
+        uc["update_step_params"](
+            uc["UpdateStepParamsCommand"](
+                plan_version_id=plan_version_id,
+                step_id=step_id,
+                params=body.params,
+            )
+        )
+    except CardreError as exc:
+        if exc.code == ErrorCode.PLAN_VERSION_NOT_FOUND:
+            raise CardreApiError(
+                code=ErrorCode.PLAN_VERSION_NOT_FOUND,
+                message=str(exc),
+                status_code=404,
+            ) from exc
+        if exc.code == ErrorCode.PLAN_VERSION_ALREADY_COMMITTED:
+            raise CardreApiError(
+                code=ErrorCode.PLAN_VERSION_IMMUTABLE,
+                message=str(exc),
+                status_code=409,
+            ) from exc
+        if exc.code == ErrorCode.STEP_NOT_FOUND:
+            raise CardreApiError(
+                code=ErrorCode.STEP_NOT_FOUND,
+                message=str(exc),
+                status_code=404,
+            ) from exc
+        if exc.code == ErrorCode.PARAMETER_VALIDATION_ERROR:
+            raise CardreApiError(
+                code=ErrorCode.PARAMETER_VALIDATION_ERROR,
+                message=str(exc),
+                status_code=422,
+                context=exc.context,
+            ) from exc
+        raise
+    pv = uc["get_version"](uc["GetPlanVersionCommand"](plan_version_id=plan_version_id))
+    if pv is None:
+        raise CardreApiError(code=ErrorCode.PLAN_VERSION_NOT_FOUND, message=f"Plan version {plan_version_id!r} not found.", status_code=404)
+    return plan_version_to_response(pv)
 
 
 @router.get("/plan-versions/{plan_version_id}/steps", response_model=list[PlanStepResponse])
