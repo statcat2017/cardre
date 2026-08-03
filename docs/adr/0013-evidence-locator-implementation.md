@@ -2,13 +2,13 @@
 
 ## Status
 
-Proposed
+Superseded
 
 ## Historical note
 
-The incremental migration path below was overtaken by PR4. `EvidenceResolver`
-was deleted instead of retained as a wrapper, and the surviving branch-current
-check moved onto the locator-side seam.
+The incremental migration path below was overtaken by the v2 refactor.
+`EvidenceResolver` was deleted and the surviving branch-current check lives on
+the evidence-lookup seam in `cardre/application/evidence/`.
 
 ## Context
 

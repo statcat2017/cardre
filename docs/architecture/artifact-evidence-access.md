@@ -75,7 +75,7 @@ When introducing a new evidence type, update all of these:
 4. Add an `EVIDENCE_PROFILES` entry in `cardre/adapters/evidence/profiles.py`.
 5. Add an `AdapterSpec` entry in the `EVIDENCE_ADAPTERS` table in `cardre/adapters/evidence/__init__.py`. Most adapters are a one-liner `AdapterSpec(profile=..., parse=lambda path, art, store: Model.from_json(...))`. Only add a custom class if the parse logic is non-trivial (e.g. `WoeTable`, `IvTable`, `ScoredDataset`).
 6. Add fixture-backed parse coverage in `tests/test_evidence_adapters.py`.
-7. Add a parametrized profile assertion in `tests/test_evidence_profiles.py`.
+7. Add a parametrized profile assertion in `tests/test_evidence_adapters.py`.
 
 Minimal parser rule: prefer schema/version validation first, then role/type/media/profile validation inside `cardre/domain/evidence/` and `cardre/adapters/evidence/`, never bespoke parsing in product nodes.
 
@@ -125,13 +125,8 @@ For byte streaming only, `store.artifact_path(art)` is acceptable with the
 
 ## Writing Tests
 
-- Use `tests/helpers/evidence_assertions.py` for typed assertions.
-- Use raw dict assertions only in the three isolated compatibility files:
-  - `tests/test_artifact_serialization.py`
-  - `tests/test_evidence_reader.py`
-  - `tests/test_legacy_artifact_compatibility.py`
-
-This keeps layout assertions local and keeps production tests focused on typed behavior.
+- Use `tests/test_evidence_adapters.py` for typed matching and parsing assertions
+  against the canonical evidence identities.
 
 ## Legacy Compatibility Policy
 

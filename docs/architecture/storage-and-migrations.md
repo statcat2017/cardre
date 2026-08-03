@@ -2,16 +2,16 @@
 
 ## SQLite Metadata Store
 
-All metadata is stored in a single SQLite database per project. The store is implemented as `ProjectStore` in `cardre/store/project_store.py` with specialized repository classes for focused access:
+All metadata is stored in a single SQLite database per project. The schema is defined in `cardre/adapters/sqlite/schema.py` and accessed through specialized repository classes in `cardre/adapters/sqlite/`:
 
 | Repository | File | Responsibility |
 |------------|------|----------------|
-| `ProjectStore` | `project_store.py` | Compatibility facade, top-level CRUD |
-| `ArtifactRepository` | `artifact_repo.py` | Artifact records, hashes, paths |
-| `PlanRepository` | `plan_repo.py` | Plans, plan versions, steps |
-| `RunRepository` | `run_repo.py` | Runs, run steps, status |
-| `BranchRepository` | `branch_repo.py` | Branches, branch step maps |
-| `ProjectRepository` | `project_repo.py` | Project records |
+| `ProjectRepo` | `project_repo.py` | Project records |
+| `PlanRepo` | `plan_repo.py` | Plans, plan versions, steps |
+| `StepRepo` | `step_repo.py` | Plan steps and edges |
+| `RunRepo` | `run_repo.py` | Runs, run steps, status |
+| `BranchRepo` | `branch_repo.py` | Branches, branch step maps |
+| `ArtifactRepo` | `artifact_repo.py` | Artifact records, hashes, paths |
 
 ## Storage Model
 
