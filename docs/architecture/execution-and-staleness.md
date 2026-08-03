@@ -31,10 +31,10 @@ terminal side:
 - Terminal status transition and manifest publication outbox record, combined
   into one transaction. The terminal status is written via
   `RunRepository.transition(run_id, RunStatus.X, expected_from=(...))`.
-  Run statuses are modelled by the `RunStatus(StrEnum)` in `cardre/domain/run.py`;
-  callers pass enum members, not bare strings.
-- Manifest payload construction (`build_manifest_payload`) and self-referential
-  hashing.
+  `FinalizeRun.__call__` accepts a status string (e.g. `"succeeded"`,
+  `"failed"`, `"cancelled"`) and converts it internally with `RunStatus(status)`.
+- Manifest payload construction (`_build_manifest` / `_build_manifest_steps`)
+  and self-referential hashing (`compute_manifest_hash`, `compute_pathway_hash`).
 
 `ExecuteRun` orchestrates step execution: it claims the run, iterates the plan's
 steps in topological order, calls `StepRunner.run_step` for each, and persists

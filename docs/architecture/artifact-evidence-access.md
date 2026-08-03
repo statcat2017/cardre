@@ -81,17 +81,25 @@ branches may be added.
 ## Writing A Node That Consumes Artifacts
 
 Nodes receive typed evidence through `InputCollection`
-(`cardre/application/execution/input_collection.py`). Use `by_role`, `by_kind`,
-`read` or `read_optional` and fail clearly if the evidence is missing:
+(`cardre/application/execution/input_collection.py`). `by_role` returns
+`ArtifactRef`s; `by_kind` returns already-parsed typed evidence. Fail clearly if
+the evidence is missing:
 
 ```python
-model_arts = context.inputs.by_kind(EvidenceKind.MODEL_ARTIFACT)
-if not model_arts:
+models = context.inputs.by_kind(EvidenceKind.MODEL_ARTIFACT)
+if not models:
     raise EvidenceNotFoundError(
         EvidenceKind.MODEL_ARTIFACT,
         candidate_artifact_ids=[],
     )
-model = context.inputs.read(model_arts[0], EvidenceKind.MODEL_ARTIFACT)
+model = models[0]  # already a typed ModelArtifactV1
+```
+
+To read a specific `ArtifactRef` as typed evidence, use `read(artifact, kind)`:
+
+```python
+model_art = context.inputs.require("model", self.node_type)
+model = context.inputs.read(model_art, EvidenceKind.MODEL_ARTIFACT)
 ```
 
 If the node needs dataset rows, read parquet as a dataset frame (`read_dataframe`)
@@ -130,9 +138,8 @@ Evidence routes live under `cardre/api/routes/evidence.py` and are project-scope
 - `GET /projects/{project_id}/steps/{step_id}/evidence` — staleness explanation
   for a step.
 
-For previews and summaries, use the adapter registry directly:
-`get_adapter(kind).match()` / `.parse()` via the `EvidenceReader`. The reader's
-`summarise_*` methods have been removed.
+For previews and summaries, use `EvidenceReader.find` / `read` for typed evidence.
+The reader's `summarise_*` methods have been removed.
 
 For byte streaming only, `store.resolve_path(art)` is acceptable with the
 `artifact-byte-download` suppression. Do not `json.loads` artifact bodies in a route.

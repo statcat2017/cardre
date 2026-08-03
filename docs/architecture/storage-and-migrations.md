@@ -40,8 +40,12 @@ review tables. Governance is a capability gated at the application/API layer
 ## Migrations
 
 Cardre has not launched, so there is **no migration chain** before the first real
-deployment. Each project store is created from the current `ALL_TABLES_SQL` with
-a recorded `schema_family` / `schema_version`. A store whose schema identity does
-not match the application is rejected (or recreated), not migrated. A migration
-runner will only be introduced after the first deployment, alongside a
-compatibility policy (see ADR 0015).
+deployment. Each project store is created from the current `ALL_TABLES_SQL` with a
+recorded `schema_family` / `schema_version` in `store_meta`.
+
+Those values are currently **recorded but not yet enforced on open**:
+`SqliteUnitOfWorkFactory` verifies only that the project root and
+`project.sqlite` file exist before connecting. A future release will add a
+schema-identity check that rejects stores whose recorded family/version differ
+from the application, replacing in-place migration until a real compatibility
+policy exists (see ADR 0015).
