@@ -207,7 +207,7 @@ class TestCommitPlanVersion:
         for entry in exc.value.context.get("errors", []):
             messages.extend(entry.get("errors", []))
         joined = " ".join(messages)
-        assert "product is required" in joined
+        assert "product must be non-whitespace text" in joined
         assert "manual-binning requires an explicit outcome" in joined
 
     def test_commit_accepts_complete_canonical_draft(self, provisioned_project):
@@ -243,7 +243,7 @@ class TestCommitPlanVersion:
         joined = " ".join(
             msg for e in exc.value.context.get("errors", []) for msg in e.get("errors", [])
         )
-        assert "target_column must agree" in joined
+        assert "target_column must match exactly" in joined
 
     def test_commit_rejects_overlapping_good_bad(self, provisioned_project):
         """A semantically contradictory target definition (good and bad share
@@ -319,9 +319,107 @@ class TestCommitPlanVersion:
         joined = " ".join(
             msg for e in exc.value.context.get("errors", []) for msg in e.get("errors", [])
         )
-        assert "target_column must agree" in joined
+        assert "target_column must match exactly" in joined
 
-    def test_commit_rejects_accept_automated_with_overrides(self, provisioned_project):
+    def test_commit_rejects_empty_dependent_target(self, provisioned_project):
+        """An empty target on a dependent step must be rejected even when the
+        others agree — it would index a different column than the others at
+        runtime."""
+        from cardre.domain.artifacts import json_logical_hash
+
+        project_id, uow_factory, _, _ = provisioned_project
+        pv_id = self._canonical_draft(uow_factory, project_id, ready=True)
+
+        with uow_factory.for_project(project_id) as uow:
+            steps = uow.plans.get_version_steps(pv_id)
+            vt = next(s for s in steps if s.canonical_step_id == "validate-target")
+            params = dict(vt.params)
+            params["target_column"] = ""
+            uow.plans.update_step_params(pv_id, vt.step_id, params, json_logical_hash(params))
+            uow.commit()
+
+        use_case = CommitPlanVersion(_factory(uow_factory, project_id), _catalogue())
+        with pytest.raises(CardreError) as exc:
+            use_case(CommitPlanVersionCommand(plan_version_id=pv_id))
+        assert exc.value.code == "PARAMETER_VALIDATION_ERROR"
+        joined = " ".join(
+            msg for e in exc.value.context.get("errors", []) for msg in e.get("errors", [])
+        )
+        assert "validate-target.target_column must be non-whitespace text" in joined
+
+    def test_commit_rejects_whitespace_different_target(self, provisioned_project):
+        """A target differing only by whitespace must be rejected: execution
+        does not strip the value."""
+        from cardre.domain.artifacts import json_logical_hash
+
+        project_id, uow_factory, _, _ = provisioned_project
+        pv_id = self._canonical_draft(uow_factory, project_id, ready=True)
+
+        with uow_factory.for_project(project_id) as uow:
+            steps = uow.plans.get_version_steps(pv_id)
+            vt = next(s for s in steps if s.canonical_step_id == "validate-target")
+            params = dict(vt.params)
+            params["target_column"] = " outcome "
+            uow.plans.update_step_params(pv_id, vt.step_id, params, json_logical_hash(params))
+            uow.commit()
+
+        use_case = CommitPlanVersion(_factory(uow_factory, project_id), _catalogue())
+        with pytest.raises(CardreError) as exc:
+            use_case(CommitPlanVersionCommand(plan_version_id=pv_id))
+        assert exc.value.code == "PARAMETER_VALIDATION_ERROR"
+        joined = " ".join(
+            msg for e in exc.value.context.get("errors", []) for msg in e.get("errors", [])
+        )
+        assert "target_column must match exactly" in joined
+
+    def test_commit_rejects_blank_member_in_good_values(self, provisioned_project):
+        """A list containing a valid member and a blank member must be
+        rejected: runtime consumes each member verbatim, so the blank would
+        become a spurious declared category."""
+        from cardre.domain.artifacts import json_logical_hash
+
+        project_id, uow_factory, _, _ = provisioned_project
+        pv_id = self._canonical_draft(uow_factory, project_id, ready=True)
+
+        with uow_factory.for_project(project_id) as uow:
+            steps = uow.plans.get_version_steps(pv_id)
+            meta = next(s for s in steps if s.canonical_step_id == "define-metadata")
+            params = dict(meta.params)
+            params["good_values"] = ["good", "   "]
+            uow.plans.update_step_params(pv_id, meta.step_id, params, json_logical_hash(params))
+            uow.commit()
+
+        use_case = CommitPlanVersion(_factory(uow_factory, project_id), _catalogue())
+        with pytest.raises(CardreError) as exc:
+            use_case(CommitPlanVersionCommand(plan_version_id=pv_id))
+        assert exc.value.code == "PARAMETER_VALIDATION_ERROR"
+        joined = " ".join(
+            msg for e in exc.value.context.get("errors", []) for msg in e.get("errors", [])
+        )
+        assert "good_values[1] must not be blank" in joined
+
+    def test_commit_rejects_whitespace_only_essential_metadata(self, provisioned_project):
+        from cardre.domain.artifacts import json_logical_hash
+
+        project_id, uow_factory, _, _ = provisioned_project
+        pv_id = self._canonical_draft(uow_factory, project_id, ready=True)
+
+        with uow_factory.for_project(project_id) as uow:
+            steps = uow.plans.get_version_steps(pv_id)
+            meta = next(s for s in steps if s.canonical_step_id == "define-metadata")
+            params = dict(meta.params)
+            params["product"] = "   "
+            uow.plans.update_step_params(pv_id, meta.step_id, params, json_logical_hash(params))
+            uow.commit()
+
+        use_case = CommitPlanVersion(_factory(uow_factory, project_id), _catalogue())
+        with pytest.raises(CardreError) as exc:
+            use_case(CommitPlanVersionCommand(plan_version_id=pv_id))
+        assert exc.value.code == "PARAMETER_VALIDATION_ERROR"
+        joined = " ".join(
+            msg for e in exc.value.context.get("errors", []) for msg in e.get("errors", [])
+        )
+        assert "product must be non-whitespace text" in joined
         """accept_automated=True contradicting the binning actually executed
         (manual overrides present) must be rejected before commit."""
         from cardre.domain.artifacts import json_logical_hash

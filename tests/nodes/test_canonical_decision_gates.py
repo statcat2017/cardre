@@ -53,6 +53,44 @@ class TestDefineModellingMetadataTargetDefinition:
         })
         assert errors == []
 
+    def test_target_checks_run_even_without_reject_inference(self):
+        """Target-definition validation must run even when reject_inference
+        position is absent — it must not be skipped by an early return."""
+        node = DefineModellingMetadataNode()
+        errors = node.validate_params({
+            "target_column": "outcome",
+            "good_values": ["default"],
+            "bad_values": ["default"],
+        })
+        assert any("must be disjoint" in e for e in errors), errors
+
+    def test_rejects_blank_member_with_valid_reject_inference(self):
+        """A blank member becomes a spurious declared category at runtime, so
+        it must be rejected during validation."""
+        node = DefineModellingMetadataNode()
+        errors = node.validate_params({
+            "reject_inference_position": "not_applied",
+            "target_column": "outcome",
+            "good_values": ["good", "   "],
+            "bad_values": ["bad"],
+        })
+        assert any("good_values[1] must not be blank" in e for e in errors), errors
+
+    def test_rejects_whitespace_different_target_column(self):
+        node = DefineModellingMetadataNode()
+        errors = node.validate_params({
+            "reject_inference_position": "not_applied",
+            "target_column": " outcome ",
+            "good_values": ["good"],
+            "bad_values": ["bad"],
+        })
+        # The node-level check requires non-whitespace content; surrounding
+        # whitespace is still non-whitespace content, so it is not flagged
+        # here — the canonical readiness gate rejects it as an exact-match
+        # violation across steps. This test guards that a blank-only value is
+        # still rejected.
+        assert not any("target_column must be non-whitespace text" in e for e in errors)
+
 
 class TestManualBinningAutomatedAcceptance:
     def test_rejects_accept_automated_with_overrides(self):

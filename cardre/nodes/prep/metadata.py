@@ -15,15 +15,31 @@ from cardre.nodes.contracts import (
 
 
 def _normalize_target_values(values: Any) -> list[str]:
-    """Strip, drop blanks, and dedupe a target value list."""
+    """Return the exact string representation of each non-blank, non-null
+    member, preserving order (duplicates collapse via the caller's set)."""
     if not isinstance(values, list):
         return []
-    seen: list[str] = []
-    for value in values:
-        text = str(value).strip()
-        if text and text not in seen:
-            seen.append(text)
-    return seen
+    return [str(v) for v in values if v is not None and str(v).strip()]
+
+
+def _target_list_errors(params: dict[str, Any], key: str) -> list[str]:
+    """Reject null or blank members in a target value list.
+
+    Execution consumes each member verbatim (``str(v)`` without stripping),
+    so a blank or null member would become a spurious declared category.
+    """
+    errors: list[str] = []
+    values = params.get(key)
+    if values is None:
+        return errors
+    if not isinstance(values, list):
+        return [f"{key} must be a list"]
+    for i, value in enumerate(values):
+        if value is None:
+            errors.append(f"{key}[{i}] must not be null")
+        elif isinstance(value, str) and not value.strip():
+            errors.append(f"{key}[{i}] must not be blank")
+    return errors
 
 
 def _validate_target_definition(params: dict[str, Any]) -> list[str]:
@@ -31,13 +47,18 @@ def _validate_target_definition(params: dict[str, Any]) -> list[str]:
 
     These checks do not require the dataset: they validate the shape of the
     declared target, good, bad and indeterminate value sets so a semantically
-    contradictory definition cannot be committed as immutable.
+    contradictory definition cannot be committed as immutable. Overlap checks
+    use the exact representation execution consumes (``str(v)`` verbatim),
+    and blank/null members are rejected outright.
     """
     errors: list[str] = []
 
     target_column = params.get("target_column")
     if not isinstance(target_column, str) or not target_column.strip():
         errors.append("target_column must be non-whitespace text")
+
+    for key in ("good_values", "bad_values", "indeterminate_values"):
+        errors.extend(_target_list_errors(params, key))
 
     good_values = _normalize_target_values(params.get("good_values"))
     bad_values = _normalize_target_values(params.get("bad_values"))
@@ -91,7 +112,10 @@ class DefineModellingMetadataNode(NodeType):
     }
 
     def validate_params(self, params: dict[str, Any]) -> list[str]:
-        errors: list[str] = []
+        # Always run the target-definition checks: they must not be skipped
+        # when reject_inference_position is absent or malformed.
+        errors: list[str] = _validate_target_definition(params)
+
         reject_inference_position = params.get("reject_inference_position")
         if reject_inference_position is None:
             return errors
@@ -103,9 +127,6 @@ class DefineModellingMetadataNode(NodeType):
                 "reject_inference_position must be one of "
                 f"{sorted(self.VALID_REJECT_INFERENCE_POSITIONS)}, got {reject_inference_position!r}"
             )
-        # Data-independent target-definition validation. Data-dependent
-        # checks (values present in the actual dataset) stay in run().
-        errors.extend(_validate_target_definition(params))
         return errors
 
     def run(self, context: NodeContext) -> NodeResult:

@@ -179,6 +179,37 @@ slip past the consistency check. All three target-dependent steps must exist
 and carry the same stripped, non-empty target column. Covered by
 `test_commit_rejects_missing_target_key`.
 
+## Fourth-review remediation (PR 385, head 09b406e)
+
+**P1 — Target consistency matches execution exactly.** The readiness gate now
+requires every target-dependent step to exist with a non-whitespace
+`target_column` string and for the three values to match *exactly as
+persisted* — no strip-collapse that would approve `"outcome"` next to
+`" outcome "` (execution does not strip). Empty dependent targets are also
+rejected. Covered by `test_commit_rejects_empty_dependent_target` and
+`test_commit_rejects_whitespace_different_target`.
+
+**P1 — Target class values validated with runtime-exact semantics.** Both the
+node and readiness validators now reject every blank or null member in
+good/bad/indeterminate lists (execution consumes each member verbatim via
+`str(v)`, so a blank would become a spurious declared category), and overlap
+checks run on the exact representation runtime uses. The validator no longer
+cleans a temporary copy while the executed parameters keep the blank.
+Covered by `test_commit_rejects_blank_member_in_good_values` and
+`test_rejects_blank_member_with_valid_reject_inference`.
+
+**P1 — Essential metadata must be non-whitespace.** `product`, `segment`,
+observation/performance windows and reject-inference position are required
+to be non-whitespace strings at commit (ordinary truthiness previously let
+`"   "` pass, and the UI returns text fields untrimmed). Covered by
+`test_commit_rejects_whitespace_only_essential_metadata`.
+
+**P2 — Node target validation no longer skipped.** 
+`DefineModellingMetadataNode.validate_params()` always runs the target
+definition checks before appending reject-inference errors; an absent or
+malformed `reject_inference_position` no longer short-circuits the target
+checks. Covered by `test_target_checks_run_even_without_reject_inference`.
+
 ## Existing seams this batch builds on (do NOT re-implement these)
 
 Every piece of machinery this batch needs already exists. The work is to

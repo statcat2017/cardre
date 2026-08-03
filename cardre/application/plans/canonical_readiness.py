@@ -40,15 +40,31 @@ _ESSENTIAL_METADATA_KEYS = (
 
 
 def _normalize_target_values(values: Any) -> list[str]:
-    """Strip, drop blanks, and dedupe a target value list."""
+    """Return the exact string representation of each non-blank, non-null
+    member (duplicates collapse via the caller's set)."""
     if not isinstance(values, list):
         return []
-    seen: list[str] = []
-    for value in values:
-        text = str(value).strip()
-        if text and text not in seen:
-            seen.append(text)
-    return seen
+    return [str(v) for v in values if v is not None and str(v).strip()]
+
+
+def _target_list_errors(params: dict[str, Any], key: str) -> list[str]:
+    """Reject null or blank members in a target value list.
+
+    Execution consumes each member verbatim (``str(v)`` without stripping),
+    so a blank or null member would become a spurious declared category.
+    """
+    errors: list[str] = []
+    values = params.get(key)
+    if values is None:
+        return errors
+    if not isinstance(values, list):
+        return [f"{key} must be a list"]
+    for i, value in enumerate(values):
+        if value is None:
+            errors.append(f"{key}[{i}] must not be null")
+        elif isinstance(value, str) and not value.strip():
+            errors.append(f"{key}[{i}] must not be blank")
+    return errors
 
 
 def _target_definition_errors(params: dict[str, Any]) -> list[str]:
@@ -57,6 +73,9 @@ def _target_definition_errors(params: dict[str, Any]) -> list[str]:
     target_column = params.get("target_column")
     if not isinstance(target_column, str) or not target_column.strip():
         errors.append("target_column must be non-whitespace text")
+
+    for key in ("good_values", "bad_values", "indeterminate_values"):
+        errors.extend(_target_list_errors(params, key))
 
     good_values = _normalize_target_values(params.get("good_values"))
     bad_values = _normalize_target_values(params.get("bad_values"))
@@ -121,8 +140,9 @@ def validate_canonical_readiness(
     meta_params = params_for(meta)
     meta_errors: list[str] = []
     for key in _ESSENTIAL_METADATA_KEYS:
-        if not meta_params.get(key):
-            meta_errors.append(f"{key} is required before commit")
+        value = meta_params.get(key)
+        if not isinstance(value, str) or not value.strip():
+            meta_errors.append(f"{key} must be non-whitespace text")
     meta_errors.extend(_target_definition_errors(meta_params))
     if meta_errors:
         errors_by_step.append({
@@ -164,32 +184,31 @@ def validate_canonical_readiness(
             })
 
     # Target consistency: every target-dependent canonical step must exist and
-    # carry the same stripped, non-empty target column.
-    missing_target_steps = [cid for cid in TARGET_DEPENDENT_STEP_IDS if cid not in by_canonical]
-    if missing_target_steps:
-        errors_by_step.append({
-            "step_id": meta.step_id,
-            "canonical_step_id": "target",
-            "errors": [
-                f"canonical target steps are missing: {', '.join(missing_target_steps)}"
-            ],
-        })
+    # carry the same, non-empty, non-whitespace target column — matched exactly
+    # as persisted (execution does not strip or coerce).
+    target_errors: list[str] = []
+    raw_targets: dict[str, str] = {}
+    for cid in TARGET_DEPENDENT_STEP_IDS:
+        step = by_canonical.get(cid)
+        if step is None:
+            target_errors.append(f"canonical target step {cid!r} is missing")
+            continue
+        value = params_for(step).get("target_column")
+        if not isinstance(value, str) or not value.strip():
+            target_errors.append(f"{cid}.target_column must be non-whitespace text")
+            continue
+        raw_targets[cid] = value
 
-    targets = {
-        cid: params_for(by_canonical[cid]).get("target_column")
-        for cid in TARGET_DEPENDENT_STEP_IDS
-        if cid in by_canonical
-    }
-    stripped = {cid: str(value).strip() for cid, value in targets.items()}
-    nonempty = {value for value in stripped.values() if value}
-    if len(nonempty) > 1:
+    if len(set(raw_targets.values())) > 1:
+        target_errors.append(
+            "target_column must match exactly across define-metadata, validate-target "
+            f"and split; got {raw_targets}"
+        )
+    if target_errors:
         errors_by_step.append({
             "step_id": meta.step_id,
             "canonical_step_id": "target",
-            "errors": [
-                "target_column must agree across define-metadata, validate-target "
-                f"and split; got {stripped}"
-            ],
+            "errors": target_errors,
         })
 
     return errors_by_step
