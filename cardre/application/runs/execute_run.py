@@ -57,9 +57,10 @@ class _RunSummaryHook:
     instance-state side-channel between the loop and the persist block.
     """
 
-    def __init__(self, execute_run: ExecuteRun, artifact_store: Any) -> None:
+    def __init__(self, execute_run: ExecuteRun, artifact_store: Any, publisher: Any) -> None:
         self._execute_run = execute_run
         self._artifact_store = artifact_store
+        self._publisher = publisher
         self._summary_ref: ArtifactRef | None = None
 
     def before_step(
@@ -77,6 +78,7 @@ class _RunSummaryHook:
         self._summary_ref = self._execute_run._publish_run_summary(
             command, pv_id, run, step_outputs, run_step_records, worker_generation,
             artifact_store=self._artifact_store,
+            publisher=self._publisher,
         )
         # Inject the RunSummary into the step's own output bucket.
         # StepRunner._resolve_inputs later picks up own-step entries.
@@ -117,6 +119,7 @@ class ExecuteRun:
         step_runner: Any,
         finalize_run: FinalizeRun,
         artifact_store_factory: Callable[[], Any],
+        publication_publisher_factory: Callable[[], Any],
         heartbeat_interval_seconds: float = 75,
     ) -> None:
         self._uow_factory = uow_factory
@@ -125,6 +128,7 @@ class ExecuteRun:
         self._step_runner = step_runner
         self._finalize_run = finalize_run
         self._artifact_store_factory = artifact_store_factory
+        self._publication_publisher_factory = publication_publisher_factory
         self._heartbeat_interval_seconds = heartbeat_interval_seconds
 
     def __call__(self, command: ExecuteRunCommand) -> None:
@@ -132,6 +136,7 @@ class ExecuteRun:
         # invocation and keep it local (never on self) so concurrent use of a
         # single ExecuteRun instance cannot cross invocations' stores.
         artifact_store = self._artifact_store_factory()
+        publisher = self._publication_publisher_factory()
 
         with _read_uow(self._read_only_factory) as uow:
             run = uow.runs.get(command.run_id)
@@ -167,7 +172,7 @@ class ExecuteRun:
         watchdog.start()
         try:
             self._execute_steps(
-                command, pv_id, run, steps, worker_generation, artifact_store,
+                command, pv_id, run, steps, worker_generation, artifact_store, publisher,
             )
         except Exception as exc:
             self._finalize_run(command.run_id, "failed", diagnostic=FinalizeDiagnostic(
@@ -268,10 +273,11 @@ class ExecuteRun:
         steps: list[Any],
         worker_generation: int,
         artifact_store: Any,
+        publisher: Any,
     ) -> None:
         step_outputs: dict[str, list[Any]] = {}
         run_step_records: dict[str, RunStep] = {}
-        summary_hook = _RunSummaryHook(self, artifact_store)
+        summary_hook = _RunSummaryHook(self, artifact_store, publisher)
         for step in steps:
             if self._is_cancelled(command):
                 self._finalize_run(command.run_id, "cancelled")
@@ -287,7 +293,7 @@ class ExecuteRun:
             )
 
             try:
-                output_refs, staged_by_artifact, outbox_ids = self._persist_step_outputs(
+                output_refs, pending_publishes = self._persist_step_outputs(
                     command, step, pv_id, run, result, step_outputs, run_step_records,
                     worker_generation, summary_hook, artifact_store,
                 )
@@ -296,7 +302,7 @@ class ExecuteRun:
                     self._finalize_run(command.run_id, "cancelled")
                 return
 
-            self._finalize_artifacts(output_refs, staged_by_artifact, outbox_ids, artifact_store)
+            self._finalize_artifacts(pending_publishes, artifact_store, publisher)
 
             if result.status == RunStepStatus.FAILED:
                 self._finalize_run(command.run_id, "failed")
@@ -326,12 +332,13 @@ class ExecuteRun:
         worker_generation: int,
         summary_hook: _RunSummaryHook,
         artifact_store: Any,
-    ) -> tuple[list[ArtifactRef], dict[str, Any], list[str]]:
+    ) -> tuple[list[ArtifactRef], list[tuple[str, Any]]]:
         """Register artifacts, run-step, lineage, evidence edges, and outbox
         rows inside one fenced transaction.
 
-        Returns ``(output_refs, staged_by_artifact, outbox_ids)`` for the
-        post-commit filesystem finalization. The lease fence is asserted
+        Returns ``(output_refs, pending_publishes)`` where
+        ``pending_publishes`` is a list of ``(outbox_id, staged)`` pairs for
+        the post-commit filesystem finalization. The lease fence is asserted
         atomically inside the ``BEGIN IMMEDIATE`` transaction: a cancellation
         or terminalization that raced the node finishing causes a
         ``LeaseLost`` and nothing is written.
@@ -379,7 +386,7 @@ class ExecuteRun:
             uow.run_steps.insert(run_step)
             run_step_records[step.step_id] = run_step
 
-            outbox_ids: list[str] = []
+            pending_publishes: list[tuple[str, Any]] = []
             for art_ref in output_refs:
                 uow.artifacts.register_lineage(
                     run_id=command.run_id,
@@ -401,7 +408,7 @@ class ExecuteRun:
                         storage_key=str(artifact_store.object_path(staged.physical_hash)),
                         staging_source=str(staged.staging_path),
                     )
-                    outbox_ids.append(outbox_id)
+                    pending_publishes.append((outbox_id, staged))
 
             input_id_set = set(result.input_artifact_ids)
             for parent_step_id in step.parent_step_ids:
@@ -423,34 +430,24 @@ class ExecuteRun:
 
             summary_hook.register_own_lineage(uow, command, pv_id, run, run_step, input_id_set)
 
-        return output_refs, staged_by_artifact, outbox_ids
+        return output_refs, pending_publishes
 
     def _finalize_artifacts(
         self,
-        output_refs: list[ArtifactRef],
-        staged_by_artifact: dict[str, Any],
-        outbox_ids: list[str],
+        pending_publishes: list[tuple[str, Any]],
         artifact_store: Any,
+        publisher: Any,
     ) -> None:
         # The filesystem side of the publication happens only after the DB
-        # mutation committed. On failure here the DB already has the
-        # descriptor + outbox row, so reconciliation can retry; the staging
-        # file is not orphaned into objects/.
-        for art_ref in output_refs:
-            staged = staged_by_artifact.get(art_ref.artifact_id)
-            if staged is not None:
-                artifact_store.finalize(staged)
-        if outbox_ids:
-            pub_uow = self._uow_factory()
-            try:
-                for outbox_id in outbox_ids:
-                    pub_uow.publications.mark_published(outbox_id)
-                pub_uow.commit()
-            except Exception:
-                pub_uow.rollback()
-                raise
-            finally:
-                pub_uow.close()
+        # mutation committed. The publisher owns the finalize→mark protocol;
+        # this caller supplies the finalize operation for its artifact store.
+        # On failure the DB already has the descriptor + outbox row, so
+        # reconciliation can retry; the staging file is not orphaned.
+        for outbox_id, staged in pending_publishes:
+            publisher.publish(
+                outbox_id,
+                lambda staged=staged: artifact_store.finalize(staged),
+            )
 
     def _publish_run_summary(
         self,
@@ -462,6 +459,7 @@ class ExecuteRun:
         worker_generation: int,
         *,
         artifact_store: Any,
+        publisher: Any,
     ) -> ArtifactRef | None:
         """Build and publish a RunSummary artifact from persisted execution state.
 
@@ -577,16 +575,9 @@ class ExecuteRun:
             raise
         finally:
             uow.close()
-        artifact_store.finalize(staged)
-        mark_uow = self._uow_factory()
-        try:
-            mark_uow.publications.mark_published(outbox_id)
-            mark_uow.commit()
-        except Exception:
-            mark_uow.rollback()
-            raise
-        finally:
-            mark_uow.close()
+        # After the DB mutation committed, publish via the protocol — the
+        # publisher owns finalize→mark (and mark_failed on error).
+        publisher.publish(outbox_id, lambda: artifact_store.finalize(staged))
         return summary_ref
 
     @staticmethod

@@ -59,6 +59,7 @@ class Container:
     manifest_publisher_factory: Any = None
     submit_run_factory: Any = None
     execute_run_factory: Any = None
+    publication_publisher_factory: Any = None
     reconcile_publications_factory: Any = None
     reconcile_dispatches_factory: Any = None
     refresh_comparison_factory: Any = None
@@ -122,10 +123,16 @@ def build_container(settings: Settings) -> Container:
     def manifest_publisher_factory(project_id: str) -> FsManifestPublisher:
         return FsManifestPublisher(project_root(project_id))
 
+    from cardre.application.publications.publisher import PublicationPublisher
+
+    def publication_publisher_factory(project_id: str) -> PublicationPublisher:
+        return PublicationPublisher(lambda: uow_factory.for_project(project_id))
+
     def finalize_run_factory(project_id: str) -> FinalizeRun:
         return FinalizeRun(
             lambda: uow_factory.for_project(project_id),
             manifest_publisher_factory(project_id),
+            publication_publisher_factory(project_id),
             clock=clock,
         )
 
@@ -146,6 +153,7 @@ def build_container(settings: Settings) -> Container:
             step_runner_factory(project_id),
             finalize_run_factory(project_id),
             lambda: artifact_store_factory(project_id),
+            lambda: publication_publisher_factory(project_id),
             heartbeat_interval_seconds=settings.heartbeat_watchdog_interval_seconds,
         )
 
@@ -216,6 +224,7 @@ def build_container(settings: Settings) -> Container:
         return ReconcilePublications(
             uow_factory,
             registry,
+            publication_publisher_factory,
             artifact_store_factory,
             manifest_publisher_factory,
         )
@@ -248,6 +257,7 @@ def build_container(settings: Settings) -> Container:
                 project_id,
             ),
             artifact_store_factory(project_id),
+            publication_publisher_factory,
         )
 
     def create_branch_factory(project_id: str) -> CreateBranch:
@@ -282,6 +292,7 @@ def build_container(settings: Settings) -> Container:
         manifest_publisher_factory=manifest_publisher_factory,
         submit_run_factory=submit_run_factory,
         execute_run_factory=execute_run_factory,
+        publication_publisher_factory=publication_publisher_factory,
         async_dispatcher=async_dispatcher,
         reconcile_publications_factory=reconcile_publications_factory,
         reconcile_dispatches_factory=reconcile_dispatches_factory,

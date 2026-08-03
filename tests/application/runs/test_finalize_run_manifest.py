@@ -16,6 +16,7 @@ from cardre.adapters.filesystem.manifest_publisher import FsManifestPublisher
 from cardre.adapters.sqlite.connection import SqliteUnitOfWorkFactory
 from cardre.adapters.sqlite.project_provisioner import SqliteProjectProvisioner
 from cardre.adapters.system.project_registry import JsonProjectRegistry
+from cardre.application.publications.publisher import PublicationPublisher
 from cardre.application.runs.finalize_run import FinalizeDiagnostic, FinalizeRun
 from cardre.domain.manifest import (
     MANIFEST_VERSION,
@@ -29,6 +30,24 @@ from cardre.domain.manifest import (
 class _FakeClock:
     def now_iso(self) -> str:
         return "2026-01-01T00:00:00Z"
+
+
+def _finalize_with(
+    uow_factory,
+    project_id,
+    root,
+    manifest_publisher,
+    uow_lambda=None,
+) -> FinalizeRun:
+    """Build a FinalizeRun whose PublicationPublisher wraps a manifest publisher."""
+    if uow_lambda is None:
+        uow_lambda = lambda: uow_factory.for_project(project_id)  # noqa: E731
+    return FinalizeRun(
+        uow_lambda,
+        manifest_publisher,
+        PublicationPublisher(uow_lambda),
+        _FakeClock(),
+    )
 
 
 @pytest.fixture
@@ -114,7 +133,7 @@ class TestFinalizeRunManifest:
         _insert_artifact_with_lineage(uow_factory, project_id, run_id, rs_id, pv_id, "step-1", "art-1")
 
         publisher = FsManifestPublisher(root)
-        finalize = FinalizeRun(lambda: uow_factory.for_project(project_id), publisher, _FakeClock())
+        finalize = _finalize_with(uow_factory, project_id, root, publisher)
         finalize(run_id, "succeeded", worker_generation=_current_generation(uow_factory, project_id, run_id))
 
         result = publisher.verify(run_id)
@@ -138,7 +157,7 @@ class TestFinalizeRunManifest:
         _insert_run_step(uow_factory, project_id, run_id, pv_id, "step-1")
 
         publisher = FsManifestPublisher(root)
-        finalize = FinalizeRun(lambda: uow_factory.for_project(project_id), publisher, _FakeClock())
+        finalize = _finalize_with(uow_factory, project_id, root, publisher)
         finalize(run_id, "succeeded", worker_generation=_current_generation(uow_factory, project_id, run_id))
 
         data = publisher.read(run_id)
@@ -150,7 +169,7 @@ class TestFinalizeRunManifest:
         _insert_run_step(uow_factory, project_id, run_id, pv_id, "step-1")
 
         publisher = FsManifestPublisher(root)
-        finalize = FinalizeRun(lambda: uow_factory.for_project(project_id), publisher, _FakeClock())
+        finalize = _finalize_with(uow_factory, project_id, root, publisher)
         finalize(run_id, "succeeded", worker_generation=_current_generation(uow_factory, project_id, run_id))
 
         manifest_path = publisher.manifest_path(run_id)
@@ -174,7 +193,7 @@ class TestFinalizeRunManifest:
         _insert_run_step(uow_factory, project_id, run_id, pv_id, "step-1")
 
         publisher = FsManifestPublisher(root)
-        finalize = FinalizeRun(lambda: uow_factory.for_project(project_id), publisher, _FakeClock())
+        finalize = _finalize_with(uow_factory, project_id, root, publisher)
         finalize(run_id, "failed", diagnostic=FinalizeDiagnostic(
             code="RUN_EXECUTION_FAILED", message="Step failed",
         ))
@@ -190,7 +209,7 @@ class TestFinalizeRunManifest:
         _insert_run_step(uow_factory, project_id, run_id, pv_id, "step-1")
 
         publisher = FsManifestPublisher(root)
-        finalize = FinalizeRun(lambda: uow_factory.for_project(project_id), publisher, _FakeClock())
+        finalize = _finalize_with(uow_factory, project_id, root, publisher)
         finalize(run_id, "succeeded", worker_generation=_current_generation(uow_factory, project_id, run_id))
 
         manifest_path = publisher.manifest_path(run_id)
@@ -203,7 +222,7 @@ class TestFinalizeRunManifest:
         _insert_run_step(uow_factory, project_id, run_id, pv_id, "step-1")
 
         publisher = FsManifestPublisher(root)
-        finalize = FinalizeRun(lambda: uow_factory.for_project(project_id), publisher, _FakeClock())
+        finalize = _finalize_with(uow_factory, project_id, root, publisher)
         finalize(run_id, "succeeded", worker_generation=_current_generation(uow_factory, project_id, run_id))
 
         data = publisher.read(run_id)
@@ -215,7 +234,7 @@ class TestFinalizeRunManifest:
         _insert_run_step(uow_factory, project_id, run_id, pv_id, "step-1")
 
         publisher = FsManifestPublisher(root)
-        finalize = FinalizeRun(lambda: uow_factory.for_project(project_id), publisher, _FakeClock())
+        finalize = _finalize_with(uow_factory, project_id, root, publisher)
         finalize(run_id, "succeeded", worker_generation=_current_generation(uow_factory, project_id, run_id))
 
         first_manifest = publisher.read(run_id)
@@ -231,7 +250,7 @@ class TestFinalizeRunManifest:
         project_id, plan_id, pv_id, run_id, root, uow_factory, registry = provisioned_project
 
         publisher = FsManifestPublisher(root)
-        finalize = FinalizeRun(lambda: uow_factory.for_project(project_id), publisher, _FakeClock())
+        finalize = _finalize_with(uow_factory, project_id, root, publisher)
         finalize(run_id, "failed", diagnostic=FinalizeDiagnostic(
             code="RUN_VALIDATION_FAILED", message="Pre-execution validation failed",
         ))
@@ -249,7 +268,7 @@ class TestFinalizeRunManifest:
         project_id, plan_id, pv_id, run_id, root, uow_factory, registry = provisioned_project
 
         publisher = FsManifestPublisher(root)
-        finalize = FinalizeRun(lambda: uow_factory.for_project(project_id), publisher, _FakeClock())
+        finalize = _finalize_with(uow_factory, project_id, root, publisher)
 
         with pytest.raises(Exception, match="already finalised"):
             finalize(run_id, "succeeded", worker_generation=_current_generation(uow_factory, project_id, run_id))
@@ -360,7 +379,7 @@ class TestManifestIntegrityFailures:
         def broken_factory():
             return _BrokenUow(uow_factory.for_project(project_id))
 
-        finalize = FinalizeRun(broken_factory, publisher, _FakeClock())
+        finalize = _finalize_with(uow_factory, project_id, root, publisher, uow_lambda=broken_factory)
         with pytest.raises(RuntimeError, match="injected integrity failure"):
             finalize(run_id, "succeeded", worker_generation=_current_generation(uow_factory, project_id, run_id))
         # The manifest must not be published on integrity failure.
@@ -396,7 +415,7 @@ class TestSuccessFinalizationCancellationRace:
             uow.commit()
 
         publisher = FsManifestPublisher(root)
-        finalize = FinalizeRun(lambda: uow_factory.for_project(project_id), publisher, _FakeClock())
+        finalize = _finalize_with(uow_factory, project_id, root, publisher)
         finalize(run_id, "succeeded", worker_generation=generation)
 
         with uow_factory.read_only(project_id) as uow:
@@ -420,7 +439,7 @@ class TestSuccessFinalizationCancellationRace:
             uow.commit()
 
         publisher = FsManifestPublisher(root)
-        finalize = FinalizeRun(lambda: uow_factory.for_project(project_id), publisher, _FakeClock())
+        finalize = _finalize_with(uow_factory, project_id, root, publisher)
         with pytest.raises(Exception, match="already finalised"):
             finalize(run_id, "succeeded", worker_generation=stale)
 
@@ -475,7 +494,7 @@ class TestManifestMissingIntegrityData:
         def factory():
             return _NoPlanUow(uow_factory.for_project(project_id))
 
-        finalize = FinalizeRun(factory, publisher, _FakeClock())
+        finalize = _finalize_with(uow_factory, project_id, root, publisher, uow_lambda=factory)
         with pytest.raises(Exception, match="no plan record"):
             finalize(run_id, "succeeded", worker_generation=_current_generation(uow_factory, project_id, run_id))
         assert publisher.read(run_id) is None
@@ -498,7 +517,7 @@ class TestManifestMissingIntegrityData:
             uow.commit()
 
         publisher = FsManifestPublisher(root)
-        finalize = FinalizeRun(lambda: uow_factory.for_project(project_id), publisher, _FakeClock())
+        finalize = _finalize_with(uow_factory, project_id, root, publisher)
         with pytest.raises(Exception, match="no plan specification"):
             finalize(run_id, "succeeded", worker_generation=_current_generation(uow_factory, project_id, run_id))
         assert publisher.read(run_id) is None

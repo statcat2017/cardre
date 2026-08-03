@@ -8,6 +8,7 @@ lookup instead of a persistence store.
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any, Protocol, runtime_checkable
 
@@ -74,16 +75,20 @@ class RefreshComparison:
         uow_factory: Any,
         evidence_port: ComparisonEvidencePort,
         artifact_writer: DurableArtifactWriter,
+        publication_publisher_factory: Callable[[str], Any],
         governance_enabled: bool = True,
     ) -> None:
         self._uow_factory = uow_factory
         self._evidence_port = evidence_port
         self._artifact_writer = artifact_writer
+        self._publication_publisher_factory = publication_publisher_factory
         self._governance_enabled = governance_enabled
 
     def __call__(self, command: RefreshComparisonCommand) -> RefreshComparisonResult:
         if not self._governance_enabled:
             raise GovernanceNotEnabled()
+
+        publisher = self._publication_publisher_factory(command.project_id)
 
         with self._uow_factory.for_project(command.project_id) as uow:
             comparison = uow.comparisons.get_comparison(command.comparison_id)
@@ -216,16 +221,16 @@ class RefreshComparison:
 
             uow.commit()
 
-        # After the DB mutation committed, finalize each comparison artifact and
-        # mark its outbox row published. A failure on one artifact does not
-        # block the others; the failing row stays pending for reconciliation to
-        # retry.
+        # After the DB mutation committed, publish each comparison artifact via
+        # the publication protocol (publisher owns finalize→mark). A failure
+        # on one artifact does not block the others; the failing row is marked
+        # 'failed' for reconciliation to retry.
         for staged, outbox_id in pending_publishes:
             try:
-                self._artifact_writer.finalize(staged)
-                with self._uow_factory.for_project(command.project_id) as mark_uow:
-                    mark_uow.publications.mark_published(outbox_id)
-                    mark_uow.commit()
+                publisher.publish(
+                    outbox_id,
+                    lambda staged=staged: self._artifact_writer.finalize(staged),
+                )
             except Exception:
                 continue
 

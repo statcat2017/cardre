@@ -22,6 +22,22 @@ from cardre.application.governance.refresh_comparison import (
 from cardre.domain.errors import CardreError
 
 
+def _stub_publisher_factory(uow_factory):
+    """A publication-publisher factory for RefreshComparison tests.
+
+    The publisher is the protocol seam only — the writer (artifact finalize)
+    is supplied by the use case. Used where a test drives a real publish path
+    or where the publisher is never reached (missing-comparison / not-ready
+    paths).
+    """
+    from cardre.application.publications.publisher import PublicationPublisher
+
+    def factory(project_id=None):
+        return PublicationPublisher(lambda: uow_factory.for_project(project_id))
+
+    return factory
+
+
 class _FakeIdGenerator:
     def __init__(self):
         self._counter = 0
@@ -213,7 +229,10 @@ class _PreRegisteredArtifactWriter:
 class TestRefreshComparison:
     def test_refresh_missing_comparison_raises(self, provisioned_project):
         project_id, uow_factory, _, _ = provisioned_project
-        use_case = RefreshComparison(uow_factory, _FakeEvidencePort(), _FakeArtifactWriter())
+        use_case = RefreshComparison(
+            uow_factory, _FakeEvidencePort(), _FakeArtifactWriter(),
+            _stub_publisher_factory(uow_factory),
+        )
         with pytest.raises(CardreError, match="COMPARISON_NOT_FOUND"):
             use_case(RefreshComparisonCommand(
                 project_id=project_id, comparison_id="nonexistent",
@@ -241,7 +260,10 @@ class TestRefreshComparison:
             )
             uow.commit()
 
-        use_case = RefreshComparison(uow_factory, _FakeEvidencePort(), _FakeArtifactWriter())
+        use_case = RefreshComparison(
+            uow_factory, _FakeEvidencePort(), _FakeArtifactWriter(),
+            _stub_publisher_factory(uow_factory),
+        )
         result = use_case(RefreshComparisonCommand(
             project_id=project_id, comparison_id=comparison_id,
         ))
@@ -318,6 +340,7 @@ class TestRefreshComparison:
         )
         result = RefreshComparison(
             uow_factory, CanonicalModelEvidencePort(), FsArtifactStore(root),
+            _stub_publisher_factory(uow_factory),
         )(RefreshComparisonCommand(project_id=project_id, comparison_id=comparison_id))
 
         assert result.ready is True
@@ -374,7 +397,10 @@ class TestRefreshComparison:
         from cardre.adapters.filesystem.artifact_store import FsArtifactStore
 
         writer = FsArtifactStore(root)
-        use_case = RefreshComparison(uow_factory, _FakeEvidencePort(), writer)
+        use_case = RefreshComparison(
+            uow_factory, _FakeEvidencePort(), writer,
+            _stub_publisher_factory(uow_factory),
+        )
 
         original_build = use_case._build_content
         call_count = {"n": 0}

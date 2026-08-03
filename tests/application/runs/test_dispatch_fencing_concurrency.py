@@ -38,6 +38,20 @@ class _FakeClock:
         return "2026-01-01T00:00:00Z"
 
 
+class _NoopManifestPublisher:
+    """Manifest publisher stub for the publication protocol."""
+
+    def publish(self, run_id, payload):
+        return None
+
+
+def _stub_publisher(uow_factory, project_id):
+    """A PublicationPublisher (protocol seam only) for fence tests."""
+    from cardre.application.publications.publisher import PublicationPublisher
+
+    return PublicationPublisher(lambda: uow_factory.for_project(project_id))
+
+
 def _fake_node(version: str):
     """Minimal node-class double exposing node_definition().version for pre-exec version checks."""
     from cardre.nodes.contracts import ArtifactContract, NodeDefinition
@@ -273,7 +287,8 @@ def test_cancellation_during_final_node_ends_cancelled(provisioned_project):
 
     finalize = FinalizeRun(
         lambda: uow_factory.for_project(project_id),
-        type("Pub", (), {"publish": lambda self, run_id, payload: None})(),
+        _NoopManifestPublisher(),
+        _stub_publisher(uow_factory, project_id),
         _FakeClock(),
     )
 
@@ -302,6 +317,7 @@ def test_cancellation_during_final_node_ends_cancelled(provisioned_project):
         _BlockingRunner(),
         finalize,
         lambda: type("Store", (), {"finalize": lambda self, s: None, "object_path": lambda self, h: ""})(),
+        lambda: _stub_publisher(uow_factory, project_id),
         heartbeat_interval_seconds=0.1,
     )
 
@@ -342,7 +358,8 @@ def test_lost_lease_blocks_output_persistence(provisioned_project):
 
     finalize = FinalizeRun(
         lambda: uow_factory.for_project(project_id),
-        type("Pub", (), {"publish": lambda self, run_id, payload: None})(),
+        _NoopManifestPublisher(),
+        _stub_publisher(uow_factory, project_id),
         _FakeClock(),
     )
 
@@ -380,6 +397,7 @@ def test_lost_lease_blocks_output_persistence(provisioned_project):
         _BlockingRunner(),
         finalize,
         lambda: _CountingStore(),
+        lambda: _stub_publisher(uow_factory, project_id),
         heartbeat_interval_seconds=0.1,
     )
 
@@ -457,7 +475,8 @@ def test_run_summary_not_published_after_stale_recovery(provisioned_project):
 
     finalize = FinalizeRun(
         lambda: uow_factory.for_project(project_id),
-        type("Pub", (), {"publish": lambda self, run_id, payload: None})(),
+        _NoopManifestPublisher(),
+        _stub_publisher(uow_factory, project_id),
         _FakeClock(),
     )
 
@@ -537,6 +556,7 @@ def test_run_summary_not_published_after_stale_recovery(provisioned_project):
         _Runner(),
         finalize,
         lambda: FsArtifactStore(root),
+        lambda: _stub_publisher(uow_factory, project_id),
         heartbeat_interval_seconds=0.1,
     )
 
@@ -601,7 +621,8 @@ def test_run_summary_not_published_after_cancellation(provisioned_project):
 
     finalize = FinalizeRun(
         lambda: uow_factory.for_project(project_id),
-        type("Pub", (), {"publish": lambda self, run_id, payload: None})(),
+        _NoopManifestPublisher(),
+        _stub_publisher(uow_factory, project_id),
         _FakeClock(),
     )
 
@@ -634,6 +655,7 @@ def test_run_summary_not_published_after_cancellation(provisioned_project):
         _BlockingRunner(),
         finalize,
         lambda: FsArtifactStore(root),
+        lambda: _stub_publisher(uow_factory, project_id),
         heartbeat_interval_seconds=0.1,
     )
 
@@ -694,6 +716,7 @@ def test_cancelled_created_run_stays_cancelled_through_execute(provisioned_proje
         None,
         None,
         lambda: FsArtifactStore(root),
+        lambda: _stub_publisher(uow_factory, project_id),
         heartbeat_interval_seconds=0.1,
     )
     executor(ExecuteRunCommand(run_id=run_id))
