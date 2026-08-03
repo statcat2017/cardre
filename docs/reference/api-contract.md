@@ -24,17 +24,25 @@ The route layer converts between them via `cardre/api/mappers.py`. This is an in
 
 ## Key Endpoints
 
-The route modules live under `cardre/api/routes/`:
+The route modules live under `cardre/api/routes/`. Most routes are project-scoped
+(prefix `/projects/{project_id}`); governance is nested under
+`/projects/{project_id}/governance`.
 
 | Prefix | Module | Description |
 |--------|--------|-------------|
 | `/health` | `cardre/api/routes/health.py` | Health check |
 | `/projects` | `cardre/api/routes/projects.py` | Project CRUD |
-| `/plans` | `cardre/api/routes/plans.py` | Plan CRUD, step status, staleness, manual binning |
-| `/runs` | `cardre/api/routes/runs.py` | Run execution, step evidence |
-| `/artifacts` | `cardre/api/routes/artifacts.py` | Artifact retrieval, preview, summary |
-| `/branches` | `cardre/api/routes/governance.py` | Branch CRUD (governance-gated) |
-| `/node-types` | `cardre/api/routes/node_types.py` | Node type listing and schema |
-| `/exports` | `cardre/api/routes/exports.py` | Audit pack export |
-| `/reports` | `cardre/api/routes/reports.py` | Report generation and metadata |
-| `/evidence` | `cardre/api/routes/evidence.py` | Evidence retrieval |
+| `/projects/{project_id}/plans` | `cardre/api/routes/plans.py` | Plan CRUD, plan versions, steps |
+| `/projects/{project_id}/runs` | `cardre/api/routes/runs.py` | Run submission, run steps, run evidence |
+| `/projects/{project_id}/artifacts` | `cardre/api/routes/artifacts.py` | Artifact retrieval |
+| `/projects/{project_id}/steps/{step_id}/evidence` | `cardre/api/routes/evidence.py` | Step staleness/evidence explanation |
+| `/projects/{project_id}/node-types` | `cardre/api/routes/node_types.py` | Node type listing and schema |
+| `/projects/{project_id}/exports` | `cardre/api/routes/exports.py` | Audit pack export listing |
+| `/projects/{project_id}/reports` | `cardre/api/routes/reports.py` | Report generation and metadata |
+| `/projects/{project_id}/governance/branches` | `cardre/api/routes/governance.py` | Branch CRUD (governance-gated) |
+| `/projects/{project_id}/governance/comparisons` | `cardre/api/routes/governance.py` | Branch comparisons (governance-gated) |
+| `/projects/{project_id}/governance/champion` | `cardre/api/routes/governance.py` | Champion assignment (governance-gated) |
+| `/projects/{project_id}/governance/manual-binning-reviews` | `cardre/api/routes/governance.py` | Manual binning reviews (governance-gated) |
+
+Governance routes require `CARDRE_GOVERNANCE=1`; they return a 403 envelope
+otherwise.

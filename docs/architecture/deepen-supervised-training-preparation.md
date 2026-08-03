@@ -140,7 +140,7 @@ Its implementation must:
 2. call `context.target_metadata()`;
 3. construct `TargetSpec.from_metadata(meta)`;
 4. reject absent target metadata, absent target column, or unknown labels;
-5. read the train Artifact through `ArtifactEvidenceReader`;
+5. read the train Artifact through `context.inputs.read_dataframe`;
 6. construct `y_binary` with `TargetSpec.encode_binary_strict`;
 7. reject zero good or zero bad rows;
 8. return immutable target values as `frozenset[str]`.
@@ -266,7 +266,7 @@ File: `cardre/nodes/_training_utils.py`
 5. Delete `_extract_target_metadata` when the production search confirms it has
    no callers.
 
-Keep Artifact I/O inside `ArtifactEvidenceReader`. The preparation module is
+Keep Artifact I/O inside the `InputCollection` / `EvidenceReader` boundaries. The preparation module is
 not a new evidence parser or Artifact adapter.
 
 ### 2. Keep Classifiers Thin
@@ -299,9 +299,8 @@ In `FeatureSelectionFilterNode.run`, replace manual train Artifact loading and
 target fallback:
 
 ```python
-train_art = context.train_artifact()
-reader = ArtifactEvidenceReader(store)
-df = reader.read_dataframe(train_art)
+train_art = context.inputs.require("train", "feature_selection_filter")
+df = context.inputs.read_dataframe(train_art)
 meta = context.target_metadata()
 target_column = meta.target_column if meta is not None else ""
 if not target_column:

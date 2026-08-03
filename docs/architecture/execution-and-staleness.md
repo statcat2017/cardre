@@ -10,9 +10,9 @@ The `StepRunner` (`cardre/application/execution/step_runner.py`) is the single e
 
 ### Execution Flow
 
-1. **Action planning**: builds a list of `_StepAction` instances. The only supported action is `execute`.
-2. **Action execution**: walks actions in order and executes nodes.
-3. **Finalisation**: writes the run manifest and transitions the run to its final status.
+1. **Run creation**: `SubmitRun` (`cardre/application/runs/submit_run.py`) creates the run and enqueues a dispatch.
+2. **Step execution**: `ExecuteRun` (`cardre/application/runs/execute_run.py`) claims the run and iterates the plan's steps directly in topological order, calling `StepRunner.run_step` for each. There is no separate action-planning phase.
+3. **Finalisation**: `FinalizeRun` transitions the run to its terminal status and publishes the canonical manifest.
 
 ### Role Enforcement
 
@@ -23,13 +23,25 @@ The executor enforces role-based access for artifacts:
 
 ## Run Lifecycle
 
-The `FinalizeRun` use case (`cardre/application/runs/finalize_run.py`) owns generic run mechanics:
+Run creation is owned by `SubmitRun` (`cardre/application/runs/submit_run.py`),
+which atomically creates the run and enqueues a durable dispatch row. The
+`FinalizeRun` use case (`cardre/application/runs/finalize_run.py`) owns the
+terminal side:
 
-- Run creation and `run_id` resolution.
-- Final status setting and manifest artifact writing, combined into one atomic `finalise_run()` call. The terminal status is written via `RunRepository.transition(run_id, RunStatus.X, expected_from=(RunStatus.RUNNING,))` — the single atomic terminal-status writer. Run statuses are modelled by the `RunStatus(StrEnum)` in `cardre/domain/run.py`; callers pass enum members, not bare strings.
-- Manifest payload construction (`build_manifest_payload`) and labelling (`step_action`).
+- Terminal status transition and manifest publication outbox record, combined
+  into one transaction. The terminal status is written via
+  `RunRepository.transition(run_id, RunStatus.X, expected_from=(...))`.
+  Run statuses are modelled by the `RunStatus(StrEnum)` in `cardre/domain/run.py`;
+  callers pass enum members, not bare strings.
+- Manifest payload construction (`build_manifest_payload`) and self-referential
+  hashing.
 
-`StepRunner` still owns execution semantics: topological ordering, node execution, role and leakage enforcement, and run-step evidence recording. It returns a typed `StepExecutionResult` (carrying `status`, `input_artifact_ids`, `output_artifact_ids`, and staged artifacts) so `ExecuteRun` does not re-query `RunStepRepository.get_for_run` after execution.
+`ExecuteRun` orchestrates step execution: it claims the run, iterates the plan's
+steps in topological order, calls `StepRunner.run_step` for each, and persists
+run-step records, evidence edges, artifacts and lineage. `StepRunner` returns a
+typed `StepExecutionResult` (carrying `status`, `input_artifact_ids`,
+`output_artifact_ids`, and staged artifacts) so `ExecuteRun` does not re-query
+`RunStepRepository.get_for_run` after execution.
 
 ### Run-step writer seam
 

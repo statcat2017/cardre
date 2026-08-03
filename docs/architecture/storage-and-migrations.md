@@ -30,9 +30,18 @@ The database schema is defined in `cardre/adapters/sqlite/schema.py` and include
 - Branches, branch step maps
 - Comparisons, comparison snapshots
 - Champions, champion assignments
+- Evidence edges and artifacts, reviews, publications, dispatch
 
-Branch-related tables are created separately via `BRANCH_TABLES_SQL` and are only present when governance features are enabled.
+Every project store is created by `SqliteProjectProvisioner.initialize()` running
+the full `ALL_TABLES_SQL` script, which always includes the branch, evidence and
+review tables. Governance is a capability gated at the application/API layer
+(e.g. `CARDRE_GOVERNANCE`), not by omitting tables.
 
 ## Migrations
 
-Schema migrations are handled by `cardre/adapters/sqlite/schema.py` which includes version checks and migration logic. The store checks the schema version on open and applies any pending migrations.
+Cardre has not launched, so there is **no migration chain** before the first real
+deployment. Each project store is created from the current `ALL_TABLES_SQL` with
+a recorded `schema_family` / `schema_version`. A store whose schema identity does
+not match the application is rejected (or recreated), not migrated. A migration
+runner will only be introduced after the first deployment, alongside a
+compatibility policy (see ADR 0015).

@@ -15,12 +15,6 @@ Evidence is resolved by canonical step IDs defined in `cardre/application/report
 | `variable-clustering` | Variable clustering evidence |
 | `technical-manifest` | Technical manifest (comparison mode) |
 
-## Legacy Aliases
-
-| Legacy ID | Current ID |
-|-----------|------------|
-| `logistic-regression` | `model-fit` |
-
 ## Required Steps by Report Mode
 
 | Mode | Required Steps |
@@ -32,9 +26,10 @@ Evidence is resolved by canonical step IDs defined in `cardre/application/report
 
 ## Evidence Kinds
 
-The `ArtifactEvidenceReader` (`cardre/domain/evidence/` and `cardre/adapters/evidence/`) supports the following evidence kinds,
-defined in `cardre/domain/evidence/kinds.py`. This table lists the most commonly used kinds;
-the full enum has 43 members covering all artifact types in the engine.
+The `EvidenceReader` (`cardre/adapters/evidence/reader.py`) resolves artifacts as
+typed evidence via the profiles and parsers in `cardre/adapters/evidence/`. The
+following kinds are defined in `cardre/domain/evidence/kinds.py`. This table lists
+the most commonly used kinds; the full enum covers all artifact types in the engine.
 
 | Kind | Schema | Typed Model |
 |------|--------|-------------|

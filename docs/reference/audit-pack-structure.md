@@ -1,10 +1,14 @@
 # Audit Pack Structure
 
-The audit pack is an export format produced by the export service (`cardre/api/routes/exports.py`). It bundles all evidence required for model governance review.
+The audit pack is an export format that bundles all evidence required for model
+governance review. It is produced by the `ExportAuditPack` use case
+(`cardre/application/reporting/export_audit_pack.py`) and written under the
+project's `exports/` directory.
 
 ## Contents
 
 The audit pack includes:
+
 - Run manifest
 - Step evidence for all steps in the selected run
 - Artifact references and hashes
@@ -13,10 +17,11 @@ The audit pack includes:
 - Scorecard parameters
 - Manual binning overrides and review state
 
-## Export Flow
+The pack is written as a directory of JSON files (one per step/run) plus a
+checksums file, published atomically.
 
-1. User selects report mode and target branch in the frontend `ExportPanel.tsx`
-2. Frontend checks readiness via the API
-3. Frontend calls `api.generateReport` with JSON and HTML output formats
-4. Backend generates the report bundle and writes it as artifacts
-5. Frontend renders the audit-pack export UI and readiness panel
+## Listing Exports
+
+`GET /projects/{project_id}/exports` lists the persisted export records
+(optionally filtered by `run_id`). Each record describes an export produced for
+a run; the route does not generate a new pack on demand.
