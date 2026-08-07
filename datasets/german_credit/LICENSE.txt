@@ -1,0 +1,35 @@
+Statlog (German Credit Data) by Hans Hofmann is licensed under
+Creative Commons Attribution 4.0 International (CC BY 4.0).
+
+  https://creativecommons.org/licenses/by/4.0/
+
+You are free to:
+
+  Share - copy and redistribute the material in any medium or format for
+          any purpose, including commercially.
+
+  Adapt - remix, transform, and build upon the material for any purpose,
+         including commercially.
+
+Under the following terms:
+
+  Attribution - You must give appropriate credit, provide a link to the
+  license, and indicate if changes were made. You may do so in any
+  reasonable manner, but not in any way that suggests the licensor endorses
+  you or your use.
+
+  No additional restrictions - You may not apply legal terms or
+  technological measures that legally restrict others from doing anything
+  the license permits.
+
+Source: https://archive.ics.uci.edu/dataset/144/statlog+german+credit+data
+DOI:    https://doi.org/10.24432/C5NC77
+
+Changes made to the original UCI distribution for this bundle:
+  - Renamed the file `german.data` to `german_credit.csv`.
+  - Added a header row with descriptive column names (the original file
+    has no header; see dataset README.md for the mapping).
+  - Mapped the target column `class` from {1, 2} to {"good", "bad"} to
+    match cardre's good/bad string convention for binary targets.
+  - Column values are otherwise unchanged (categorical codes such as
+    A11, A30, etc. are preserved as-is; see README.md for the code map).
