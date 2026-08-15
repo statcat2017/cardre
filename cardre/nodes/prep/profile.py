@@ -4,9 +4,9 @@ from typing import Any
 
 import polars as pl
 
+from cardre._evidence.schemas import SCHEMA_PROFILE_SUMMARY
 from cardre.domain.diagnostics import JsonDict
 from cardre.domain.evidence.kinds import EvidenceKind
-from cardre.domain.evidence.schemas import SCHEMA_PROFILE_SUMMARY
 from cardre.nodes._dataset_quality import quality_warnings as _quality_warnings
 from cardre.nodes.contracts import (
     ArtifactContract,

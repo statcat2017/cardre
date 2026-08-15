@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from cardre._evidence.kinds import EvidenceKind
 from cardre._evidence.schemas import (
     SCHEMA_APPLY_MODEL_EVIDENCE,
     SCHEMA_APPLY_WOE_EVIDENCE,
@@ -48,6 +47,7 @@ from cardre._evidence.schemas import (
     SCHEMA_WOE_TABLE,
     SCHEMA_WOE_TRANSFORM_EVIDENCE,
 )
+from cardre.domain.evidence.kinds import EvidenceKind
 from cardre.engine.binning.definition import SCHEMA_BIN_DEFINITION
 
 

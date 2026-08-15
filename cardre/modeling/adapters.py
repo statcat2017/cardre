@@ -8,6 +8,7 @@ import joblib
 import numpy as np
 import polars as pl
 
+from cardre._evidence.schemas import SCHEMA_APPLY_MODEL_EVIDENCE
 from cardre.application.ports.artifact_store import (
     ArtifactReader,
     StagedArtifact,
@@ -16,7 +17,6 @@ from cardre.application.ports.artifact_store import (
 from cardre.domain.artifacts import ArtifactRef
 from cardre.domain.diagnostics import JsonDict
 from cardre.domain.evidence.kinds import EvidenceKind
-from cardre.domain.evidence.schemas import SCHEMA_APPLY_MODEL_EVIDENCE
 from cardre.modeling.families import get as get_family_spec
 from cardre.modeling.families import list_families
 from cardre.nodes.contracts import NodeResult

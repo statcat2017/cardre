@@ -11,18 +11,22 @@ from typing import Any
 
 from polars.exceptions import ComputeError
 
-from cardre._evidence.reader import ArtifactEvidenceReader
 from cardre._evidence.schemas import SCHEMA_EXPLAINABILITY_REPORT
-from cardre.artifacts import write_json_artifact
-from cardre.execution.context import ExecutionContext, NodeOutput
-from cardre.nodes.contracts import NodeType
+from cardre.domain.evidence.kinds import EvidenceKind
+from cardre.nodes.contracts import (
+    ArtifactContract,
+    ArtifactRoleSpec,
+    NodeContext,
+    NodeDefinition,
+    NodeResult,
+    NodeType,
+)
 from cardre.nodes.parameters import (
     MethodOption,
     NodeParameterSchema,
     ParameterConstraint,
     ParameterDefinition,
 )
-from cardre.store.artifact_repo import ArtifactRepository
 
 EXPLAINABILITY_LEVELS = {
     "native_scorecard",
@@ -58,6 +62,26 @@ class ModelExplainabilityNode(NodeType):
     input_roles: list[str] = ["model", "train", "test", "oot"]
     output_roles: list[str] = ["report"]
     optional_dependencies: list[str] = ["explain"]
+
+    __definition__ = NodeDefinition(
+        node_type="cardre.model_explainability",
+        version="1",
+        category="report",
+        description="Produce an explainability report for a fitted model",
+        input_contract=ArtifactContract(
+            roles=(
+                ArtifactRoleSpec("model", kinds=(EvidenceKind.MODEL_ARTIFACT,)),
+                ArtifactRoleSpec("train", required=False),
+                ArtifactRoleSpec("test", required=False),
+                ArtifactRoleSpec("oot", required=False),
+            ),
+        ),
+        output_contract=ArtifactContract(
+            roles=(ArtifactRoleSpec("report", kinds=(EvidenceKind.EXPLAINABILITY_REPORT,)),),
+        ),
+        parameter_schema=None,
+        tier="deferred",
+    )
 
     @classmethod
     def parameter_schema(cls) -> NodeParameterSchema:
@@ -136,20 +160,16 @@ class ModelExplainabilityNode(NodeType):
             errors.append("include_shap must be a boolean")
         return errors
 
-    def run(self, context: ExecutionContext) -> NodeOutput:
-        store = context.store
-        params = context.validated_params
+    def run(self, context: NodeContext) -> NodeResult:
+        params = context.params
         include_permutation = params.get("include_permutation_importance", False)
         permutation_data_role = params.get("permutation_data_role", "train")
         random_seeds = params.get("random_seeds", None)
         include_pdp = params.get("include_pdp", False)
         include_shap = params.get("include_shap", False)
 
-        reader = ArtifactEvidenceReader(store)
-        model_art = next((a for a in context.input_artifacts if a.role == "model"), None)
-        if model_art is None:
-            raise ValueError("model_explainability requires a model artifact")
-        model_typed = reader.require_model(model_art, "model_explainability")
+        model_art = context.inputs.require("model", "model_explainability")
+        model_typed = context.inputs.read(model_art, EvidenceKind.MODEL_ARTIFACT)
         model_family = model_typed.model_family
         features = model_typed.features
         model = model_typed.to_dict()
@@ -213,17 +233,17 @@ class ModelExplainabilityNode(NodeType):
 
         # Permutation importance (optional, configurable data role)
         if include_permutation:
-            data_art = next((a for a in context.input_artifacts if a.role == permutation_data_role), None)
+            data_art = context.inputs.first(permutation_data_role)
             if data_art is not None and features:
                 perm_result = self._compute_permutation_importance(
-                    store, model, data_art, features,
+                    context, model, data_art, features,
                     data_role=permutation_data_role,
                 )
                 if perm_result is not None:
                     report["permutation_importance"] = perm_result
                 if random_seeds and perm_result is not None and perm_result.get("method") == "permutation_importance":
                     stability = self._compute_stability_analysis(
-                        store, model, data_art, features, random_seeds,
+                        context, model, data_art, features, random_seeds,
                         data_role=permutation_data_role,
                     )
                     if stability:
@@ -231,17 +251,17 @@ class ModelExplainabilityNode(NodeType):
 
         # Partial dependence (optional)
         if include_pdp:
-            pdp_data_art = next((a for a in context.input_artifacts if a.role == "train"), None)
+            pdp_data_art = context.inputs.first("train")
             if pdp_data_art is not None and features:
-                pdp_result = self._compute_pdp(store, model, pdp_data_art, features)
+                pdp_result = self._compute_pdp(context, model, pdp_data_art, features)
                 if pdp_result:
                     report["partial_dependence"] = pdp_result
 
         # SHAP explanations (optional)
         if include_shap:
-            shap_data_art = next((a for a in context.input_artifacts if a.role == "train"), None)
+            shap_data_art = context.inputs.first("train")
             if shap_data_art is not None and features:
-                shap_result = self._compute_shap(store, model, shap_data_art, features)
+                shap_result = self._compute_shap(context, model, shap_data_art, features)
                 if shap_result:
                     report["shap"] = shap_result
 
@@ -253,9 +273,9 @@ class ModelExplainabilityNode(NodeType):
         # Champion eligibility detail
         report["champion_gate"] = self._champion_gate(explanation_level, report)
 
-        art = write_json_artifact(
-            store, artifact_type="report", role="report",
-            stem=f"explainability-{context.step_spec.step_id}",
+        context.outputs.publish_json(
+            role="report",
+            kind=EvidenceKind.EXPLAINABILITY_REPORT,
             payload=report,
             metadata={
                 "model_family": model_family,
@@ -263,10 +283,11 @@ class ModelExplainabilityNode(NodeType):
                 "schema_version": SCHEMA_EXPLAINABILITY_REPORT,
             },
         )
-        return NodeOutput(artifacts=[art], metrics={"model_family": model_family})
+        context.outputs.add_metric("model_family", model_family)
+        return context.outputs.build_result()
 
     def _compute_permutation_importance(
-        self, store: Any, model: dict[str, Any], data_art: Any, features: list[str],
+        self, context: NodeContext, model: dict[str, Any], data_art: Any, features: list[str],
         data_role: str = "train", random_state: int = 42,
     ) -> dict[str, Any] | None:
         """Compute permutation importance on specified data."""
@@ -291,11 +312,11 @@ class ModelExplainabilityNode(NodeType):
 
         try:
             from cardre.modeling.serialization import read_estimator_artifact
-            estimator_art = ArtifactRepository(store).get(estimator_ref["artifact_id"])
+            estimator_art = context.inputs.artifact_ref(estimator_ref["artifact_id"])
             if estimator_art is None:
                 return None
             estimator_bytes = read_estimator_artifact(
-                store, estimator_art,
+                context.inputs, estimator_art,
                 expected_logical_hash=estimator_ref.get("logical_hash"),
             )
             import io
@@ -303,8 +324,7 @@ class ModelExplainabilityNode(NodeType):
             import joblib
             estimator = joblib.load(io.BytesIO(estimator_bytes))
 
-            reader = ArtifactEvidenceReader(store)
-            df = reader.read_dataframe(data_art)
+            df = context.inputs.read_dataframe(data_art)
             target_col = model.get("target_column", "")
             if target_col not in df.columns:
                 return None
@@ -339,7 +359,7 @@ class ModelExplainabilityNode(NodeType):
             return None
 
     def _compute_stability_analysis(
-        self, store: Any, model: dict[str, Any], data_art: Any, features: list[str],
+        self, context: NodeContext, model: dict[str, Any], data_art: Any, features: list[str],
         random_seeds: list[int], data_role: str = "train",
     ) -> dict[str, Any] | None:
         try:
@@ -351,7 +371,7 @@ class ModelExplainabilityNode(NodeType):
         seed_importances: dict[str, list[str]] = {}
         for seed in random_seeds:
             result = self._compute_permutation_importance(
-                store, model, data_art, features,
+                context, model, data_art, features,
                 data_role=data_role, random_state=seed,
             )
             if result is None or result.get("method") != "permutation_importance":
@@ -386,7 +406,7 @@ class ModelExplainabilityNode(NodeType):
         }
 
     def _compute_pdp(
-        self, store: Any, model: dict[str, Any], data_art: Any, features: list[str],
+        self, context: NodeContext, model: dict[str, Any], data_art: Any, features: list[str],
     ) -> list[dict[str, Any]] | None:
         try:
             from sklearn.inspection import partial_dependence
@@ -399,11 +419,11 @@ class ModelExplainabilityNode(NodeType):
 
         try:
             from cardre.modeling.serialization import read_estimator_artifact
-            estimator_art = ArtifactRepository(store).get(estimator_ref["artifact_id"])
+            estimator_art = context.inputs.artifact_ref(estimator_ref["artifact_id"])
             if estimator_art is None:
                 return None
             estimator_bytes = read_estimator_artifact(
-                store, estimator_art,
+                context.inputs, estimator_art,
                 expected_logical_hash=estimator_ref.get("logical_hash"),
             )
             import io
@@ -411,8 +431,7 @@ class ModelExplainabilityNode(NodeType):
             import joblib
             estimator = joblib.load(io.BytesIO(estimator_bytes))
 
-            reader = ArtifactEvidenceReader(store)
-            df = reader.read_dataframe(data_art)
+            df = context.inputs.read_dataframe(data_art)
             X = df.select(features).to_numpy()
 
             feature_importance = model.get("model_payload", {}).get("feature_importance", {})
@@ -441,7 +460,7 @@ class ModelExplainabilityNode(NodeType):
             return None
 
     def _compute_shap(
-        self, store: Any, model: dict[str, Any], data_art: Any, features: list[str],
+        self, context: NodeContext, model: dict[str, Any], data_art: Any, features: list[str],
     ) -> dict[str, Any] | None:
         try:
             import shap
@@ -454,11 +473,11 @@ class ModelExplainabilityNode(NodeType):
 
         try:
             from cardre.modeling.serialization import read_estimator_artifact
-            estimator_art = ArtifactRepository(store).get(estimator_ref["artifact_id"])
+            estimator_art = context.inputs.artifact_ref(estimator_ref["artifact_id"])
             if estimator_art is None:
                 return None
             estimator_bytes = read_estimator_artifact(
-                store, estimator_art,
+                context.inputs, estimator_art,
                 expected_logical_hash=estimator_ref.get("logical_hash"),
             )
             import io
@@ -472,8 +491,7 @@ class ModelExplainabilityNode(NodeType):
             from cardre.modeling.families import get as get_family_spec
             family_spec = get_family_spec(model_family)
 
-            reader = ArtifactEvidenceReader(store)
-            df = reader.read_dataframe(data_art)
+            df = context.inputs.read_dataframe(data_art)
             X = df.select(features).to_numpy()
 
             if family_spec is not None and family_spec.shap_explainer_kind == "TreeExplainer":
@@ -550,6 +568,25 @@ class ModelLimitationsNode(NodeType):
     input_roles: list[str] = ["model", "train", "definition"]
     output_roles: list[str] = ["report"]
 
+    __definition__ = NodeDefinition(
+        node_type="cardre.model_limitations",
+        version="1",
+        category="report",
+        description="Produce a structured limitations report for a fitted model",
+        input_contract=ArtifactContract(
+            roles=(
+                ArtifactRoleSpec("model", kinds=(EvidenceKind.MODEL_ARTIFACT,)),
+                ArtifactRoleSpec("train", required=False),
+                ArtifactRoleSpec("definition", required=False),
+            ),
+        ),
+        output_contract=ArtifactContract(
+            roles=(ArtifactRoleSpec("report", kinds=(EvidenceKind.EXPLAINABILITY_REPORT,)),),
+        ),
+        parameter_schema=None,
+        tier="deferred",
+    )
+
     @classmethod
     def parameter_schema(cls) -> NodeParameterSchema:
         return NodeParameterSchema(
@@ -583,16 +620,12 @@ class ModelLimitationsNode(NodeType):
             errors.append("accepted_limitations must be a list")
         return errors
 
-    def run(self, context: ExecutionContext) -> NodeOutput:
-        store = context.store
-        params = context.validated_params
+    def run(self, context: NodeContext) -> NodeResult:
+        params = context.params
         accepted_codes = set(params.get("accepted_limitations", []))
 
-        reader = ArtifactEvidenceReader(store)
-        model_art = next((a for a in context.input_artifacts if a.role == "model"), None)
-        if model_art is None:
-            raise ValueError("model_limitations requires a model artifact")
-        model_typed = reader.require_model(model_art, "model_limitations")
+        model_art = context.inputs.require("model", "model_limitations")
+        model_typed = context.inputs.read(model_art, EvidenceKind.MODEL_ARTIFACT)
         model_family = model_typed.model_family
         features = model_typed.features
         model = model_typed.to_dict()
@@ -603,7 +636,7 @@ class ModelLimitationsNode(NodeType):
         warnings_list = model.get("warnings", [])
 
         # Data quality checks
-        data_issues = self._check_data_quality(store, context.input_artifacts, features)
+        data_issues = self._check_data_quality(context, features)
 
         # Dimensionality assessment
         dimensionality = self._assess_dimensionality(features, training.get("row_count", 0))
@@ -696,9 +729,9 @@ class ModelLimitationsNode(NodeType):
             "champion_eligible": len(unaccepted_blocks) == 0,
         }
 
-        art = write_json_artifact(
-            store, artifact_type="report", role="report",
-            stem=f"limitations-{context.step_spec.step_id}",
+        context.outputs.publish_json(
+            role="report",
+            kind=EvidenceKind.EXPLAINABILITY_REPORT,
             payload=report,
             metadata={
                 "model_family": model_family,
@@ -706,20 +739,20 @@ class ModelLimitationsNode(NodeType):
                 "schema_version": SCHEMA_EXPLAINABILITY_REPORT,
             },
         )
-        return NodeOutput(artifacts=[art], metrics={"overall_status": overall_status})
+        context.outputs.add_metric("overall_status", overall_status)
+        return context.outputs.build_result()
 
     def _check_data_quality(
-        self, store: Any, input_artifacts: Any, features: list[str],
+        self, context: NodeContext, features: list[str],
     ) -> list[dict[str, Any]]:
         """Check training data quality for the model's features."""
         issues: list[dict[str, Any]] = []
-        train_art = next((a for a in input_artifacts if a.role == "train"), None)
+        train_art = context.inputs.first("train")
         if train_art is None:
             return issues
 
         try:
-            reader = ArtifactEvidenceReader(store)
-            df = reader.read_dataframe(train_art)
+            df = context.inputs.read_dataframe(train_art)
         except (OSError, ComputeError):
             return issues
 

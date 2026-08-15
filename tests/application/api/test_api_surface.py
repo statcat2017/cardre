@@ -7,7 +7,7 @@ health against the current create_app/container architecture, using
 
 from __future__ import annotations
 
-from tests.application.api.conftest import (
+from conftest import (
     provision,
     seed_committed_plan,
     seed_run,

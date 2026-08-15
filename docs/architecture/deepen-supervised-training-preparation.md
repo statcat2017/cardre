@@ -74,7 +74,7 @@ Do not include these separate ADR-0007 concerns in this work item:
 
 Do not change:
 
-- `cardre/execution/context.py` role enforcement;
+- `cardre/nodes/contracts.py` role enforcement;
 - node registry tiers or optional-dependency behaviour;
 - Artifact store schemas, database migration, or run lifecycle;
 - build/validate stream topology;

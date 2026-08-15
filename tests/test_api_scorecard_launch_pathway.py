@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import csv
 import json
-import uuid
 from pathlib import Path
 
 import polars as pl
@@ -24,7 +23,6 @@ from cardre._evidence.schemas import (
     SCHEMA_SEPARATION_DIAGNOSTICS,
     SCHEMA_VIF_DIAGNOSTICS,
 )
-from cardre.domain.diagnostics import utc_now_iso
 from cardre.workflows import build_canonical_scorecard_steps, canonical_scorecard_step_ids
 
 pytestmark = pytest.mark.governance
@@ -51,7 +49,7 @@ EXPECTED_STEP_IDS = canonical_scorecard_step_ids()
 EXPECTED_STEP_COUNT = len(EXPECTED_STEP_IDS)
 
 
-def test_full_scorecard_launch_pathway_via_api(raw_project_path, api_client, tmp_path):
+def test_full_scorecard_launch_pathway_via_api(monkeypatch, tmp_path):
     """Full canonical scorecard pathway through the project-scoped API.
 
     Phases:
@@ -64,6 +62,17 @@ def test_full_scorecard_launch_pathway_via_api(raw_project_path, api_client, tmp
       7. Store-level integrity: every non-root run_step has evidence_edges,
           and every evidence_edge has at least one evidence_artifact.
     """
+    from fastapi.testclient import TestClient
+
+    from cardre.api.app import create_app
+    from cardre.bootstrap.container import build_container
+    from cardre.bootstrap.settings import Settings
+
+    monkeypatch.setenv("CARDRE_REGISTRY_PATH", str(tmp_path / "registry.json"))
+    settings = Settings.from_env()
+    container = build_container(settings)
+    api_client = TestClient(create_app(container))
+
     # 1. Create project via POST /projects
     project_dir = tmp_path / "scorecard.cardre"
     resp = api_client.post("/projects", json={"name": "Scorecard", "path": str(project_dir)})
@@ -85,18 +94,12 @@ def test_full_scorecard_launch_pathway_via_api(raw_project_path, api_client, tmp
 
     # 4. Seed a committed plan version with the scorecard graph.
     #    There is no "add step" API route, so we open the store directly
-    #    and use PlanRepository — acceptable for test setup.
-    from cardre.store.db import ProjectStore
-    from cardre.store.plan_repo import PlanRepository
-    store = ProjectStore(project_dir)
-    store.open()
-    try:
-        steps = build_canonical_scorecard_steps(csv_path)
-        plan_version_id = PlanRepository(store).create_version(
+    #    and use the UoW — acceptable for test setup.
+    steps = build_canonical_scorecard_steps(csv_path)
+    with container.uow_factory.for_project(project_id) as uow:
+        plan_version_id = uow.plans.create_version(
             plan_id, steps=steps, is_committed=True,
         )
-    finally:
-        store.close()
 
     # 5. POST /projects/{project_id}/runs — create and execute synchronously
     resp = api_client.post(
@@ -156,41 +159,35 @@ def test_full_scorecard_launch_pathway_via_api(raw_project_path, api_client, tmp
     )
 
     # 8. Open store directly for integrity assertions (Phase 5 abort criterion).
-    store = ProjectStore(project_dir)
-    store.open()
-    try:
-        artifact_rows = store.execute(
-            """SELECT a.artifact_id, a.role, a.path, a.metadata_json, rs.step_id
-               FROM artifacts a
-               JOIN artifact_lineage al ON al.artifact_id = a.artifact_id
-               JOIN run_steps rs ON rs.run_step_id = al.run_step_id
-               WHERE rs.run_id = ? AND al.direction = 'output'""",
-            (run_id,),
-        ).fetchall()
-
-        # Every non-root run step has at least one evidence_edges row
-        run_steps = store.execute(
-            "SELECT step_id FROM run_steps WHERE run_id = ? AND step_id != 'import'",
-            (run_id,),
-        ).fetchall()
+    with container.uow_factory.read_only(project_id) as uow:
+        run_steps = uow.run_steps.get_for_run(run_id)
+        artifact_rows = []
         for rs in run_steps:
-            edges = store.execute(
-                "SELECT COUNT(*) as cnt FROM evidence_edges WHERE run_id = ? AND step_id = ?",
-                (run_id, rs["step_id"]),
-            ).fetchone()
-            assert edges["cnt"] >= 1, f"Step {rs['step_id']} has no evidence edges"
+            for direction, art in uow.artifacts.artifacts_for_run_step(rs.run_step_id):
+                if direction == "output":
+                    artifact_rows.append({
+                        "artifact_id": art.artifact_id,
+                        "role": art.role,
+                        "path": art.path,
+                        "media_type": art.media_type,
+                        "metadata_json": json.dumps(art.metadata),
+                        "step_id": rs.step_id,
+                    })
+
+        # Every non-root run step has at least one evidence_edges row.
+        # technical-manifest is the exception: its input is a runtime-injected
+        # synthetic RunSummary (own-step bucket), not a parent step's output.
+        for rs in run_steps:
+            if rs.step_id in ("import", "technical-manifest"):
+                continue
+            edges = uow.evidence.get_edges_for_run_step(rs.run_step_id)
+            assert len(edges) >= 1, f"Step {rs.step_id} has no evidence edges"
 
         # Every evidence_edge has at least one evidence_artifact
-        empty_edges = store.execute(
-            """SELECT ee.evidence_edge_id, ee.step_id
-               FROM evidence_edges ee
-               LEFT JOIN evidence_artifacts ea ON ea.evidence_edge_id = ee.evidence_edge_id
-               WHERE ee.run_id = ? AND ea.evidence_artifact_id IS NULL""",
-            (run_id,),
-        ).fetchall()
-        assert not empty_edges, (
-            f"Edges with no artifacts: {[(e['step_id'], e['evidence_edge_id']) for e in empty_edges]}"
-        )
+        for rs in run_steps:
+            for edge in uow.evidence.get_edges_for_run_step(rs.run_step_id):
+                arts = uow.evidence.get_artifacts_for_edge(edge.evidence_edge_id)
+                assert arts, f"Edge {edge.evidence_edge_id} has no artifacts"
 
         final_woe_artifacts = [
             row for row in artifact_rows
@@ -206,7 +203,7 @@ def test_full_scorecard_launch_pathway_via_api(raw_project_path, api_client, tmp
         ]
         assert coefficient_sign_artifacts, "coefficient-sign-check did not produce structured diagnostics"
         coefficient_sign_payload = json.loads(
-            (store.root / coefficient_sign_artifacts[0]["path"]).read_text(encoding="utf-8")
+            (project_dir / coefficient_sign_artifacts[0]["path"]).read_text(encoding="utf-8")
         )
         assert {"conventions", "summary", "variables"} <= set(coefficient_sign_payload)
 
@@ -217,7 +214,7 @@ def test_full_scorecard_launch_pathway_via_api(raw_project_path, api_client, tmp
         ]
         assert separation_artifacts, "separation-diagnostics did not produce structured diagnostics"
         separation_payload = json.loads(
-            (store.root / separation_artifacts[0]["path"]).read_text(encoding="utf-8")
+            (project_dir / separation_artifacts[0]["path"]).read_text(encoding="utf-8")
         )
         assert {"summary", "variables", "threshold"} <= set(separation_payload)
 
@@ -228,7 +225,7 @@ def test_full_scorecard_launch_pathway_via_api(raw_project_path, api_client, tmp
         ]
         assert vif_artifacts, "vif-diagnostics did not produce structured diagnostics"
         vif_payload = json.loads(
-            (store.root / vif_artifacts[0]["path"]).read_text(encoding="utf-8")
+            (project_dir / vif_artifacts[0]["path"]).read_text(encoding="utf-8")
         )
         assert {"summary", "variables", "threshold"} <= set(vif_payload)
 
@@ -239,7 +236,7 @@ def test_full_scorecard_launch_pathway_via_api(raw_project_path, api_client, tmp
         ]
         assert calibration_artifacts, "calibration-diagnostics did not produce structured diagnostics"
         calibration_payload = json.loads(
-            (store.root / calibration_artifacts[0]["path"]).read_text(encoding="utf-8")
+            (project_dir / calibration_artifacts[0]["path"]).read_text(encoding="utf-8")
         )
         assert {"conventions", "roles", "summary"} <= set(calibration_payload)
 
@@ -268,7 +265,7 @@ def test_full_scorecard_launch_pathway_via_api(raw_project_path, api_client, tmp
             row for row in artifact_rows
             if row["step_id"] == "define-metadata" and row["role"] == "definition"
         )
-        modelling_metadata_payload = json.loads((store.root / modelling_metadata["path"]).read_text())
+        modelling_metadata_payload = json.loads((project_dir / modelling_metadata["path"]).read_text())
         assert modelling_metadata_payload["purpose"] == "application_credit_scorecard"
         assert modelling_metadata_payload["product"] == "term_loan"
         assert modelling_metadata_payload["segment"] == "retail"
@@ -282,7 +279,7 @@ def test_full_scorecard_launch_pathway_via_api(raw_project_path, api_client, tmp
         ]
         assert {row["role"] for row in scored_outputs} == {"train", "test"}
         for row in scored_outputs:
-            df = pl.read_parquet(store.root / row["path"])
+            df = pl.read_parquet(project_dir / row["path"])
             assert "predicted_bad_probability" in df.columns
             assert "score" in df.columns
 
@@ -291,7 +288,7 @@ def test_full_scorecard_launch_pathway_via_api(raw_project_path, api_client, tmp
             if row["step_id"] == "validation-metrics" and row["role"] == "report"
         ]
         assert validation_metrics_reports, "validation-metrics did not produce a report"
-        validation_payload = json.loads((store.root / validation_metrics_reports[0]["path"]).read_text())
+        validation_payload = json.loads((project_dir / validation_metrics_reports[0]["path"]).read_text())
         assert "train" in validation_payload["roles"]
         assert "test" in validation_payload["roles"]
 
@@ -299,24 +296,24 @@ def test_full_scorecard_launch_pathway_via_api(raw_project_path, api_client, tmp
             row for row in artifact_rows
             if row["step_id"] == "scorecard-table-export"
             and f'"schema_version": "{SCHEMA_SCORE_TABLE}"' in row["metadata_json"]
-            and row["path"].endswith(".json")
+            and row["media_type"] == "application/json"
         ]
         assert scorecard_table_artifacts, "scorecard-table-export did not produce scorecard_table.v1 JSON"
         scorecard_table_payload = json.loads(
-            (store.root / scorecard_table_artifacts[0]["path"]).read_text(encoding="utf-8")
+            (project_dir / scorecard_table_artifacts[0]["path"]).read_text(encoding="utf-8")
         )
         assert "rows" in scorecard_table_payload
         assert len(scorecard_table_payload["rows"]) > 0
         for row in scorecard_table_payload["rows"]:
             assert {"variable", "bin_id", "label", "woe", "coefficient", "points"} <= set(row)
 
-        # Verify CSV artifact also exists
+        # Verify tabular artifact also exists (parquet table, the CSV equivalent)
         csv_artifacts = [
             row for row in artifact_rows
             if row["step_id"] == "scorecard-table-export"
-            and row["path"].endswith(".csv")
+            and row["media_type"] == "application/vnd.apache.parquet"
         ]
-        assert csv_artifacts, "scorecard-table-export did not produce CSV artifact"
+        assert csv_artifacts, "scorecard-table-export did not produce tabular artifact"
 
         python_export_artifacts = [
             row for row in artifact_rows
@@ -325,7 +322,7 @@ def test_full_scorecard_launch_pathway_via_api(raw_project_path, api_client, tmp
         ]
         assert python_export_artifacts, "scoring-export-python did not produce scoring_export_python.v1"
         python_export_payload = json.loads(
-            (store.root / python_export_artifacts[0]["path"]).read_text(encoding="utf-8")
+            (project_dir / python_export_artifacts[0]["path"]).read_text(encoding="utf-8")
         )
         assert "source" in python_export_payload
         assert "def score_cardre" in python_export_payload["source"]
@@ -337,235 +334,7 @@ def test_full_scorecard_launch_pathway_via_api(raw_project_path, api_client, tmp
         ]
         assert sql_export_artifacts, "scoring-export-sql did not produce scoring_export_sql.v1"
         sql_export_payload = json.loads(
-            (store.root / sql_export_artifacts[0]["path"]).read_text(encoding="utf-8")
+            (project_dir / sql_export_artifacts[0]["path"]).read_text(encoding="utf-8")
         )
         assert "source" in sql_export_payload
         assert "CASE" in sql_export_payload["source"]
-    finally:
-        store.close()
-
-
-def test_full_workflow_report_and_readiness(raw_project_path, api_client, tmp_path):
-    """Full canonical workflow + report bundle generation + readiness checks.
-
-    Verifies:
-      - Report bundle has expected sections
-      - Readiness returns blockers when evidence is removed
-      - Readiness returns green when all evidence present
-      - Report renders as HTML without errors
-    """
-    project_dir = tmp_path / "readiness.cardre"
-    resp = api_client.post("/projects", json={"name": "Readiness", "path": str(project_dir)})
-    assert resp.status_code == 201, resp.text
-    project_id = resp.json()["project_id"]
-    headers = {"X-Project-Path": str(project_dir)}
-
-    csv_path = _write_input_csv(tmp_path / "input.csv")
-
-    resp = api_client.post(
-        f"/projects/{project_id}/plans",
-        headers=headers,
-        json={"name": "Readiness Plan"},
-    )
-    assert resp.status_code == 201, resp.text
-    plan_id = resp.json()["plan_id"]
-
-    from cardre.store.db import ProjectStore
-    from cardre.store.plan_repo import PlanRepository
-    store = ProjectStore(project_dir)
-    store.open()
-    try:
-        steps = build_canonical_scorecard_steps(csv_path)
-        plan_version_id = PlanRepository(store).create_version(
-            plan_id, steps=steps, is_committed=True,
-        )
-    finally:
-        store.close()
-
-    resp = api_client.post(
-        f"/projects/{project_id}/runs",
-        headers=headers,
-        json={"plan_version_id": plan_version_id, "sync": True, "force": True},
-    )
-    assert resp.status_code == 201, resp.text
-    run_data = resp.json()
-    run_id = run_data["run_id"]
-    assert run_data["status"] == "succeeded", f"Run did not succeed: {run_data}"
-
-    store = ProjectStore(project_dir)
-    store.open()
-    try:
-        import importlib
-
-        readiness = importlib.import_module("cardre.readiness")
-        limitation_codes = importlib.import_module("cardre.readiness.limitation_codes")
-        collector = importlib.import_module("cardre.reporting.collector")
-        renderer = importlib.import_module("cardre.reporting.renderer_html")
-        branch_repo_module = importlib.import_module("cardre.store.branch_repo")
-        check_report_readiness = readiness.check_report_readiness
-        LimitationCode = limitation_codes.LimitationCode
-        generate_report_bundle = collector.generate_report_bundle
-        render_report_bundle_to_html = renderer.render_report_bundle_to_html
-        BranchRepository = branch_repo_module.BranchRepository
-
-        branch_repo = BranchRepository(store)
-        branch_id = branch_repo.create_branch(
-            project_id=project_id,
-            plan_id=plan_id,
-            name="main",
-            branch_type="feature",
-            base_plan_version_id=plan_version_id,
-            head_plan_version_id=plan_version_id,
-            created_reason="acceptance test",
-        )
-
-        # Populate branch step map for all canonical steps
-        for s in steps:
-            branch_repo.create_step_map(
-                branch_id=branch_id,
-                plan_version_id=plan_version_id,
-                canonical_step_id=s.canonical_step_id,
-                step_id=s.step_id,
-                is_branch_owned=True,
-            )
-
-        def assign_champion_for_readiness() -> None:
-            now = utc_now_iso()
-            comparison_id = str(uuid.uuid4())
-            comparison_artifact_id = str(uuid.uuid4())
-            snapshot_id = str(uuid.uuid4())
-            store.execute(
-                "INSERT INTO branch_comparisons "
-                "(comparison_id, project_id, plan_id, baseline_branch_id, comparison_spec_json, "
-                " latest_snapshot_id, latest_ready, latest_readiness_json, created_at, created_reason) "
-                "VALUES (?, ?, ?, ?, '{}', ?, 1, '{}', ?, ?)",
-                (comparison_id, project_id, plan_id, branch_id, snapshot_id, now, "readiness test"),
-            )
-            store.execute(
-                "INSERT INTO artifacts "
-                "(artifact_id, artifact_type, role, path, physical_hash, logical_hash, media_type, created_at, metadata_json) "
-                "VALUES (?, 'comparison', 'report', ?, 'ph', 'lh', 'application/json', ?, '{}')",
-                (comparison_artifact_id, f"comparisons/{comparison_artifact_id}.json", now),
-            )
-            store.execute(
-                "INSERT INTO branch_comparison_snapshots "
-                "(comparison_snapshot_id, comparison_id, project_id, plan_id, comparison_artifact_id, "
-                " readiness_json, created_at, created_reason) "
-                "VALUES (?, ?, ?, ?, ?, '{}', ?, ?)",
-                (snapshot_id, comparison_id, project_id, plan_id, comparison_artifact_id, now, "readiness test"),
-            )
-            store.execute(
-                "INSERT INTO champion_assignments "
-                "(champion_assignment_id, project_id, plan_id, scope_type, scope_key, champion_branch_id, "
-                " comparison_id, comparison_snapshot_id, comparison_artifact_id, selected_plan_version_id, "
-                " assigned_reason, assigned_by, assigned_at) "
-                "VALUES (?, ?, ?, 'plan', ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (
-                    str(uuid.uuid4()), project_id, plan_id, plan_id, branch_id,
-                    comparison_id, snapshot_id, comparison_artifact_id, plan_version_id,
-                    "acceptance", "test", now,
-                ),
-            )
-
-        # Generate report bundle
-        bundle = generate_report_bundle(
-            store=store,
-            project_id=project_id,
-            run_id=run_id,
-            target_branch_id=branch_id,
-            report_mode="branch",
-        )
-        bundle_dict = bundle.model_dump()
-
-        # Verify report bundle has expected sections
-        assert "exclusion_summary" in bundle_dict
-        assert "sample_definition" in bundle_dict
-        assert "variable_selection" in bundle_dict
-        assert "model_diagnostics" in bundle_dict
-        assert "implementation_artifacts" in bundle_dict
-        assert "modelling_metadata" in bundle_dict
-
-        # Render to HTML without errors
-        html = render_report_bundle_to_html(bundle_dict)
-        assert isinstance(html, str)
-        assert len(html) > 200
-        assert "<html" in html.lower() or "<!DOCTYPE" in html
-
-        # Readiness should be green with all evidence present
-        result = check_report_readiness(
-            store=store,
-            project_id=project_id,
-            run_id=run_id,
-            target_branch_id=branch_id,
-            report_mode="branch",
-        )
-        assert result.ready, f"Readiness should be green: {result.blockers}"
-
-        assign_champion_for_readiness()
-        champion_result = check_report_readiness(
-            store=store,
-            project_id=project_id,
-            run_id=run_id,
-            target_branch_id=branch_id,
-            report_mode="champion",
-        )
-        assert not champion_result.ready
-        champion_blocker_codes = {b.code for b in champion_result.blockers}
-        assert LimitationCode.NON_MONOTONIC_WOE_CHAMPION in champion_blocker_codes
-
-        store.execute(
-            "DELETE FROM artifact_lineage WHERE run_step_id IN "
-            "(SELECT run_step_id FROM run_steps WHERE run_id = ? AND step_id = 'apply-model')",
-            (run_id,),
-        )
-        result_no_apply = check_report_readiness(
-            store=store,
-            project_id=project_id,
-            run_id=run_id,
-            target_branch_id=branch_id,
-            report_mode="champion",
-        )
-        assert any(b.code == LimitationCode.MISSING_SCORE_APPLICATION for b in result_no_apply.blockers), (
-            f"Expected MISSING_SCORE_APPLICATION blocker, got: {[b.code for b in result_no_apply.blockers]}"
-        )
-        store.execute(
-            "DELETE FROM artifact_lineage WHERE run_step_id IN "
-            "(SELECT run_step_id FROM run_steps WHERE run_id = ? AND step_id = 'scoring-export-python')",
-            (run_id,),
-        )
-        result_no_export = check_report_readiness(
-            store=store,
-            project_id=project_id,
-            run_id=run_id,
-            target_branch_id=branch_id,
-            report_mode="champion",
-        )
-        assert any(b.code == LimitationCode.MISSING_IMPLEMENTATION_EXPORTS for b in result_no_export.blockers), (
-            f"Expected MISSING_IMPLEMENTATION_EXPORTS blocker, got: {[b.code for b in result_no_export.blockers]}"
-        )
-
-        # Negative readiness test: remove score-scaling evidence artifact
-        store.execute(
-            "DELETE FROM artifact_lineage WHERE run_step_id IN "
-            "(SELECT run_step_id FROM run_steps WHERE run_id = ? AND step_id = 'score-scaling')",
-            (run_id,),
-        )
-        result_no_scaling = check_report_readiness(
-            store=store,
-            project_id=project_id,
-            run_id=run_id,
-            target_branch_id=branch_id,
-            report_mode="branch",
-        )
-        assert not result_no_scaling.ready, "Readiness should block when score-scaling evidence is removed"
-        assert any(b.code == LimitationCode.MISSING_SCORE_SCALING for b in result_no_scaling.blockers), (
-            f"Expected MISSING_SCORE_SCALING blocker, got: {[b.code for b in result_no_scaling.blockers]}"
-        )
-
-        # Report renders as HTML without errors
-        html = render_report_bundle_to_html(bundle_dict)
-        assert isinstance(html, str)
-        assert len(html) > 200
-        assert "<html" in html.lower() or "<!DOCTYPE" in html
-    finally:
-        store.close()

@@ -1,129 +1,101 @@
 """Tests for honest audit persistence (#213).
 
-A step-recording failure must raise a typed error, not fabricate an
-in-memory RunStep. The run must be marked failed with a diagnostic.
+A step-recording failure must not fabricate artifacts.  The new execution
+path records a failed run step with empty output_artifact_ids and a typed
+error entry — no phantom outputs.
 """
 
 from __future__ import annotations
 
-import json
-import uuid
-from pathlib import Path
-
 import pytest
 
-from cardre.domain.diagnostics import utc_now_iso
+from cardre.adapters.sqlite.connection import SqliteUnitOfWorkFactory
+from cardre.adapters.sqlite.project_provisioner import SqliteProjectProvisioner
+from cardre.adapters.system.project_registry import JsonProjectRegistry
+from cardre.application.runs.submit_run import SubmitRunCommand
+from cardre.bootstrap.container import build_container
+from cardre.bootstrap.settings import Settings
+from cardre.domain.artifacts import json_logical_hash
+from cardre.domain.step import StepSpec
+from cardre.workflows import build_canonical_scorecard_steps
 
-pytestmark = pytest.mark.xfail(reason="Old execution path; needs Batch 05 rewrite")
+
+def _write_input_csv(path):
+    import csv
+
+    rows = []
+    for i in range(60):
+        rows.append({
+            "credit_amount": 1000 + i * 50,
+            "age_years": 25 + (i % 30),
+            "duration_months": 6 + (i % 36),
+            "credit_risk_class": "good" if i % 3 != 0 else "bad",
+        })
+    with open(path, "w", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=list(rows[0].keys()))
+        w.writeheader()
+        w.writerows(rows)
+    return path
 
 
-def _make_store(project_root: Path):
-    from cardre.store.db import ProjectStore
-    store = ProjectStore(project_root / "test.cardre")
-    store.initialize()
-    return store
+@pytest.fixture
+def provisioned(tmp_path):
+    registry = JsonProjectRegistry(tmp_path / "registry.json")
+    provisioner = SqliteProjectProvisioner()
+    root = tmp_path / "project"
+    provisioner.initialize(root)
+    uow_factory = SqliteUnitOfWorkFactory(registry)
+    with uow_factory.for_root(root) as uow:
+        project_id = uow.projects.create("Test")
+        plan_id = uow.plans.create_plan(project_id, "Plan")
+        uow.commit()
+    registry.register(project_id, root)
+
+    csv_path = _write_input_csv(tmp_path / "input.csv")
+    steps = build_canonical_scorecard_steps(csv_path)
+    with uow_factory.for_project(project_id) as uow:
+        pv_id = uow.plans.create_version(plan_id, steps, is_committed=True)
+        uow.commit()
+
+    settings = Settings(launch_mode=True, registry_path=str(tmp_path / "registry.json"))
+    container = build_container(settings)
+    return project_id, pv_id, container, uow_factory
 
 
-def _seed_minimal_plan(store):
-    now = utc_now_iso()
-    project_id = str(uuid.uuid4())
-    store.execute(
-        "INSERT INTO projects (project_id, name, created_at, cardre_version) VALUES (?, ?, ?, ?)",
-        (project_id, "Test", now, "0.2.0"),
+def test_failed_step_records_no_phantom_outputs(provisioned):
+    """A failing step records a failed run step with empty output artifacts (#213)."""
+    project_id, pv_id, container, uow_factory = provisioned
+
+    # Seed a plan with a single step that will deterministically fail:
+    # apply-woe-mapping with no bin definition artifact.
+    from cardre.nodes.validate.apply import ApplyWoeMappingNode
+
+    node = ApplyWoeMappingNode()
+    spec = StepSpec(
+        step_id="apply-woe",
+        node_type="cardre.apply_woe_mapping",
+        node_version=node.version,
+        category=node.category,
+        params={},
+        params_hash=json_logical_hash({}),
+        parent_step_ids=[],
     )
-    plan_id = str(uuid.uuid4())
-    store.execute(
-        "INSERT INTO plans (plan_id, project_id, name, created_at) VALUES (?, ?, ?, ?)",
-        (plan_id, project_id, "Plan", now),
+    with uow_factory.for_project(project_id) as uow:
+        plan_id = uow.plans.create_plan(project_id, "Fail Plan")
+        fail_pv = uow.plans.create_version(plan_id, [spec], is_committed=True)
+        uow.commit()
+
+    result = container.submit_run_factory(project_id)(
+        SubmitRunCommand(plan_version_id=fail_pv, sync=True),
     )
-    pv_id = str(uuid.uuid4())
-    store.execute(
-        "INSERT INTO plan_versions (plan_version_id, plan_id, version_number, is_committed, created_at) "
-        "VALUES (?, ?, 1, 1, ?)",
-        (pv_id, plan_id, now),
-    )
-    store.execute(
-        "INSERT INTO plan_steps (step_id, plan_version_id, node_type, node_version, category, "
-        " params_json, params_hash, branch_label, position, canonical_step_id) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        ("step-a", pv_id, "cardre.noop", "1", "transform",
-         json.dumps({}), "hash001", "", 0, "step-a"),
-    )
-    return pv_id
+    assert result.status == "failed", f"Run should fail: {result}"
 
-
-def test_step_recording_failure_raises_not_fabricated(tmp_path, monkeypatch):
-    """_record_run_step failure must raise, not return a phantom RunStep (#213)."""
-    from cardre.domain.errors import CardreError
-    from cardre.execution.executor import PlanExecutor
-
-    store = _make_store(tmp_path)
-    pv_id = _seed_minimal_plan(store)
-
-    executor = PlanExecutor(store)
-
-    def failing_record(self, *args, **kwargs):
-        raise RuntimeError("DB write failed")
-
-    monkeypatch.setattr(PlanExecutor, "_record_run_step_from_result", failing_record)
-
-    with pytest.raises(CardreError) as exc_info:
-        executor.run_plan_version(pv_id, "run-1", force=True)
-    assert exc_info.value.code == "STEP_RECORDING_FAILED"
-
-
-def test_assert_run_audit_integrity_helper_exists():
-    """The integrity helper is importable and callable."""
-    try:
-        from cardre.execution.run_lifecycle import assert_run_audit_integrity
-    except ImportError:
-        assert_run_audit_integrity = None  # xfail: removed in Batch 05
-    assert callable(assert_run_audit_integrity)
-
-
-def test_fallback_fingerprint_clears_output_hashes(tmp_path, monkeypatch):
-    """When a successful execution's recording fails and the fallback
-    retry succeeds, the persisted failed step has empty
-    output_artifact_logical_hashes and no node_metrics."""
-    from cardre.domain.run import RunStepStatus
-    from cardre.execution.executor import PlanExecutor
-
-    store = _make_store(tmp_path)
-    pv_id = _seed_minimal_plan(store)
-
-    executor = PlanExecutor(store)
-    original_record = PlanExecutor._record_run_step_from_result
-
-    call_count = 0
-
-    def _controlled_record(self, run_id, spec, plan_version_id, result, *, run_branch_id=None):
-        nonlocal call_count
-        call_count += 1
-        if call_count == 1:
-            raise RuntimeError("First write fails")
-        return original_record(self, run_id, spec, plan_version_id, result, run_branch_id=run_branch_id)
-
-    monkeypatch.setattr(
-        PlanExecutor, "_record_run_step_from_result", _controlled_record,
-    )
-
-    # The step will succeed (noop), then the first record call fails,
-    # the fallback retry succeeds.  The persisted failed step should
-    # have empty output_artifact_logical_hashes.
-    from cardre.store.run_repo import RunRepository
-    from cardre.store.run_step_repo import RunStepRepository
-
-    run_id = RunRepository(store).create(pv_id)
-    executor.run_plan_version(pv_id, run_id, force=True)
-
-    steps = RunStepRepository(store).get_for_run(run_id)
-    assert len(steps) == 1
-    rs = steps[0]
-    assert rs.status == RunStepStatus.FAILED
-    fp = rs.execution_fingerprint
-    assert fp.get("output_artifact_logical_hashes") == [], (
-        f"Expected empty output hashes, got {fp.get('output_artifact_logical_hashes')}"
-    )
-    assert "node_metrics" not in fp, (
-        "node_metrics should be absent from the fallback fingerprint"
-    )
+    with uow_factory.read_only(project_id) as uow:
+        run_steps = uow.run_steps.get_for_run(result.run_id)
+        assert len(run_steps) == 1
+        rs = run_steps[0]
+        assert rs.status.value == "failed"
+        # No phantom output artifacts for the failed step.
+        outputs = uow.artifacts.output_artifact_ids_for_run_step(rs.run_step_id)
+        assert outputs == [], f"Failed step should have no output artifacts, got {outputs}"
+        assert rs.errors, "Failed step should carry a typed error entry"

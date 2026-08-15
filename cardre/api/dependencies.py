@@ -57,25 +57,6 @@ def get_submit_run_factory(container: Container = Depends(get_container)) -> Any
     return container.submit_run_factory
 
 
-def get_run_queries(container: Container = Depends(get_container)) -> dict[str, Any]:
-    """Return run query helpers that use the UoW directly."""
-    uow = container.uow_factory
-
-    def get_run(project_id: str, run_id: str):
-        with uow.read_only(project_id) as u:
-            return u.runs.get(run_id)
-
-    def list_runs(project_id: str, plan_version_id: str | None = None):
-        with uow.read_only(project_id) as u:
-            return u.runs.list_for_project(project_id)
-
-    def get_run_steps(project_id: str, run_id: str):
-        with uow.read_only(project_id) as u:
-            return u.run_steps.get_for_run(run_id)
-
-    return {"get_run": get_run, "list_runs": list_runs, "get_run_steps": get_run_steps}
-
-
 # ---------------------------------------------------------------------------
 # Evidence
 # ---------------------------------------------------------------------------

@@ -7,8 +7,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from cardre._evidence.schemas import SCHEMA_TECHNICAL_MANIFEST_INDEX
 from cardre.domain.evidence.kinds import EvidenceKind
-from cardre.domain.evidence.schemas import SCHEMA_TECHNICAL_MANIFEST_INDEX
 from cardre.nodes.contracts import (
     ArtifactContract,
     ArtifactRoleSpec,

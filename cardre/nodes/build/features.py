@@ -5,19 +5,20 @@ from typing import Any, cast
 
 import polars as pl
 
-from cardre.domain.evidence.kinds import (
-    AmbiguousEvidenceError,
-    EvidenceKind,
-    EvidenceNotFoundError,
-)
-from cardre.domain.evidence.schemas import (
+from cardre._evidence.schemas import (
     SCHEMA_IV_TABLE,
     SCHEMA_WOE_IV_EVIDENCE,
     SCHEMA_WOE_TABLE,
     SCHEMA_WOE_TRANSFORM_EVIDENCE,
 )
+from cardre.domain.evidence.kinds import (
+    AmbiguousEvidenceError,
+    EvidenceKind,
+    EvidenceNotFoundError,
+)
 from cardre.engine.binning.diagnostics import MonotonicStatus, check_pure_bins, monotonicity_status
-from cardre.nodes._bin_mask import build_bin_condition
+from cardre.engine.binning.masks import build_bin_condition
+from cardre.engine.binning.woe import MissingWoePolicy, apply_woe_columns
 from cardre.nodes.contracts import (
     ArtifactContract,
     ArtifactRoleSpec,
@@ -485,39 +486,14 @@ class WoeTransformTrainNode(NodeType):
             selected_vars = list(all_var_defs)
 
         woe_columns: list[str] = []
-        woe_exprs: list[pl.Expr] = []
         column_variable_map: list[tuple[str, str]] = []
-        result_df = df
-
-        for var_def in selected_vars:
-            variable = var_def.variable if hasattr(var_def, 'variable') else var_def.get('variable', '')
-            kind = var_def.kind if hasattr(var_def, 'kind') else var_def.get('kind', '')
-            bins = var_def.bins if hasattr(var_def, 'bins') else var_def.get('bins', [])
-            woe_col = f"{variable}_woe"
-
-            if variable not in df.columns:
-                continue
-
-            woe_expr: Any = None
-            for bin_def_entry in bins:
-                bin_id = bin_def_entry["bin_id"]
-
-                mask_expr = build_bin_condition(bin_def_entry, pl.col(variable), kind, bins, variable=variable, bin_id=bin_id)
-
-                woe_val = woe_map.get(variable, {}).get(bin_id, 0.0)
-                when_clause = pl.when(mask_expr).then(pl.lit(woe_val))
-                woe_expr = when_clause if woe_expr is None else woe_expr.when(mask_expr).then(pl.lit(woe_val))
-
-            if woe_expr is None:
-                raise ValueError(f"WOE transform: variable '{variable}' has no bins defined")
-
-            woe_expr = woe_expr.otherwise(pl.lit(None, dtype=pl.Float64))
-            woe_exprs.append(woe_expr.alias(woe_col))
-            column_variable_map.append((woe_col, variable))
-            woe_columns.append(woe_col)
-
-        if woe_exprs:
-            result_df = result_df.with_columns(woe_exprs)
+        result_df, woe_columns = apply_woe_columns(
+            df,
+            selected_vars,
+            lambda variable, bin_id: woe_map.get(variable, {}).get(bin_id),
+            policy=MissingWoePolicy.ZERO,
+        )
+        column_variable_map = [(c, c[: -len("_woe")]) for c in woe_columns]
 
         for woe_col, variable in column_variable_map:
             unmatched = result_df.filter(pl.col(woe_col).is_null()).height

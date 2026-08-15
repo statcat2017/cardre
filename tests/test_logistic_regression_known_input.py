@@ -10,7 +10,6 @@ convergence metadata.
 from __future__ import annotations
 
 import json
-import uuid
 from pathlib import Path
 
 import polars as pl
@@ -18,123 +17,42 @@ import pytest
 
 from cardre._evidence.schemas import SCHEMA_MODELLING_METADATA
 from cardre.adapters.evidence.reader import EvidenceReader
+from cardre.adapters.filesystem.artifact_store import FsArtifactStore
+from cardre.adapters.sqlite.connection import SqliteUnitOfWorkFactory
+from cardre.adapters.sqlite.project_provisioner import SqliteProjectProvisioner
+from cardre.adapters.system.project_registry import JsonProjectRegistry
 from cardre.application.execution.input_collection import StepInputCollection
-from cardre.application.ports.unit_of_work import ArtifactRepoPort, RunStepRepoPort
+from cardre.application.execution.output_publisher import StagingOutputPublisher
 from cardre.domain.artifacts import ArtifactRef
-from cardre.domain.diagnostics import utc_now_iso
+from cardre.domain.evidence.kinds import EvidenceKind
 from cardre.domain.step import StepSpec
 from cardre.nodes.build.models import LogisticRegressionNode
 from cardre.nodes.contracts import NodeContext, RuntimeMeta
-from cardre.store.artifact_repo import ArtifactRepository
-
-
-def _seed_project_and_plan(store) -> tuple[str, str]:
-    """Create a minimal project with one plan version. Returns (project_id, pv_id)."""
-    project_id = str(uuid.uuid4())
-    now = utc_now_iso()
-    store.execute(
-        "INSERT INTO projects (project_id, name, created_at, cardre_version) VALUES (?, ?, ?, ?)",
-        (project_id, "LR Test", now, "0.2.0"),
-    )
-    plan_id = str(uuid.uuid4())
-    store.execute(
-        "INSERT INTO plans (plan_id, project_id, name, created_at) VALUES (?, ?, ?, ?)",
-        (plan_id, project_id, "Test Plan", now),
-    )
-    pv_id = str(uuid.uuid4())
-    store.execute(
-        "INSERT INTO plan_versions (plan_version_id, plan_id, version_number, is_committed, created_at, description) "
-        "VALUES (?, ?, 1, 1, ?, ?)",
-        (pv_id, plan_id, now, "Base version"),
-    )
-    return project_id, pv_id
-
-
-def _register_artifact(
-    store,
-    artifact_id: str,
-    artifact_type: str,
-    role: str,
-    path: str,
-    media_type: str = "application/json",
-    schema_version: str | None = None,
-) -> None:
-    metadata = {}
-    if schema_version:
-        metadata["schema_version"] = schema_version
-    store.execute(
-        "INSERT INTO artifacts (artifact_id, artifact_type, role, path, physical_hash, logical_hash, "
-        "media_type, created_at, metadata_json) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        (artifact_id, artifact_type, role, path, "phys_hash", "log_hash",
-         media_type, utc_now_iso(), json.dumps(metadata)),
-    )
-
-
-class _TestArtifactReader:
-    """Minimal ArtifactReader backed by a ProjectStore for tests."""
-
-    def __init__(self, store):
-        self._store = store
-
-    def read_bytes(self, artifact: ArtifactRef) -> bytes:
-        return self.resolve_path(artifact).read_bytes()
-
-    def resolve_path(self, artifact: ArtifactRef) -> Path:
-        return self._store.artifact_path(artifact)
-
-
-class _TestStagedArtifactWriter:
-    """Minimal StagedArtifactWriter that delegates to write_json_artifact.
-
-    Collects written artifacts so the test can inspect them.
-    """
-
-    def __init__(self, store):
-        self._store = store
-        self._published: list[ArtifactRef] = []
-
-    def stage_json(self, role: str, kind: str, payload: dict,
-                   metadata: dict | None = None) -> ArtifactRef:
-        from cardre.artifacts import write_json_artifact
-        art = write_json_artifact(
-            self._store,
-            artifact_type=role,
-            role=role,
-            stem=f"test-{uuid.uuid4().hex[:8]}",
-            payload=payload,
-            metadata=metadata,
-        )
-        self._published.append(art)
-        return art
-
-    def stage_table(self, role: str, kind: str, frame: object,
-                    metadata: dict | None = None) -> ArtifactRef:
-        raise NotImplementedError("stage_table not needed in this test")
-
-    def stage_bytes(self, role: str, kind: str, data: bytes,
-                    media_type: str, logical_hash: str,
-                    metadata: dict | None = None) -> ArtifactRef:
-        raise NotImplementedError("stage_bytes not needed in this test")
-
-    def publish(self, staged: ArtifactRef) -> Path:
-        return self._store.artifact_path(staged)
 
 
 @pytest.fixture
-def fixture_dir(tmp_path: Path) -> Path:
-    return tmp_path
+def provisioned(tmp_path):
+    registry = JsonProjectRegistry(tmp_path / "registry.json")
+    provisioner = SqliteProjectProvisioner()
+    root = tmp_path / "project"
+    provisioner.initialize(root)
+    uow_factory = SqliteUnitOfWorkFactory(registry)
+    with uow_factory.for_root(root) as uow:
+        project_id = uow.projects.create("LR Test")
+        uow.commit()
+    registry.register(project_id, root)
+    return project_id, uow_factory, root
 
 
 @pytest.fixture
-def train_parquet(fixture_dir: Path) -> Path:
+def train_parquet(tmp_path: Path) -> Path:
     """Write a tiny training parquet with WOE columns and a binary target."""
     df = pl.DataFrame({
         "age_woe": [0.5, -0.3, 0.1, -0.2, 0.4],
         "income_woe": [-0.1, 0.2, -0.4, 0.3, -0.2],
         "default_flag": ["good", "bad", "good", "bad", "good"],
     })
-    path = fixture_dir / "train.parquet"
+    path = tmp_path / "train.parquet"
     df.write_parquet(path)
     return path
 
@@ -151,36 +69,56 @@ def modelling_metadata_payload() -> dict:
 
 
 def test_logistic_regression_model_artifact_shape(
-    store,
-    fixture_dir: Path,
+    provisioned,
+    tmp_path: Path,
     train_parquet: Path,
     modelling_metadata_payload: dict,
 ) -> None:
     """Run LogisticRegressionNode.run() with known fixtures and assert model artifact shape."""
-    _seed_project_and_plan(store)
+    project_id, uow_factory, root = provisioned
+    artifact_store = FsArtifactStore(root)
 
     # --- Write modelling metadata artifact ---
-    meta_path = fixture_dir / "modelling_metadata.json"
+    meta_path = tmp_path / "modelling_metadata.json"
     meta_path.write_text(json.dumps(modelling_metadata_payload))
-    meta_art_id = "meta-art-1"
-    _register_artifact(
-        store, meta_art_id, "definition", "definition",
-        str(meta_path), schema_version=SCHEMA_MODELLING_METADATA,
+    meta_staged = artifact_store.stage_json(
+        role="definition", kind=EvidenceKind.MODELLING_METADATA.value,
+        payload=modelling_metadata_payload,
+        metadata={"schema_version": SCHEMA_MODELLING_METADATA},
+    )
+    meta_path_pub = artifact_store.publish(meta_staged)
+    meta_art = ArtifactRef(
+        artifact_id=meta_staged.provisional_artifact_id,
+        artifact_type=meta_staged.artifact_type,
+        role=meta_staged.role,
+        path=str(meta_path_pub),
+        physical_hash=meta_staged.physical_hash,
+        logical_hash=meta_staged.logical_hash,
+        media_type=meta_staged.media_type,
+        metadata=meta_staged.metadata,
     )
 
     # --- Write train artifact (parquet) ---
-    train_art_id = "train-art-1"
-    _register_artifact(
-        store, train_art_id, "dataset", "train",
-        str(train_parquet), media_type="application/vnd.apache.parquet",
+    train_staged = artifact_store.stage_table(
+        role="train", kind=SCHEMA_MODELLING_METADATA,
+        frame=pl.read_parquet(train_parquet),
+    )
+    train_path_pub = artifact_store.publish(train_staged)
+    train_art = ArtifactRef(
+        artifact_id=train_staged.provisional_artifact_id,
+        artifact_type=train_staged.artifact_type,
+        role=train_staged.role,
+        path=str(train_path_pub),
+        physical_hash=train_staged.physical_hash,
+        logical_hash=train_staged.logical_hash,
+        media_type=train_staged.media_type,
+        metadata=train_staged.metadata,
     )
 
-    # --- Retrieve ArtifactRefs from the store ---
-    repo = ArtifactRepository(store)
-    meta_art = repo.get(meta_art_id)
-    assert meta_art is not None
-    train_art = repo.get(train_art_id)
-    assert train_art is not None
+    with uow_factory.for_project(project_id) as uow:
+        uow.artifacts.register(meta_art)
+        uow.artifacts.register(train_art)
+        uow.commit()
 
     # --- Build NodeContext ---
     step_spec = StepSpec(
@@ -199,76 +137,45 @@ def test_logistic_regression_model_artifact_shape(
         parent_step_ids=[],
     )
 
-    artifact_reader = _TestArtifactReader(store)
-    artifact_repo: ArtifactRepoPort = repo
-    from cardre.store.run_step_repo import RunStepRepository
-    run_step_repo: RunStepRepoPort = RunStepRepository(store)
+    with uow_factory.read_only(project_id) as uow:
+        evidence_reader = EvidenceReader(artifact_store, uow.artifacts, uow.run_steps)
+        input_collection = StepInputCollection(
+            reader=evidence_reader,
+            input_artifacts=[train_art, meta_art],
+        )
+        output_publisher = StagingOutputPublisher(artifact_store)
 
-    evidence_reader = EvidenceReader(
-        artifact_reader=artifact_reader,
-        artifact_repo=artifact_repo,
-        run_step_repo=run_step_repo,
-    )
-
-    input_collection = StepInputCollection(
-        reader=evidence_reader,
-        input_artifacts=[train_art, meta_art],
-    )
-
-    staged_writer = _TestStagedArtifactWriter(store)
-
-    # Wrap the staging writer to match the OutputPublisher protocol.
-    # We need to implement it in the test or use StagingOutputPublisher.
-    # For simplicity, we build the OutputPublisher inline.
-    from cardre.application.execution.output_publisher import StagingOutputPublisher
-
-    # Re-wrap staged_writer as a StagedArtifactWriter
-    class _WriterWrapper:
-        def __init__(self, sw):
-            self._sw = sw
-        def stage_json(self, role, kind, payload, metadata=None):
-            return self._sw.stage_json(role, kind, payload, metadata)
-        def stage_table(self, role, kind, frame, metadata=None):
-            return self._sw.stage_table(role, kind, frame, metadata)
-        def stage_bytes(self, role, kind, data, media_type, logical_hash, metadata=None):
-            return self._sw.stage_bytes(role, kind, data, media_type, logical_hash, metadata)
-        def publish(self, staged):
-            return self._sw.publish(staged)
-
-    output_publisher = StagingOutputPublisher(writer=_WriterWrapper(staged_writer))
-
-    node_context = NodeContext(
-        run_id="run-1",
-        plan_version_id="pv-1",
-        step_spec=step_spec,
-        inputs=input_collection,
-        outputs=output_publisher,
-        params={
-            "solver": "lbfgs",
-            "C": 1.0,
-            "max_iter": 1000,
-            "random_seed": 42,
-            "fail_on_non_convergence": True,
-        },
-        runtime=RuntimeMeta(
+        node_context = NodeContext(
             run_id="run-1",
             plan_version_id="pv-1",
-            step_id="lr-1",
-            node_type="cardre.logistic_regression",
-        ),
-    )
+            step_spec=step_spec,
+            inputs=input_collection,
+            outputs=output_publisher,
+            params={
+                "solver": "lbfgs",
+                "C": 1.0,
+                "max_iter": 1000,
+                "random_seed": 42,
+                "fail_on_non_convergence": True,
+            },
+            runtime=RuntimeMeta(
+                run_id="run-1",
+                plan_version_id="pv-1",
+                step_id="lr-1",
+                node_type="cardre.logistic_regression",
+            ),
+        )
 
-    # --- Run the node ---
-    node = LogisticRegressionNode()
-    result = node.run(node_context)
+        # --- Run the node ---
+        node = LogisticRegressionNode()
+        result = node.run(node_context)
 
     # --- Assert on NodeResult ---
     assert len(result.staged_artifacts) == 1
     staged = result.staged_artifacts[0]
 
-    # Read back the written model artifact payload via the store
-    model_path = store.artifact_path(staged)
-    raw = json.loads(model_path.read_bytes())
+    # Read back the written model artifact payload
+    raw = json.loads((root / staged.staging_path).read_bytes())
 
     # --- Verify model artifact shape ---
     assert raw["schema_version"] == "cardre.model_artifact.v1"

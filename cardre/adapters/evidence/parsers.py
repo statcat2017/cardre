@@ -1,8 +1,7 @@
 """Evidence adapter registry, factory, and matching helpers.
 
-Combines the adapter table and matching logic previously split across
-``cardre/_evidence/adapters/__init__.py`` and ``_base.py``.  Uses
-``ArtifactReader`` instead of ``ProjectStore``.
+The single home for the adapter table and matching logic.  Uses
+``ArtifactReader`` instead of the legacy ``ProjectStore``.
 """
 
 from __future__ import annotations
@@ -15,7 +14,6 @@ from typing import Any
 
 import polars as pl
 
-from cardre._evidence.kinds import EvidenceKind, EvidenceParseError
 from cardre._evidence.models.apply import ApplyModelEvidence, ApplyWoeEvidence, ScoredDataset
 from cardre._evidence.models.binning import (
     BinDefinition,
@@ -57,6 +55,7 @@ from cardre._evidence.models.woe import IvTable, WoeIvEvidence, WoeTable, WoeTra
 from cardre._evidence.profiles import EVIDENCE_PROFILES, _Profile
 from cardre.application.ports.artifact_store import ArtifactReader
 from cardre.domain.artifacts import ArtifactRef
+from cardre.domain.evidence.kinds import EvidenceKind, EvidenceParseError
 from cardre.modeling.schema import ModelArtifactV1
 
 

@@ -11,17 +11,17 @@ from typing import Any
 
 import polars as pl
 
-from cardre._evidence.kinds import (
-    AmbiguousEvidenceError,
-    EvidenceKind,
-    EvidenceNotFoundError,
-    EvidenceParseError,
-)
 from cardre._evidence.profiles import EVIDENCE_PROFILES
 from cardre.adapters.evidence.parsers import get_adapter, match
 from cardre.application.ports.artifact_store import ArtifactReader
 from cardre.application.ports.unit_of_work import ArtifactRepoPort, RunStepRepoPort
 from cardre.domain.artifacts import ArtifactRef
+from cardre.domain.evidence.kinds import (
+    AmbiguousEvidenceError,
+    EvidenceKind,
+    EvidenceNotFoundError,
+    EvidenceParseError,
+)
 
 
 class EvidenceReader:
@@ -138,6 +138,9 @@ class EvidenceReader:
 
     def read_dataframe(self, art: ArtifactRef) -> pl.DataFrame:
         return pl.read_parquet(self._reader.resolve_path(art))
+
+    def read_bytes(self, art: ArtifactRef) -> bytes:
+        return self._reader.read_bytes(art)
 
     def read_step_output_optional(
         self,

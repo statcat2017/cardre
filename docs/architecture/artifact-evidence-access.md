@@ -20,15 +20,15 @@ If code only needs bytes, it may stream bytes without interpreting them.
 
 Only these modules may perform direct artifact I/O:
 
-- `cardre/artifacts.py`
-- `cardre/domain/evidence.py`
+- `cardre/application/artifacts/publishing.py`
+- `cardre/domain/evidence/models.py`
 - `cardre/_evidence/`
 - `cardre/modeling/serialization.py`
 
 Why:
 
-- `cardre/artifacts.py` owns artifact write helpers and low-level store plumbing.
-- `cardre/domain/evidence.py` exposes typed evidence APIs.
+- `cardre/application/artifacts/publishing.py` owns artifact write helpers and low-level store plumbing.
+- `cardre/domain/evidence/models.py` exposes typed evidence APIs.
 - `cardre/_evidence/` contains the parser, profiles, schemas, and typed models.
 - `cardre/modeling/serialization.py` handles binary estimator IO and integrity checks.
 
@@ -73,12 +73,12 @@ Only these reasons are allowed on a line comment of the form
 
 When introducing a new evidence type, update all of these:
 
-1. Add an `EvidenceKind` enum member in `cardre/_evidence/kinds.py`.
+1. Add an `EvidenceKind` enum member in `cardre/domain/evidence/kinds.py`.
 2. Add a `SCHEMA_<KIND>` constant in `cardre/_evidence/schemas.py`.
 3. Add a typed dataclass and `from_json` in `cardre/_evidence/models/` (in the appropriate family module, e.g. `models/binning.py`, `models/model.py`). Re-export it from `cardre/_evidence/models/__init__.py`.
 4. Add an `EVIDENCE_PROFILES` entry in `cardre/_evidence/profiles.py`.
-5. Add an `AdapterSpec` entry in the `EVIDENCE_ADAPTERS` table in `cardre/_evidence/adapters/__init__.py`. Most adapters are a one-liner `AdapterSpec(profile=..., parse=lambda path, art, store: Model.from_json(...))`. Only add a custom class if the parse logic is non-trivial (e.g. `WoeTable`, `IvTable`, `ScoredDataset`).
-6. Add fixture-backed parse coverage in `tests/test_evidence_adapters.py`.
+5. Add an `AdapterSpec` entry in the `EVIDENCE_ADAPTERS` table in `cardre/adapters/evidence/parsers.py`. Most adapters are a one-liner `AdapterSpec(profile=..., parse=lambda path, art, store: Model.from_json(...))`. Only add a custom class if the parse logic is non-trivial (e.g. `WoeTable`, `IvTable`, `ScoredDataset`).
+6. Add fixture-backed parse coverage in `tests/test_evidence_adapter_registry.py`.
 7. Add a parametrized profile assertion in `tests/test_evidence_profiles.py`.
 
 Minimal parser rule: prefer schema/version validation first, then role/type/media/profile validation inside `cardre/_evidence/`, never bespoke parsing in product nodes.

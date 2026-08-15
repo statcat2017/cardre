@@ -50,6 +50,23 @@ class StagingOutputPublisher:
         self._staged_artifacts.append(staged)
         return staged
 
+    def publish_bytes(
+        self,
+        *,
+        role: str,
+        kind: EvidenceKind,
+        data: bytes,
+        media_type: str,
+        logical_hash: str,
+        metadata: JsonDict | None = None,
+    ) -> Any:
+        staged = self._writer.stage_bytes(
+            role=role, kind=kind.value, data=data, media_type=media_type,
+            logical_hash=logical_hash, metadata=metadata,
+        )
+        self._staged_artifacts.append(staged)
+        return staged
+
     def add_metric(self, name: str, value: float | int | str | bool) -> None:
         self._metrics[name] = value
 

@@ -47,23 +47,23 @@ This work implements ADR-0004 without reopening ADR-0002.
 
 Change these production modules:
 
-- `cardre/execution/run_lifecycle.py`
+- `cardre/application/runs/finalize_run.py`
 - `cardre/application/runs/execute_run.py`
-- `cardre/execution/worker.py`
+- `cardre/application/runs/execute_run.py`
 
 Extend these tests:
 
-- `tests/test_run_lifecycle.py`
-- `tests/test_run_lifecycle_errors.py`
-- `tests/test_worker_lifecycle.py`
-- `tests/test_run_coordinator.py`
-- `tests/test_run_coordinator_edge_cases.py`, if its existing fixtures cover a
+- `tests/application/runs/test_finalize_run_manifest.py`
+- `tests/application/runs/test_finalize_run_manifest.py`
+- `tests/application/runs/test_composed_execution.py`
+- `tests/application/runs/test_composed_execution.py`
+- `tests/application/runs/test_composed_execution.py`, if its existing fixtures cover a
   dispatcher startup failure more directly
 
 Do not change:
 
-- `cardre/execution/executor.py` node execution semantics;
-- `cardre/store/run_repo.py` persistence schema or transition rules;
+- `cardre/application/runs/execute_run.py` node execution semantics;
+- `cardre/adapters/sqlite/run_repo.py` persistence schema or transition rules;
 - `cardre/domain/run.py` status values or state graph;
 - `cardre/application/evidence/explain_staleness.py` staleness computation;
 - `CONTEXT.md` or ADRs.
@@ -81,7 +81,7 @@ Do not change:
 | Stale Run recovery | `RunCoordinator._sweep_stale_running_runs` | direct interrupted transition plus diagnostic | No manifest |
 | Manifest write failure | `RunLifecycle.finalise` | lifecycle diagnostic plus direct failed transition | Valid: this is inside lifecycle implementation |
 
-After the change, only `cardre/execution/run_lifecycle.py` may call
+After the change, only `cardre/application/runs/finalize_run.py` may call
 `RunRepository.transition(... expected_from=(RunStatus.RUNNING,))` for terminal
 Run statuses.
 
@@ -109,7 +109,7 @@ that context when finalising. The interface should get smaller, not larger.
 
 ### 1. Let `RunLifecycle.finalise` own terminal diagnostics
 
-File: `cardre/execution/run_lifecycle.py`
+File: `cardre/application/runs/finalize_run.py`
 
 Import `JsonDict` at runtime, because the optional diagnostic is part of the
 public lifecycle interface:
@@ -187,7 +187,7 @@ terminal mechanics.
 
 ### 2. Move context-manager exception diagnostics into `finalise`
 
-File: `cardre/execution/run_lifecycle.py`
+File: `cardre/application/runs/finalize_run.py`
 
 In `RunLifecycle.__exit__`, retain traceback construction but do not append the
 diagnostic directly. Construct it and pass it through the lifecycle interface:
@@ -324,7 +324,7 @@ lifecycle owns the diagnostic append, manifest write, and transition ordering.
 
 ### 6. Make the dispatcher report errors, not terminal state
 
-File: `cardre/execution/worker.py`
+File: `cardre/application/runs/execute_run.py`
 
 `ThreadRunDispatcher.dispatch` currently has two startup-failure paths:
 
@@ -344,7 +344,7 @@ or terminal Run state.
 
 ### 7. Finalise worker escapes through the lifecycle
 
-File: `cardre/execution/worker.py`
+File: `cardre/application/runs/execute_run.py`
 
 Replace `_fail_run_if_running(...)` with lifecycle finalisation. Keep the
 existing `RUN_WORKER_FAILED` diagnostic payload unchanged.
@@ -410,7 +410,7 @@ Mock only the execution or dispatch action needed to force the path.
 
 ### Lifecycle module tests
 
-File: `tests/test_run_lifecycle.py`
+File: `tests/application/runs/test_finalize_run_manifest.py`
 
 Add focused cases:
 
@@ -440,7 +440,7 @@ assert diagnostics[-1]["code"] == "RUN_DISPATCH_FAILED"
 
 ### Coordinator tests
 
-File: `tests/test_run_coordinator.py`
+File: `tests/application/runs/test_composed_execution.py`
 
 1. Extend stale recovery to assert:
    - status is `interrupted`;
@@ -455,7 +455,7 @@ File: `tests/test_run_coordinator.py`
 
 ### Worker tests
 
-File: `tests/test_worker_lifecycle.py`
+File: `tests/application/runs/test_composed_execution.py`
 
 Extend `test_worker_exception_produces_failed_run_with_diagnostic` to assert:
 
@@ -494,8 +494,8 @@ rg '\.transition\(' cardre -g '*.py'
 
 Expected result:
 
-- normal and recovery transitions are in `cardre/execution/run_lifecycle.py`;
-- `cardre/store/run_repo.py` retains its repository implementation;
+- normal and recovery transitions are in `cardre/application/runs/finalize_run.py`;
+- `cardre/adapters/sqlite/run_repo.py` retains its repository implementation;
 - no terminal transition remains in `run_coordinator.py` or `worker.py`.
 
 Also confirm `_fail_run_if_running` and

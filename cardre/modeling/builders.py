@@ -7,10 +7,17 @@ backed by the cardre.model_artifact.v1 schema.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Protocol, runtime_checkable
 
 from cardre.domain.artifacts import ArtifactRef, json_logical_hash
-from cardre.execution.context import ExecutionContext
+
+
+@runtime_checkable
+class ArtifactContext(Protocol):
+    """Minimal context surface needed to build a model artifact."""
+
+    run_id: str
+    step_spec: Any
 
 
 def build_model_artifact(
@@ -28,7 +35,7 @@ def build_model_artifact(
     elapsed: float,
     model_payload: dict[str, Any],
     interpretability: dict[str, Any],
-    context: ExecutionContext,
+    context: ArtifactContext,
     extra_metrics: dict[str, Any] | None = None,
     warnings_list: list[dict[str, Any]] | None = None,
     row_count: int | None = None,
@@ -52,7 +59,7 @@ def build_model_artifact(
             "transformation_strategy": feature_strategy,
         },
         "estimator_reference": {
-            "artifact_id": estimator_art.artifact_id,
+            "artifact_id": getattr(estimator_art, "artifact_id", getattr(estimator_art, "provisional_artifact_id", "")),
             "logical_hash": estimator_art.logical_hash,
             "physical_hash": estimator_art.physical_hash,
             "estimator_format": "joblib",

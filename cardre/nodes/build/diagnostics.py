@@ -7,14 +7,15 @@ import numpy as np
 import polars as pl
 from sklearn.metrics import roc_auc_score
 
-from cardre.domain.evidence.kinds import EvidenceKind
-from cardre.domain.evidence.schemas import (
+from cardre._evidence.schemas import (
     SCHEMA_CALIBRATION_DIAGNOSTICS,
     SCHEMA_COEFFICIENT_SIGN_DIAGNOSTICS,
     SCHEMA_SEPARATION_DIAGNOSTICS,
     SCHEMA_VIF_DIAGNOSTICS,
     SCHEMA_WOE_IV_EVIDENCE,
 )
+from cardre.domain.evidence.kinds import EvidenceKind
+from cardre.nodes._reporting import publish_report
 from cardre.nodes.contracts import (
     ArtifactContract,
     ArtifactRoleSpec,
@@ -145,14 +146,16 @@ class CoefficientSignCheckNode(NodeType):
                 "warning_count": warning_count,
             },
         }
-        context.outputs.publish_json(
-            role="report",
+        publish_report(
+            context,
             kind=EvidenceKind.COEFFICIENT_SIGN_DIAGNOSTICS,
             payload=payload,
-            metadata={"schema_version": SCHEMA_COEFFICIENT_SIGN_DIAGNOSTICS},
+            schema_version=SCHEMA_COEFFICIENT_SIGN_DIAGNOSTICS,
+            metrics={
+                "checked_variable_count": checked_variable_count,
+                "warning_count": warning_count,
+            },
         )
-        context.outputs.add_metric("checked_variable_count", checked_variable_count)
-        context.outputs.add_metric("warning_count", warning_count)
         return context.outputs.build_result()
 
 
@@ -241,14 +244,16 @@ class SeparationDiagnosticsNode(NodeType):
                 "warning_count": warning_count,
             },
         }
-        context.outputs.publish_json(
-            role="report",
+        publish_report(
+            context,
             kind=EvidenceKind.SEPARATION_DIAGNOSTICS,
             payload=payload,
-            metadata={"schema_version": SCHEMA_SEPARATION_DIAGNOSTICS},
+            schema_version=SCHEMA_SEPARATION_DIAGNOSTICS,
+            metrics={
+                "checked_variable_count": len(variable_results),
+                "warning_count": warning_count,
+            },
         )
-        context.outputs.add_metric("checked_variable_count", len(variable_results))
-        context.outputs.add_metric("warning_count", warning_count)
         return context.outputs.build_result()
 
 
@@ -302,14 +307,16 @@ class VifDiagnosticsNode(NodeType):
                     "note": "Fewer than 2 WOE features available; VIF not computed.",
                 },
             }
-            context.outputs.publish_json(
-                role="report",
+            publish_report(
+                context,
                 kind=EvidenceKind.VIF_DIAGNOSTICS,
                 payload=payload,
-                metadata={"schema_version": SCHEMA_VIF_DIAGNOSTICS},
+                schema_version=SCHEMA_VIF_DIAGNOSTICS,
+                metrics={
+                    "checked_variable_count": len(woe_features),
+                    "warning_count": 0,
+                },
             )
-            context.outputs.add_metric("checked_variable_count", len(woe_features))
-            context.outputs.add_metric("warning_count", 0)
             return context.outputs.build_result()
 
         X = df.select(woe_features).to_numpy()
@@ -404,14 +411,16 @@ class VifDiagnosticsNode(NodeType):
                 "warning_count": warning_count,
             },
         }
-        context.outputs.publish_json(
-            role="report",
+        publish_report(
+            context,
             kind=EvidenceKind.VIF_DIAGNOSTICS,
             payload=payload,
-            metadata={"schema_version": SCHEMA_VIF_DIAGNOSTICS},
+            schema_version=SCHEMA_VIF_DIAGNOSTICS,
+            metrics={
+                "checked_variable_count": len(variable_results),
+                "warning_count": warning_count,
+            },
         )
-        context.outputs.add_metric("checked_variable_count", len(variable_results))
-        context.outputs.add_metric("warning_count", warning_count)
         return context.outputs.build_result()
 
 
@@ -596,11 +605,11 @@ class CalibrationDiagnosticsNode(NodeType):
                 ),
             },
         }
-        context.outputs.publish_json(
-            role="report",
+        publish_report(
+            context,
             kind=EvidenceKind.CALIBRATION_DIAGNOSTICS,
             payload=payload,
-            metadata={"schema_version": SCHEMA_CALIBRATION_DIAGNOSTICS},
+            schema_version=SCHEMA_CALIBRATION_DIAGNOSTICS,
+            metrics={"role_count": len(roles_results)},
         )
-        context.outputs.add_metric("role_count", len(roles_results))
         return context.outputs.build_result()

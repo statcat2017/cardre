@@ -4,9 +4,9 @@ from typing import Any, cast
 
 import polars as pl
 
+from cardre._evidence.schemas import SCHEMA_CUTOFF_ANALYSIS
 from cardre.domain.diagnostics import JsonDict
 from cardre.domain.evidence.kinds import EvidenceKind
-from cardre.domain.evidence.schemas import SCHEMA_CUTOFF_ANALYSIS
 from cardre.nodes.contracts import (
     ArtifactContract,
     ArtifactRoleSpec,

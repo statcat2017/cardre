@@ -4,8 +4,6 @@ import pytest
 
 from cardre.nodes.build.automatic import AutomaticBinningNode
 
-pytestmark = pytest.mark.xfail(reason="Uses old ExecutionContext; needs NodeContext update")
-
 
 class TestAutomaticBinningNodeValidateParams:
     @pytest.fixture
@@ -87,20 +85,11 @@ class TestAutomaticBinningNodeValidateParams:
 
 
 class TestAutomaticBinningNodeRun:
-    def test_run_unknown_method_raises(self):
-        node = AutomaticBinningNode()
-        from cardre.execution.context import ExecutionContext
-        with pytest.raises(ValueError, match="Unknown binning method"):
-            node.run(
-                ExecutionContext(
-                    store=None, run_id="r", plan_version_id="pv",
-                    step_spec=None, parent_run_steps=[],
-                    input_artifacts=[], validated_params={"method": "bogus"},
-                    runtime_metadata={},
-                )
-            )
+    def test_run_unknown_method_raises(self, node_harness):
+        with pytest.raises(ValueError, match="Unknown method 'bogus'"):
+            node_harness(AutomaticBinningNode, params={"method": "bogus"})
 
-    def test_run_optbinning_dispatch(self, monkeypatch):
+    def test_run_optbinning_dispatch(self, monkeypatch, node_harness):
         """Assert that method='optbinning' dispatches to _run_optbinning."""
         import cardre.nodes.build.automatic as automatic_mod
         called = False
@@ -108,18 +97,26 @@ class TestAutomaticBinningNodeRun:
         def fake_optbinning(ctx):
             nonlocal called
             called = True
-            from cardre.execution.context import NodeOutput
-            return NodeOutput(artifacts=[], metrics={})
+            from cardre.nodes.contracts import NodeResult
+            return NodeResult()
 
         monkeypatch.setattr(automatic_mod, "_run_optbinning", fake_optbinning)
-        node = AutomaticBinningNode()
-        from cardre.execution.context import ExecutionContext
-        node.run(
-            ExecutionContext(
-                store=None, run_id="r", plan_version_id="pv",
-                step_spec=None, parent_run_steps=[],
-                input_artifacts=[], validated_params={"method": "optbinning"},
-                runtime_metadata={},
-            )
-        )
+        node_harness(AutomaticBinningNode, params={
+            "method": "optbinning",
+            "engine": "optbinning",
+            "prebinning_method": "cart",
+            "solver": "cp",
+            "divergence": "iv",
+            "monotonic_trend": "auto",
+            "max_n_prebins": 20,
+            "min_prebin_size": 0.05,
+            "max_n_bins": 10,
+            "min_bin_size": 0.05,
+            "min_bin_n_event": 5,
+            "min_bin_n_nonevent": 5,
+            "cat_cutoff": 0.01,
+            "time_limit": 100,
+            "special_codes": [],
+            "exclude_columns": [],
+        }, skip_validation=True)
         assert called, "_run_optbinning was not invoked for method='optbinning'"

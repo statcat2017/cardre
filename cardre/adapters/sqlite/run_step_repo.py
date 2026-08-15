@@ -40,8 +40,31 @@ class RunStepRepo:
 
     def get_for_run(self, run_id: str) -> list[RunStep]:
         rows = self._conn.execute(
-            "SELECT * FROM run_steps WHERE run_id = ? ORDER BY started_at, run_step_id",
+            "SELECT rs.* FROM run_steps rs "
+            "LEFT JOIN plan_steps ps ON rs.plan_version_id = ps.plan_version_id AND rs.step_id = ps.step_id "
+            "WHERE rs.run_id = ? "
+            "ORDER BY COALESCE(ps.position, 999999), rs.started_at, rs.run_step_id",
             (run_id,),
+        ).fetchall()
+        return [RunStep(
+            run_step_id=r["run_step_id"], run_id=r["run_id"],
+            step_id=r["step_id"], plan_version_id=r["plan_version_id"],
+            status=RunStepStatus(r["status"]), started_at=r["started_at"],
+            finished_at=r["finished_at"],
+            execution_fingerprint=json.loads(r["execution_fingerprint_json"]),
+            warnings=json.loads(r["warnings_json"]),
+            errors=json.loads(r["errors_json"]),
+        ) for r in rows]
+
+    def get_for_project(self, project_id: str) -> list[RunStep]:
+        """All run steps for a project in one query (avoids N+1 in list endpoints)."""
+        rows = self._conn.execute(
+            "SELECT rs.* FROM run_steps rs "
+            "JOIN runs r ON rs.run_id = r.run_id "
+            "JOIN plan_versions pv ON r.plan_version_id = pv.plan_version_id "
+            "JOIN plans p ON pv.plan_id = p.plan_id "
+            "WHERE p.project_id = ? ORDER BY rs.started_at, rs.run_step_id",
+            (project_id,),
         ).fetchall()
         return [RunStep(
             run_step_id=r["run_step_id"], run_id=r["run_id"],

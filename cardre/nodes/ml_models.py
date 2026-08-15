@@ -13,6 +13,7 @@ import polars as pl
 from sklearn.tree import DecisionTreeClassifier
 
 from cardre.nodes._classifier_base import BaseClassifierNode, _ClassifierResult
+from cardre.nodes._classifier_result import FEATURE_STRATEGIES, interpretability_block
 from cardre.nodes.parameters import (
     MethodOption,
     NodeParameterSchema,
@@ -109,7 +110,7 @@ class DecisionTreeNode(BaseClassifierNode):
                             kind="enum",
                             default="raw_numeric",
                             constraint=ParameterConstraint(
-                                enum_values=["raw_numeric", "encoded_raw", "woe_challenger"],
+                                enum_values=list(FEATURE_STRATEGIES),
                             ),
                         ),
                         ParameterDefinition(
@@ -219,13 +220,11 @@ class DecisionTreeNode(BaseClassifierNode):
                 "feature_importance": feature_importance,
                 "feature_count": len(features),
             },
-            interpretability={
-                "explanation_type": "tree_rules",
-                "explanation_level": "native_interpretable",
-                "native_importance_available": True,
-                "limitations": limitations,
-                "global_importance_fields": ["feature_importance"],
-            },
+            interpretability=interpretability_block(
+                explanation_type="tree_rules",
+                explanation_level="native_interpretable",
+                limitations=limitations,
+            ),
             training_params={
                 "max_depth": max_depth,
                 "min_samples_leaf": min_samples_leaf,
@@ -271,7 +270,7 @@ class RandomForestClassifierNode(BaseClassifierNode):
                             kind="enum",
                             default="raw_numeric",
                             constraint=ParameterConstraint(
-                                enum_values=["raw_numeric", "encoded_raw", "woe_challenger"],
+                                enum_values=list(FEATURE_STRATEGIES),
                             ),
                         ),
                         ParameterDefinition(
@@ -384,13 +383,11 @@ class RandomForestClassifierNode(BaseClassifierNode):
                 "avg_tree_depth": avg_tree_depth,
                 "avg_leaves": avg_leaves,
             },
-            interpretability={
-                "explanation_type": "feature_importance",
-                "explanation_level": "native_semi_transparent",
-                "native_importance_available": True,
-                "limitations": limitations,
-                "global_importance_fields": ["feature_importance"],
-            },
+            interpretability=interpretability_block(
+                explanation_type="feature_importance",
+                explanation_level="native_semi_transparent",
+                limitations=limitations,
+            ),
             training_params={
                 "n_estimators": n_estimators,
                 "max_depth": max_depth,
@@ -436,7 +433,7 @@ class GradientBoostingClassifierNode(BaseClassifierNode):
                             kind="enum",
                             default="raw_numeric",
                             constraint=ParameterConstraint(
-                                enum_values=["raw_numeric", "encoded_raw", "woe_challenger"],
+                                enum_values=list(FEATURE_STRATEGIES),
                             ),
                         ),
                         ParameterDefinition(
@@ -530,13 +527,11 @@ class GradientBoostingClassifierNode(BaseClassifierNode):
                 "estimator_count": n_estimators,
                 "learning_rate": learning_rate,
             },
-            interpretability={
-                "explanation_type": "feature_importance",
-                "explanation_level": "native_semi_transparent",
-                "native_importance_available": True,
-                "limitations": limitations,
-                "global_importance_fields": ["feature_importance"],
-            },
+            interpretability=interpretability_block(
+                explanation_type="feature_importance",
+                explanation_level="native_semi_transparent",
+                limitations=limitations,
+            ),
             training_params={
                 "n_estimators": n_estimators,
                 "max_depth": max_depth,

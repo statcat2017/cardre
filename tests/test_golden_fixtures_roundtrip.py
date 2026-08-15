@@ -11,13 +11,12 @@ from pathlib import Path
 
 import pytest
 
-from cardre._evidence.adapters import get_adapter
-from cardre._evidence.kinds import EvidenceKind
 from cardre._evidence.models.binning import BinDefinition, ManualBinningOverrides
+from cardre.adapters.evidence.parsers import get_adapter
 from cardre.domain.artifacts import ArtifactRef
+from cardre.domain.evidence.kinds import EvidenceKind
 from cardre.engine.binning.definition import LifecycleBin, LifecycleBinDefinition, LifecycleVariable
 from cardre.modeling.schema import FeatureContract, ModelArtifactV1, TrainingMetadata
-from cardre.store.db import ProjectStore
 
 FIXTURE_DIR = Path(__file__).parent / "fixtures"
 
@@ -172,9 +171,6 @@ class TestManualBinningOverridesRoundTrip:
         """Parse fixture through the production adapter parse path."""
         data = _load_fixture("golden_manual_binning_overrides.json")
 
-        store = ProjectStore(tmp_path / "test.cardre")
-        store.initialize()
-
         fixture_path = tmp_path / "overrides.json"
         with open(fixture_path, "w") as f:
             json.dump(data, f)
@@ -191,7 +187,7 @@ class TestManualBinningOverridesRoundTrip:
         )
 
         spec = get_adapter(EvidenceKind.MANUAL_BINNING_OVERRIDES)
-        parsed = spec.parse(fixture_path, art, store)
+        parsed = spec.parse(fixture_path, art, None)
         assert isinstance(parsed, ManualBinningOverrides), f"Expected ManualBinningOverrides, got {type(parsed)}"
         assert parsed.schema_version == data.get("schema_version", "")
         assert len(parsed.overrides) == len(data.get("overrides", []))

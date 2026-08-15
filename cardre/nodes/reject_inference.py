@@ -7,12 +7,16 @@ import numpy as np
 import polars as pl
 from sklearn.linear_model import LogisticRegression
 
-from cardre._evidence.kinds import EvidenceKind
-from cardre._evidence.reader import ArtifactEvidenceReader
 from cardre._evidence.schemas import SCHEMA_REJECT_INFERENCE_RESULT, SCHEMA_REJECT_POPULATION_CONFIG
-from cardre.artifacts import write_json_artifact, write_parquet_artifact
-from cardre.execution.context import ExecutionContext, NodeOutput
-from cardre.nodes.contracts import NodeType
+from cardre.domain.evidence.kinds import EvidenceKind
+from cardre.nodes.contracts import (
+    ArtifactContract,
+    ArtifactRoleSpec,
+    NodeContext,
+    NodeDefinition,
+    NodeResult,
+    NodeType,
+)
 from cardre.nodes.parameters import NodeParameterSchema
 
 _RI_FINANCED = "_ri_financed"
@@ -24,6 +28,27 @@ class DefineRejectPopulationNode(NodeType):
     category = "transform"
     input_roles: list[str] = ["input", "definition"]
     output_roles: list[str] = ["input", "definition"]
+
+    __definition__ = NodeDefinition(
+        node_type="cardre.define_reject_population",
+        version="1",
+        category="transform",
+        description="Classifies rows as financed, non-financed, or excluded",
+        input_contract=ArtifactContract(
+            roles=(
+                ArtifactRoleSpec("input"),
+                ArtifactRoleSpec("definition", kinds=(EvidenceKind.SAMPLE_DEFINITION,)),
+            ),
+        ),
+        output_contract=ArtifactContract(
+            roles=(
+                ArtifactRoleSpec("input"),
+                ArtifactRoleSpec("definition", kinds=(EvidenceKind.REJECT_POPULATION_CONFIG,)),
+            ),
+        ),
+        parameter_schema=None,
+        tier="deferred",
+    )
 
     @classmethod
     def parameter_schema(cls) -> NodeParameterSchema:
@@ -58,16 +83,16 @@ class DefineRejectPopulationNode(NodeType):
                         errors.append(f"exclusion_categories[{cat_name!r}] missing required key 'values' (must be a list)")
         return errors
 
-    def run(self, context: ExecutionContext) -> NodeOutput:
-        store = context.store
-        reader = ArtifactEvidenceReader(store)
-
-        dataset_artifact = next(a for a in context.input_artifacts if a.role == "input")
-        df = reader.read_dataframe(dataset_artifact)
+    def run(self, context: NodeContext) -> NodeResult:
+        dataset_artifact = context.inputs.require("input", "DefineRejectPopulationNode")
+        df = context.inputs.read_dataframe(dataset_artifact)
         total_rows = df.height
 
-        metadata = context.target_metadata()
-        sample_def = reader.find(context.input_artifacts, EvidenceKind.SAMPLE_DEFINITION)
+        metadata = context.inputs.target_metadata()
+        sample_def = context.inputs.read(
+            context.inputs.require("definition", "DefineRejectPopulationNode"),
+            EvidenceKind.SAMPLE_DEFINITION,
+        )
 
         target_column = metadata.target_column if metadata else ""
         good_values = {str(v) for v in (metadata.good_values if metadata else [])}
@@ -86,7 +111,7 @@ class DefineRejectPopulationNode(NodeType):
                 f"Got rejection_source={rejection_source!r}."
             )
 
-        exclusion_categories = context.validated_params.get("exclusion_categories", {})
+        exclusion_categories = context.params.get("exclusion_categories", {})
         exclusion_categories_out: dict[str, int] = {}
 
         target_str_expr = pl.col(target_column).cast(pl.Utf8)
@@ -127,7 +152,7 @@ class DefineRejectPopulationNode(NodeType):
 
         config = {
             "schema_version": SCHEMA_REJECT_POPULATION_CONFIG,
-            "source_artifact_id": dataset_artifact.artifact_id,
+            "source_artifact_id": getattr(dataset_artifact, "artifact_id", getattr(dataset_artifact, "provisional_artifact_id", "")),
             "total_rows": total_rows,
             "financed_rows": financed_count,
             "non_financed_rows": non_financed_count,
@@ -143,33 +168,29 @@ class DefineRejectPopulationNode(NodeType):
         df_out = df.with_columns(financed_expr.alias(_RI_FINANCED))
         df_out = df_out.filter(~exclusion_expr)
 
-        dataset_out = write_parquet_artifact(
-            store, artifact_type="dataset", role="input",
-            stem=f"classified-{context.step_spec.step_id}",
+        context.outputs.publish_table(
+            role="input",
+            kind=EvidenceKind.MODELLING_METADATA,
             frame=df_out,
             metadata={
-                "source_artifact_id": dataset_artifact.artifact_id,
+                "source_artifact_id": getattr(dataset_artifact, "artifact_id", getattr(dataset_artifact, "provisional_artifact_id", "")),
                 "rows_before": total_rows,
                 "rows_after": df_out.height,
             },
         )
 
-        config_art = write_json_artifact(
-            store, artifact_type="definition", role="definition",
-            stem=f"reject-population-{context.step_spec.step_id}",
+        context.outputs.publish_json(
+            role="definition",
+            kind=EvidenceKind.REJECT_POPULATION_CONFIG,
             payload=config,
             metadata={"schema_version": SCHEMA_REJECT_POPULATION_CONFIG},
         )
 
-        return NodeOutput(
-            artifacts=[dataset_out, config_art],
-            metrics={
-                "total_rows": total_rows,
-                "financed_rows": config["financed_rows"],
-                "non_financed_rows": config["non_financed_rows"],
-                "excluded_rows": int(df.select(exclusion_expr.sum()).item()),
-            },
-        )
+        context.outputs.add_metric("total_rows", total_rows)
+        context.outputs.add_metric("financed_rows", config["financed_rows"])
+        context.outputs.add_metric("non_financed_rows", config["non_financed_rows"])
+        context.outputs.add_metric("excluded_rows", int(df.select(exclusion_expr.sum()).item()))
+        return context.outputs.build_result()
 
 
 class RejectInferenceNoneNode(NodeType):
@@ -178,6 +199,27 @@ class RejectInferenceNoneNode(NodeType):
     category = "transform"
     input_roles: list[str] = ["input", "definition"]
     output_roles: list[str] = ["input", "report"]
+
+    __definition__ = NodeDefinition(
+        node_type="cardre.reject_inference_none",
+        version="1",
+        category="transform",
+        description="Passes only financed rows downstream, excluding rejects",
+        input_contract=ArtifactContract(
+            roles=(
+                ArtifactRoleSpec("input"),
+                ArtifactRoleSpec("definition", kinds=(EvidenceKind.REJECT_POPULATION_CONFIG,)),
+            ),
+        ),
+        output_contract=ArtifactContract(
+            roles=(
+                ArtifactRoleSpec("input"),
+                ArtifactRoleSpec("report", kinds=(EvidenceKind.REJECT_INFERENCE_RESULT,)),
+            ),
+        ),
+        parameter_schema=None,
+        tier="deferred",
+    )
 
     @classmethod
     def parameter_schema(cls) -> NodeParameterSchema:
@@ -196,14 +238,14 @@ class RejectInferenceNoneNode(NodeType):
             ],
         )
 
-    def run(self, context: ExecutionContext) -> NodeOutput:
-        store = context.store
-        reader = ArtifactEvidenceReader(store)
+    def run(self, context: NodeContext) -> NodeResult:
+        dataset_artifact = context.inputs.require("input", "RejectInferenceNoneNode")
+        df = context.inputs.read_dataframe(dataset_artifact)
 
-        dataset_artifact = next(a for a in context.input_artifacts if a.role == "input")
-        df = reader.read_dataframe(dataset_artifact)
-
-        config = reader.find(context.input_artifacts, EvidenceKind.REJECT_POPULATION_CONFIG)
+        config = context.inputs.read(
+            context.inputs.require("definition", "RejectInferenceNoneNode"),
+            EvidenceKind.REJECT_POPULATION_CONFIG,
+        )
 
         n_non_financed = config.non_financed_rows
 
@@ -211,16 +253,18 @@ class RejectInferenceNoneNode(NodeType):
 
         df_clean = df_financed.drop(_RI_FINANCED)
 
-        dataset_out = write_parquet_artifact(
-            store, artifact_type="dataset", role="input",
-            stem=f"financed-only-{context.step_spec.step_id}",
+        context.outputs.publish_table(
+            role="input",
+            kind=EvidenceKind.MODELLING_METADATA,
             frame=df_clean,
-            metadata={"source_artifact_id": dataset_artifact.artifact_id},
+            metadata={
+                "source_artifact_id": getattr(dataset_artifact, "artifact_id", getattr(dataset_artifact, "provisional_artifact_id", "")),
+            },
         )
 
         result = {
             "schema_version": SCHEMA_REJECT_INFERENCE_RESULT,
-            "source_artifact_id": dataset_artifact.artifact_id,
+            "source_artifact_id": getattr(dataset_artifact, "artifact_id", getattr(dataset_artifact, "provisional_artifact_id", "")),
             "method": "none",
             "method_params": {},
             "missingness_assumption": "MAR",
@@ -246,21 +290,17 @@ class RejectInferenceNoneNode(NodeType):
             "runtime_seconds": 0.0,
         }
 
-        report_art = write_json_artifact(
-            store, artifact_type="report", role="report",
-            stem=f"ri-none-{context.step_spec.step_id}",
+        context.outputs.publish_json(
+            role="report",
+            kind=EvidenceKind.REJECT_INFERENCE_RESULT,
             payload=result,
             metadata={"schema_version": SCHEMA_REJECT_INFERENCE_RESULT},
         )
 
-        return NodeOutput(
-            artifacts=[dataset_out, report_art],
-            metrics={
-                "method": "none",
-                "n_financed": config.financed_rows,
-                "n_non_financed": n_non_financed,
-            },
-        )
+        context.outputs.add_metric("method", "none")
+        context.outputs.add_metric("n_financed", config.financed_rows)
+        context.outputs.add_metric("n_non_financed", n_non_financed)
+        return context.outputs.build_result()
 
 
 class RejectInferenceAugmentationNode(NodeType):
@@ -269,6 +309,27 @@ class RejectInferenceAugmentationNode(NodeType):
     category = "transform"
     input_roles: list[str] = ["input", "definition"]
     output_roles: list[str] = ["input", "report"]
+
+    __definition__ = NodeDefinition(
+        node_type="cardre.reject_inference_augmentation",
+        version="1",
+        category="transform",
+        description="Resamples financed rows with propensity-score-band weights",
+        input_contract=ArtifactContract(
+            roles=(
+                ArtifactRoleSpec("input"),
+                ArtifactRoleSpec("definition", kinds=(EvidenceKind.REJECT_POPULATION_CONFIG,)),
+            ),
+        ),
+        output_contract=ArtifactContract(
+            roles=(
+                ArtifactRoleSpec("input"),
+                ArtifactRoleSpec("report", kinds=(EvidenceKind.REJECT_INFERENCE_RESULT,)),
+            ),
+        ),
+        parameter_schema=None,
+        tier="deferred",
+    )
 
     @classmethod
     def parameter_schema(cls) -> NodeParameterSchema:
@@ -312,17 +373,18 @@ class RejectInferenceAugmentationNode(NodeType):
             errors.append("band_min_p_financed must be in (0, 1]")
         return errors
 
-    def run(self, context: ExecutionContext) -> NodeOutput:
+    def run(self, context: NodeContext) -> NodeResult:
         t0 = time.time()
-        store = context.store
-        reader = ArtifactEvidenceReader(store)
-        params = context.validated_params
+        params = context.params
 
-        dataset_artifact = next(a for a in context.input_artifacts if a.role == "input")
-        df = reader.read_dataframe(dataset_artifact)
+        dataset_artifact = context.inputs.require("input", "RejectInferenceAugmentationNode")
+        df = context.inputs.read_dataframe(dataset_artifact)
 
-        config = reader.find(context.input_artifacts, EvidenceKind.REJECT_POPULATION_CONFIG)
-        metadata = context.target_metadata()
+        config = context.inputs.read(
+            context.inputs.require("definition", "RejectInferenceAugmentationNode"),
+            EvidenceKind.REJECT_POPULATION_CONFIG,
+        )
+        metadata = context.inputs.target_metadata()
 
         n_score_bands = int(params.get("n_score_bands", 10))
         min_samples_per_band = int(params.get("min_samples_per_band", 30))
@@ -335,15 +397,17 @@ class RejectInferenceAugmentationNode(NodeType):
 
         if n_non_financed == 0:
             df_out = df.drop(_RI_FINANCED)
-            dataset_out = write_parquet_artifact(
-                store, artifact_type="dataset", role="input",
-                stem=f"ri-aug-{context.step_spec.step_id}",
+            context.outputs.publish_table(
+                role="input",
+                kind=EvidenceKind.MODELLING_METADATA,
                 frame=df_out,
-                metadata={"source_artifact_id": dataset_artifact.artifact_id},
+                metadata={
+                    "source_artifact_id": getattr(dataset_artifact, "artifact_id", getattr(dataset_artifact, "provisional_artifact_id", "")),
+                },
             )
             result_out = {
                 "schema_version": SCHEMA_REJECT_INFERENCE_RESULT,
-                "source_artifact_id": dataset_artifact.artifact_id,
+                "source_artifact_id": getattr(dataset_artifact, "artifact_id", getattr(dataset_artifact, "provisional_artifact_id", "")),
                 "method": "augmentation",
                 "method_params": dict(params),
                 "missingness_assumption": "MAR",
@@ -359,16 +423,16 @@ class RejectInferenceAugmentationNode(NodeType):
                 "convergence": None,
                 "runtime_seconds": round(time.time() - t0, 4),
             }
-            report_art = write_json_artifact(
-                store, artifact_type="report", role="report",
-                stem=f"ri-aug-{context.step_spec.step_id}",
+            context.outputs.publish_json(
+                role="report",
+                kind=EvidenceKind.REJECT_INFERENCE_RESULT,
                 payload=result_out,
                 metadata={"schema_version": SCHEMA_REJECT_INFERENCE_RESULT},
             )
-            return NodeOutput(
-                artifacts=[dataset_out, report_art],
-                metrics={"method": "augmentation", "n_financed": n_financed, "resampled": 0},
-            )
+            context.outputs.add_metric("method", "augmentation")
+            context.outputs.add_metric("n_financed", n_financed)
+            context.outputs.add_metric("resampled", 0)
+            return context.outputs.build_result()
 
         target_column = metadata.target_column if metadata else ""
         good_values = {str(v) for v in (metadata.good_values if metadata else [])}
@@ -469,11 +533,13 @@ class RejectInferenceAugmentationNode(NodeType):
 
         df_out = df_augmented.drop(_RI_FINANCED)
 
-        dataset_out = write_parquet_artifact(
-            store, artifact_type="dataset", role="input",
-            stem=f"ri-aug-{context.step_spec.step_id}",
+        context.outputs.publish_table(
+            role="input",
+            kind=EvidenceKind.MODELLING_METADATA,
             frame=df_out,
-            metadata={"source_artifact_id": dataset_artifact.artifact_id},
+            metadata={
+                "source_artifact_id": getattr(dataset_artifact, "artifact_id", getattr(dataset_artifact, "provisional_artifact_id", "")),
+            },
         )
 
         weight_vals_financed = [weight_vals[i] for i in financed_indices]
@@ -491,7 +557,7 @@ class RejectInferenceAugmentationNode(NodeType):
 
         result_out = {
             "schema_version": SCHEMA_REJECT_INFERENCE_RESULT,
-            "source_artifact_id": dataset_artifact.artifact_id,
+            "source_artifact_id": getattr(dataset_artifact, "artifact_id", getattr(dataset_artifact, "provisional_artifact_id", "")),
             "method": "augmentation",
             "method_params": {
                 "n_score_bands": n_score_bands,
@@ -523,24 +589,20 @@ class RejectInferenceAugmentationNode(NodeType):
             "runtime_seconds": runtime,
         }
 
-        report_art = write_json_artifact(
-            store, artifact_type="report", role="report",
-            stem=f"ri-aug-{context.step_spec.step_id}",
+        context.outputs.publish_json(
+            role="report",
+            kind=EvidenceKind.REJECT_INFERENCE_RESULT,
             payload=result_out,
             metadata={"schema_version": SCHEMA_REJECT_INFERENCE_RESULT},
         )
 
-        return NodeOutput(
-            artifacts=[dataset_out, report_art],
-            metrics={
-                "method": "augmentation",
-                "n_financed": n_financed,
-                "n_non_financed": n_non_financed,
-                "resampled": len(sampled_indices),
-                "unlabeled_financed": n_financed_unlabeled,
-                "n_bands": n_bands,
-            },
-        )
+        context.outputs.add_metric("method", "augmentation")
+        context.outputs.add_metric("n_financed", n_financed)
+        context.outputs.add_metric("n_non_financed", n_non_financed)
+        context.outputs.add_metric("resampled", len(sampled_indices))
+        context.outputs.add_metric("unlabeled_financed", n_financed_unlabeled)
+        context.outputs.add_metric("n_bands", n_bands)
+        return context.outputs.build_result()
 
 
 __all__ = [

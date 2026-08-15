@@ -12,7 +12,7 @@ router = APIRouter(prefix="/projects/{project_id}", tags=["evidence"])
 
 
 @router.get("/steps/{step_id}/evidence", response_model=StalenessExplanationResponse)
-async def get_step_evidence_staleness(
+def get_step_evidence_staleness(
     project_id: str,
     step_id: str,
     plan_version_id: str,

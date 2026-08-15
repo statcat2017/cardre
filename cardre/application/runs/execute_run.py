@@ -4,8 +4,10 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
+from cardre.application.artifacts.publishing import compensate, publish_staged
 from cardre.application.execution.heartbeat import heartbeat
 from cardre.application.runs.finalize_run import FinalizeDiagnostic, FinalizeRun
 from cardre.domain.artifacts import ArtifactRef
@@ -134,30 +136,22 @@ class ExecuteRun:
                 )
 
                 persist_uow = self._uow_factory()
+                published_paths: list[Path] = []
                 try:
                     artifact_store = self._artifact_store_factory()
                     output_refs: list[ArtifactRef] = []
                     for staged in result.staged_artifacts:
-                        published_path = str(artifact_store.publish(staged))
-                        provisional_ref = ArtifactRef(
-                            artifact_id=staged.provisional_artifact_id,
-                            artifact_type=staged.artifact_type,
-                            role=staged.role,
-                            path=published_path,
-                            physical_hash=staged.physical_hash,
-                            logical_hash=staged.logical_hash,
-                            media_type=staged.media_type,
-                            metadata=staged.metadata,
-                        )
-                        canonical_id = persist_uow.artifacts.register(provisional_ref)
-                        if canonical_id != provisional_ref.artifact_id:
+                        ref, published_path = publish_staged(artifact_store, staged)
+                        published_paths.append(published_path)
+                        canonical_id = persist_uow.artifacts.register(ref)
+                        if canonical_id != ref.artifact_id:
                             canonical_ref = persist_uow.artifacts.get(canonical_id)
                             if canonical_ref is not None:
                                 output_refs.append(canonical_ref)
                             else:
-                                output_refs.append(provisional_ref)
+                                output_refs.append(ref)
                         else:
-                            output_refs.append(provisional_ref)
+                            output_refs.append(ref)
 
                     step_outputs[step.step_id] = output_refs
 
@@ -224,6 +218,7 @@ class ExecuteRun:
                     persist_uow.commit()
                 except Exception:
                     persist_uow.rollback()
+                    compensate(published_paths)
                     raise
                 finally:
                     persist_uow.close()
@@ -334,23 +329,14 @@ class ExecuteRun:
             payload=summary,
             metadata={"schema_version": SCHEMA_RUN_SUMMARY},
         )
-        published_path = artifact_store.publish(staged)
-        summary_ref = ArtifactRef(
-            artifact_id=staged.provisional_artifact_id,
-            artifact_type=staged.artifact_type,
-            role=staged.role,
-            path=str(published_path),
-            physical_hash=staged.physical_hash,
-            logical_hash=staged.logical_hash,
-            media_type=staged.media_type,
-            metadata=staged.metadata,
-        )
+        summary_ref, published_path = publish_staged(artifact_store, staged)
         uow = self._uow_factory()
         try:
             uow.artifacts.register(summary_ref)
             uow.commit()
         except Exception:
             uow.rollback()
+            compensate([published_path])
             raise
         finally:
             uow.close()

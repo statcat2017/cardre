@@ -11,10 +11,15 @@ import numpy as np
 import polars as pl
 from polars.exceptions import ComputeError
 
-from cardre._evidence.reader import ArtifactEvidenceReader
-from cardre.artifacts import write_json_artifact
-from cardre.execution.context import ExecutionContext, NodeOutput
-from cardre.nodes.contracts import NodeType
+from cardre.domain.evidence.kinds import EvidenceKind
+from cardre.nodes.contracts import (
+    ArtifactContract,
+    ArtifactRoleSpec,
+    NodeContext,
+    NodeDefinition,
+    NodeResult,
+    NodeType,
+)
 
 # Minimum group size for reliable metrics
 MIN_GROUP_SIZE = 30
@@ -33,6 +38,26 @@ class FairnessReportNode(NodeType):
     category = "report"
     input_roles: list[str] = ["train", "test", "oot", "definition"]
     output_roles: list[str] = ["report"]
+
+    __definition__ = NodeDefinition(
+        node_type="cardre.fairness_report",
+        version="1",
+        category="report",
+        description="Compute fairness metrics across sensitive groups",
+        input_contract=ArtifactContract(
+            roles=(
+                ArtifactRoleSpec("train", required=False),
+                ArtifactRoleSpec("test", required=False),
+                ArtifactRoleSpec("oot", required=False),
+                ArtifactRoleSpec("definition", required=False),
+            ),
+        ),
+        output_contract=ArtifactContract(
+            roles=(ArtifactRoleSpec("report", kinds=(EvidenceKind.FAIRNESS_REPORT,)),),
+        ),
+        parameter_schema=None,
+        tier="deferred",
+    )
 
     def validate_params(self, params: dict[str, Any]) -> list[str]:
         errors: list[str] = []
@@ -59,15 +84,13 @@ class FairnessReportNode(NodeType):
 
         return errors
 
-    def run(self, context: ExecutionContext) -> NodeOutput:
-        store = context.store
-        params = context.validated_params
+    def run(self, context: NodeContext) -> NodeResult:
+        params = context.params
         sensitive_columns = list(params.get("sensitive_columns", []))
         min_group_size = int(params.get("min_group_size", MIN_GROUP_SIZE))
         cutoff = float(params.get("cutoff", 0.5))
 
-        reader = ArtifactEvidenceReader(store)
-        meta = context.target_metadata()
+        meta = context.inputs.target_metadata()
         if meta:
             target_col = meta.target_column
             bad = set(meta.bad_values)
@@ -75,7 +98,10 @@ class FairnessReportNode(NodeType):
             target_col = ""
             bad = set()
 
-        data_arts = context.data_artifacts()
+        data_arts = [
+            a for role in ("train", "test", "oot")
+            for a in context.inputs.by_role(role)
+        ]
         report: dict[str, Any] = {
             "sensitive_columns": sensitive_columns,
             "min_group_size": min_group_size,
@@ -83,12 +109,12 @@ class FairnessReportNode(NodeType):
             "roles": {},
         }
 
-        model_art = next((a for a in context.input_artifacts if a.role == "model"), None)
-        if model_art:
-            reader.require_model(model_art, "cardre.fairness_report")
+        model_arts = context.inputs.by_role("model")
+        if model_arts:
+            context.inputs.read(model_arts[0], EvidenceKind.MODEL_ARTIFACT)
         for data_art in data_arts:
             role = data_art.role
-            df = reader.read_dataframe(data_art)
+            df = context.inputs.read_dataframe(data_art)
             role_report: dict[str, Any] = {"row_count": df.height}
 
             if "predicted_bad_probability" not in df.columns:
@@ -192,13 +218,14 @@ class FairnessReportNode(NodeType):
         # Cross-group parity summary
         report["parity_summary"] = self._compute_parity_summary(report["roles"], sensitive_columns)
 
-        art = write_json_artifact(
-            store, artifact_type="report", role="report",
-            stem=f"fairness-report-{context.step_spec.step_id}",
+        context.outputs.publish_json(
+            role="report",
+            kind=EvidenceKind.FAIRNESS_REPORT,
             payload=report,
             metadata={"sensitive_columns": sensitive_columns},
         )
-        return NodeOutput(artifacts=[art], metrics={"role_count": len(data_arts)})
+        context.outputs.add_metric("role_count", len(data_arts))
+        return context.outputs.build_result()
 
     def _compute_parity_summary(self, roles: dict[str, Any], sensitive_columns: list[str]) -> dict[str, Any]:
         """Compute approval parity and error parity across groups.
@@ -259,6 +286,25 @@ class ProxyRiskReportNode(NodeType):
     input_roles: list[str] = ["train", "model", "definition"]
     output_roles: list[str] = ["report"]
 
+    __definition__ = NodeDefinition(
+        node_type="cardre.proxy_risk_report",
+        version="1",
+        category="report",
+        description="Check for proxy risk from sensitive or prohibited variables",
+        input_contract=ArtifactContract(
+            roles=(
+                ArtifactRoleSpec("train", required=False),
+                ArtifactRoleSpec("model", required=False),
+                ArtifactRoleSpec("definition", required=False),
+            ),
+        ),
+        output_contract=ArtifactContract(
+            roles=(ArtifactRoleSpec("report", kinds=(EvidenceKind.PROXY_RISK_REPORT,)),),
+        ),
+        parameter_schema=None,
+        tier="deferred",
+    )
+
     def validate_params(self, params: dict[str, Any]) -> list[str]:
         errors: list[str] = []
         sensitive_columns = params.get("sensitive_columns", [])
@@ -283,15 +329,13 @@ class ProxyRiskReportNode(NodeType):
 
         return errors
 
-    def run(self, context: ExecutionContext) -> NodeOutput:
-        store = context.store
-        params = context.validated_params
+    def run(self, context: NodeContext) -> NodeResult:
+        params = context.params
         sensitive_columns = list(params.get("sensitive_columns", []))
         correlation_threshold = float(params.get("correlation_threshold", 0.3))
         importance_threshold = float(params.get("importance_threshold", 0.05))
 
-        reader = ArtifactEvidenceReader(store)
-        train_art = context.train_artifact()
+        train_art = context.inputs.first("train")
         warnings: list[dict[str, Any]] = []
 
         report: dict[str, Any] = {
@@ -304,9 +348,9 @@ class ProxyRiskReportNode(NodeType):
         # Load model features and importance
         model_features: list[str] = []
         feature_importance: dict[str, float] = {}
-        model_art = next((a for a in context.input_artifacts if a.role == "model"), None)
-        if model_art:
-            model_typed = reader.require_model(model_art, "cardre.proxy_risk_report")
+        model_arts = context.inputs.by_role("model")
+        if model_arts:
+            model_typed = context.inputs.read(model_arts[0], EvidenceKind.MODEL_ARTIFACT)
             model_features = model_typed.features
             model_payload = model_typed.model_payload
             feature_importance = model_payload.get("feature_importance", {})
@@ -314,7 +358,7 @@ class ProxyRiskReportNode(NodeType):
         # Load training data
         if train_art:
             try:
-                df = reader.read_dataframe(train_art)
+                df = context.inputs.read_dataframe(train_art)
             except Exception as exc:
                 warnings.append({
                     "code": "TRAIN_DATA_READ_FAILED",
@@ -410,16 +454,16 @@ class ProxyRiskReportNode(NodeType):
         else:
             report["overall_risk"] = "low"
 
-        art = write_json_artifact(
-            store, artifact_type="report", role="report",
-            stem=f"proxy-risk-report-{context.step_spec.step_id}",
+        context.outputs.publish_json(
+            role="report",
+            kind=EvidenceKind.PROXY_RISK_REPORT,
             payload=report,
             metadata={"overall_risk": report["overall_risk"]},
         )
-        return NodeOutput(
-            artifacts=[art],
-            metrics={"overall_risk": report["overall_risk"]},
-            warnings=warnings if warnings else None)
+        context.outputs.add_metric("overall_risk", report["overall_risk"])
+        for w in warnings:
+            context.outputs.add_warning(w)
+        return context.outputs.build_result()
 
 
 class AlternativeDataManifestNode(NodeType):
@@ -434,6 +478,24 @@ class AlternativeDataManifestNode(NodeType):
     category = "report"
     input_roles: list[str] = ["train", "definition"]
     output_roles: list[str] = ["report"]
+
+    __definition__ = NodeDefinition(
+        node_type="cardre.alternative_data_manifest",
+        version="1",
+        category="report",
+        description="Record provenance, consent, and usage evidence for alternative data",
+        input_contract=ArtifactContract(
+            roles=(
+                ArtifactRoleSpec("train", required=False),
+                ArtifactRoleSpec("definition", required=False),
+            ),
+        ),
+        output_contract=ArtifactContract(
+            roles=(ArtifactRoleSpec("report", kinds=(EvidenceKind.PROXY_RISK_REPORT,)),),
+        ),
+        parameter_schema=None,
+        tier="deferred",
+    )
 
     def validate_params(self, params: dict[str, Any]) -> list[str]:
         errors: list[str] = []
@@ -452,18 +514,16 @@ class AlternativeDataManifestNode(NodeType):
 
         return errors
 
-    def run(self, context: ExecutionContext) -> NodeOutput:
-        store = context.store
-        params = context.validated_params
+    def run(self, context: NodeContext) -> NodeResult:
+        params = context.params
         data_sources = list(params.get("data_sources", []))
         warnings: list[dict[str, Any]] = []
-        reader = ArtifactEvidenceReader(store)
 
-        train_art = context.train_artifact()
+        train_art = context.inputs.first("train")
         df = None
         if train_art:
             try:
-                df = reader.read_dataframe(train_art)
+                df = context.inputs.read_dataframe(train_art)
             except Exception as exc:
                 warnings.append({
                     "code": "TRAIN_DATA_READ_FAILED",
@@ -528,16 +588,16 @@ class AlternativeDataManifestNode(NodeType):
         manifest["promotion_blocks"] = blocks
         manifest["champion_eligible"] = len(blocks) == 0
 
-        art = write_json_artifact(
-            store, artifact_type="report", role="report",
-            stem=f"alt-data-manifest-{context.step_spec.step_id}",
+        context.outputs.publish_json(
+            role="report",
+            kind=EvidenceKind.PROXY_RISK_REPORT,
             payload=manifest,
             metadata={
                 "total_sources": len(source_evidence),
                 "champion_eligible": manifest["champion_eligible"],
             },
         )
-        return NodeOutput(
-            artifacts=[art],
-            metrics={"total_sources": len(source_evidence)},
-            warnings=warnings if warnings else None)
+        context.outputs.add_metric("total_sources", len(source_evidence))
+        for w in warnings:
+            context.outputs.add_warning(w)
+        return context.outputs.build_result()

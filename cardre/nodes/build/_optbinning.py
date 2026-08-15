@@ -4,17 +4,15 @@ from typing import Any
 
 import polars as pl
 
+from cardre._evidence.schemas import SCHEMA_BIN_DEFINITION
 from cardre.domain.evidence.kinds import EvidenceKind
-from cardre.domain.evidence.schemas import SCHEMA_BIN_DEFINITION
 from cardre.engine.binning.definition import LifecycleBinDefinition
 from cardre.engine.binning.diagnostics import run_all as run_diagnostics
 from cardre.engine.binning.optbinning_adapter import fit_variables
+from cardre.nodes._reporting import NUMERIC_DTYPES
 from cardre.nodes.contracts import NodeContext, NodeResult
 
-_NUMERIC_TYPES = {
-    pl.Float64, pl.Float32, pl.Int64, pl.Int32,
-    pl.Int16, pl.Int8, pl.UInt64, pl.UInt32, pl.UInt16, pl.UInt8,
-}
+_NUMERIC_TYPES = set(NUMERIC_DTYPES)
 
 
 def _resolve_train_input(context: NodeContext):

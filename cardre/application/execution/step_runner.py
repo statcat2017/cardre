@@ -18,6 +18,7 @@ from cardre.domain.diagnostics import JsonDict
 from cardre.domain.errors import NodeFailedWithArtifacts, NodeRoleAccessViolation
 from cardre.domain.run import RunStepStatus
 from cardre.domain.step import StepSpec
+from cardre.nodes._params import NodeParams
 from cardre.nodes.contracts import (
     ArtifactContract,
     NodeContext,
@@ -146,7 +147,7 @@ class StepRunner:
                 step_spec=spec,
                 inputs=inputs,
                 outputs=outputs,
-                params=normalized_params,
+                params=NodeParams(normalized_params),
                 runtime=runtime,
             )
 

@@ -4,13 +4,13 @@ from typing import Any
 
 import polars as pl
 
-from cardre.domain.evidence.kinds import EvidenceKind, EvidenceNotFoundError
-from cardre.domain.evidence.schemas import (
+from cardre._evidence.schemas import (
     SCHEMA_FROZEN_SCORECARD_BUNDLE,
     SCHEMA_SCORE_TABLE,
     SCHEMA_SCORING_EXPORT_PYTHON,
     SCHEMA_SCORING_EXPORT_SQL,
 )
+from cardre.domain.evidence.kinds import EvidenceKind, EvidenceNotFoundError
 from cardre.nodes.build.scoring_export_ir import (
     ScoringVariable,
     compile_scorecard,

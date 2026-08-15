@@ -2,12 +2,12 @@ from __future__ import annotations
 
 from typing import Any
 
-from cardre.domain.artifacts import json_logical_hash
-from cardre.domain.evidence.kinds import EvidenceKind
-from cardre.domain.evidence.schemas import (
+from cardre._evidence.schemas import (
     SCHEMA_FROZEN_SCORECARD_BUNDLE,
     SCHEMA_SELECTION_DEFINITION,
 )
+from cardre.domain.artifacts import json_logical_hash
+from cardre.domain.evidence.kinds import EvidenceKind
 from cardre.nodes.contracts import (
     ArtifactContract,
     ArtifactRoleSpec,

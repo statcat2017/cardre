@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from cardre.api.routes._run_mappings import (
+from cardre.api.mappers import (
     branch_to_response,
     comparison_to_response,
     evidence_edge_to_response,
@@ -24,13 +24,13 @@ def test_plan_mappers_return_expected_shapes() -> None:
         description="Base",
     )
 
-    assert plan_to_response(plan.to_dict()).model_dump() == {
+    assert plan_to_response(plan).model_dump() == {
         "plan_id": "plan-1",
         "project_id": "proj-1",
         "name": "Plan",
         "created_at": "now",
     }
-    assert plan_version_to_response(version.to_dict()).model_dump() == {
+    assert plan_version_to_response(version).model_dump() == {
         "plan_version_id": "pv-1",
         "plan_id": "plan-1",
         "version_number": 2,

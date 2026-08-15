@@ -42,7 +42,7 @@ from cardre.application.reporting.schema import (
 from cardre.application.reporting.schema import (
     ResolvedStepRef as ReportStepRef,
 )
-from cardre.domain.artifacts import json_logical_hash
+from cardre.domain.manifest import compute_manifest_hash
 
 
 @dataclass(frozen=True)
@@ -199,9 +199,7 @@ class ReportCollector:
             try:
                 manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
                 recorded_hash = manifest.get("manifest_hash", "")
-                hashed = dict(manifest)
-                hashed["manifest_hash"] = ""
-                if not recorded_hash or recorded_hash != json_logical_hash(hashed):
+                if not recorded_hash or recorded_hash != compute_manifest_hash(manifest):
                     limitations.append(Limitation(severity="blocker", code="ARTIFACT_HASH_UNRESOLVED", message="Canonical run manifest hash does not verify."))
                 else:
                     if (

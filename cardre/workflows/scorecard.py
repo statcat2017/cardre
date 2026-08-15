@@ -3,10 +3,83 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from cardre.bootstrap.node_catalogue import build_default_catalogue
-from cardre.bootstrap.settings import Settings
 from cardre.domain.artifacts import json_logical_hash
 from cardre.domain.step import StepSpec
+
+# Direct node-class lookup for the canonical scorecard — avoids building the
+# full 52-node catalogue just to read version/category off ~30 classes.
+from cardre.nodes.build import (
+    AutomaticBinningNode,
+    BuildSummaryReportNode,
+    CalculateWoeIvNode,
+    CalibrationDiagnosticsNode,
+    CoefficientSignCheckNode,
+    FrozenScorecardBundleNode,
+    LogisticRegressionNode,
+    ManualBinningNode,
+    PythonScoringExportNode,
+    ScorecardTableExportNode,
+    ScoreScalingNode,
+    SeparationDiagnosticsNode,
+    SqlScoringExportNode,
+    TechnicalManifestExportNode,
+    VariableClusteringNode,
+    VariableSelectionNode,
+    VifDiagnosticsNode,
+    WoeTransformTrainNode,
+)
+from cardre.nodes.prep import (
+    ApplyExclusionsNode,
+    DefineModellingMetadataNode,
+    DevelopmentSampleDefinitionNode,
+    ExplicitMissingOutlierTreatmentNode,
+    ImportTabularDatasetNode,
+    ProfileDatasetNode,
+    SplitTrainTestOotNode,
+    ValidateBinaryTargetNode,
+)
+from cardre.nodes.validate import (
+    ApplyModelNode,
+    ApplyWoeMappingNode,
+    CutoffAnalysisNode,
+    ValidationMetricsNode,
+)
+
+_CANONICAL_NODE_CLASSES: dict[str, type[Any]] = {
+    cls.node_type: cls
+    for cls in (
+        ApplyExclusionsNode,
+        DevelopmentSampleDefinitionNode,
+        DefineModellingMetadataNode,
+        ExplicitMissingOutlierTreatmentNode,
+        CoefficientSignCheckNode,
+        CalibrationDiagnosticsNode,
+        SeparationDiagnosticsNode,
+        VifDiagnosticsNode,
+        ImportTabularDatasetNode,
+        ProfileDatasetNode,
+        ValidateBinaryTargetNode,
+        SplitTrainTestOotNode,
+        AutomaticBinningNode,
+        CalculateWoeIvNode,
+        VariableClusteringNode,
+        VariableSelectionNode,
+        ManualBinningNode,
+        TechnicalManifestExportNode,
+        WoeTransformTrainNode,
+        LogisticRegressionNode,
+        ScoreScalingNode,
+        FrozenScorecardBundleNode,
+        BuildSummaryReportNode,
+        ScorecardTableExportNode,
+        PythonScoringExportNode,
+        SqlScoringExportNode,
+        ApplyWoeMappingNode,
+        ApplyModelNode,
+        ValidationMetricsNode,
+        CutoffAnalysisNode,
+    )
+}
 
 _CANONICAL_SCORECARD_STEPS: list[tuple[str, str, list[str], dict[str, Any]]] = [
     (
@@ -257,7 +330,6 @@ def canonical_scorecard_step_ids() -> list[str]:
 
 
 def build_canonical_scorecard_steps(source_path: str | Path) -> list[StepSpec]:
-    registry = build_default_catalogue(Settings(launch_mode=True))
     resolved_source_path = str(source_path)
     result: list[StepSpec] = []
 
@@ -265,7 +337,7 @@ def build_canonical_scorecard_steps(source_path: str | Path) -> list[StepSpec]:
         params = dict(raw_params)
         if step_id == "import":
             params["source_path"] = resolved_source_path
-        node_cls = registry.resolve(node_type)
+        node_cls = _CANONICAL_NODE_CLASSES[node_type]
         result.append(
             StepSpec(
                 step_id=step_id,

@@ -146,7 +146,7 @@ def registered_project(store: ProjectStore) -> Callable[..., Project]:
 
 ### Scope
 
-Change `cardre/execution/run_lifecycle.py`, `cardre/application/reporting/schema.py`,
+Change `cardre/application/runs/finalize_run.py`, `cardre/application/reporting/schema.py`,
 `cardre/adapters/reporting/collector.py`, and lifecycle/report integrity tests. Do not
 put producer logic in the report collector.
 
@@ -250,7 +250,7 @@ the renderers only.
 
 ### Scope
 
-Change `cardre/node_parameters.py`, `cardre/execution/step_runner.py`, narrow
+Change `cardre/nodes/parameters.py`, `cardre/application/execution/step_runner.py`, narrow
 node contract hooks if required, and parameter tests. Start with one launch
 node and `cardre/nodes/boosting.py`; migrate remaining nodes in follow-ups.
 

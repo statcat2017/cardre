@@ -142,6 +142,23 @@ class RunRepo:
         ).fetchall()
         return [_row_to_run(r) for r in rows]
 
+    def get_diagnostics_for_project(self, project_id: str) -> list[dict[str, Any]]:
+        """All diagnostics for a project in one query (avoids N+1 in list endpoints)."""
+        out: list[dict[str, Any]] = []
+        for row in self._conn.execute(
+            "SELECT d.* FROM diagnostics d "
+            "JOIN runs r ON d.run_id = r.run_id "
+            "JOIN plan_versions pv ON r.plan_version_id = pv.plan_version_id "
+            "JOIN plans p ON pv.plan_id = p.plan_id "
+            "WHERE p.project_id = ? ORDER BY d.created_at",
+            (project_id,),
+        ).fetchall():
+            data = dict(row)
+            ctx = json.loads(data.pop("context_json", "{}")) if data.get("context_json") else {}
+            data.update(ctx)
+            out.append(data)
+        return out
+
     def get_latest_successful_id(self, plan_version_id: str, branch_id: str | None = None) -> str | None:
         clause, params = self._branch_filter(branch_id)
         row = self._conn.execute(

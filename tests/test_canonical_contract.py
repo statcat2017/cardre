@@ -221,11 +221,12 @@ BANNED_ATTRIBUTES = {
 }
 
 ALLOWED_PREFIXES = {
-    "cardre.adapters.sqlite": {"sqlite3"},
-    "cardre.bootstrap.settings": {"os.environ", "os.getenv"},
-    "cardre.adapters.evidence": {"ArtifactEvidenceReader"},
-    "cardre.workflows": {"build_default_catalogue", "Settings"},
-    "cardre.nodes.registry": {"NodeType"},
+    "cardre/adapters/sqlite": {"sqlite3"},
+    "cardre/bootstrap/settings": {"os.environ", "os.getenv"},
+    "cardre/adapters/evidence": {"ArtifactEvidenceReader"},
+    "cardre/workflows": {"build_default_catalogue", "Settings"},
+    "cardre/nodes/registry": {"NodeType"},
+    "cardre/config": {"CardreConfig"},
 }
 
 
@@ -236,10 +237,6 @@ def _is_allowed(filepath: str, symbol: str) -> bool:
     return False
 
 
-@pytest.mark.xfail(
-    strict=False,
-    reason="Migration in progress; enforced after Batch 07",
-)
 def test_forbidden_imports_outside_adapters() -> None:
     """AST-walk cardre/ and ban forbidden identifiers outside allowed packages."""
     cardre_dir = REPO_ROOT / "cardre"

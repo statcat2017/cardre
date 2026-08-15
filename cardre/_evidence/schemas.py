@@ -1,5 +1,6 @@
 """Schema version constants for evidence kinds."""
 
+SCHEMA_BIN_DEFINITION = "cardre.bin_definition.v1"
 SCHEMA_MODELLING_METADATA = "cardre.modelling_metadata.v1"
 SCHEMA_SAMPLE_DEFINITION = "cardre.sample_definition.v1"
 SCHEMA_SPLIT_SUMMARY = "cardre.split_summary.v1"

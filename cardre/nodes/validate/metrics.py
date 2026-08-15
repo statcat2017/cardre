@@ -10,10 +10,10 @@ from sklearn.metrics import (
     roc_auc_score,
 )
 
+from cardre._evidence.schemas import SCHEMA_VALIDATION_METRICS
 from cardre.domain.diagnostics import JsonDict
 from cardre.domain.errors import NodeFailedWithArtifacts
 from cardre.domain.evidence.kinds import EvidenceKind
-from cardre.domain.evidence.schemas import SCHEMA_VALIDATION_METRICS
 from cardre.nodes.contracts import (
     ArtifactContract,
     ArtifactRoleSpec,

@@ -3,8 +3,8 @@ from __future__ import annotations
 import numpy as np
 import polars as pl
 
+from cardre._evidence.schemas import SCHEMA_SPLIT_SUMMARY
 from cardre.domain.evidence.kinds import EvidenceKind
-from cardre.domain.evidence.schemas import SCHEMA_SPLIT_SUMMARY
 from cardre.nodes.contracts import (
     ArtifactContract,
     ArtifactRoleSpec,

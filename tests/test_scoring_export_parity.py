@@ -34,38 +34,40 @@ def _write_input_csv(path: Path) -> Path:
     return path
 
 
-def test_scoring_export_parity(raw_project_path, api_client, tmp_path):
+def test_scoring_export_parity(monkeypatch, tmp_path):
+    from fastapi.testclient import TestClient
+
+    from cardre.api.app import create_app
+    from cardre.bootstrap.container import build_container
+    from cardre.bootstrap.settings import Settings
+
+    monkeypatch.setenv("CARDRE_REGISTRY_PATH", str(tmp_path / "registry.json"))
+    settings = Settings.from_env()
+    container = build_container(settings)
+    client = TestClient(create_app(container))
+
     project_dir = tmp_path / "parity.cardre"
-    resp = api_client.post("/projects", json={"name": "Parity", "path": str(project_dir)})
+    resp = client.post("/projects", json={"name": "Parity", "path": str(project_dir)})
     assert resp.status_code == 201, resp.text
     project_id = resp.json()["project_id"]
-    headers = {"X-Project-Path": str(project_dir)}
 
     csv_path = _write_input_csv(tmp_path / "input.csv")
 
-    resp = api_client.post(
+    resp = client.post(
         f"/projects/{project_id}/plans",
-        headers=headers,
         json={"name": "Parity Plan"},
     )
     assert resp.status_code == 201, resp.text
     plan_id = resp.json()["plan_id"]
 
-    from cardre.store.db import ProjectStore
-    from cardre.store.plan_repo import PlanRepository
-    store = ProjectStore(project_dir)
-    store.open()
-    try:
-        steps = build_canonical_scorecard_steps(csv_path)
-        plan_version_id = PlanRepository(store).create_version(
+    steps = build_canonical_scorecard_steps(csv_path)
+    with container.uow_factory.for_project(project_id) as uow:
+        plan_version_id = uow.plans.create_version(
             plan_id, steps=steps, is_committed=True,
         )
-    finally:
-        store.close()
 
-    resp = api_client.post(
+    resp = client.post(
         f"/projects/{project_id}/runs",
-        headers=headers,
         json={"plan_version_id": plan_version_id, "sync": True, "force": True},
     )
     assert resp.status_code == 201, resp.text
@@ -73,17 +75,19 @@ def test_scoring_export_parity(raw_project_path, api_client, tmp_path):
     run_id = run_data["run_id"]
     assert run_data["status"] == "succeeded", f"Run did not succeed: {run_data}"
 
-    store = ProjectStore(project_dir)
-    store.open()
-    try:
-        artifact_rows = store.execute(
-            """SELECT a.artifact_id, a.role, a.path, a.metadata_json, rs.step_id
-               FROM artifacts a
-               JOIN artifact_lineage al ON al.artifact_id = a.artifact_id
-               JOIN run_steps rs ON rs.run_step_id = al.run_step_id
-               WHERE rs.run_id = ? AND al.direction = 'output'""",
-            (run_id,),
-        ).fetchall()
+    with container.uow_factory.read_only(project_id) as uow:
+        run_steps = uow.run_steps.get_for_run(run_id)
+        artifact_rows = []
+        for rs in run_steps:
+            for direction, art in uow.artifacts.artifacts_for_run_step(rs.run_step_id):
+                if direction == "output":
+                    artifact_rows.append({
+                        "artifact_id": art.artifact_id,
+                        "role": art.role,
+                        "path": art.path,
+                        "metadata_json": json.dumps(art.metadata),
+                        "step_id": rs.step_id,
+                    })
 
         apply_model_parquet = [
             row for row in artifact_rows
@@ -98,7 +102,7 @@ def test_scoring_export_parity(raw_project_path, api_client, tmp_path):
         ]
         assert python_export, "scoring-export-python artifact not found"
         python_payload = json.loads(
-            (store.root / python_export[0]["path"]).read_text(encoding="utf-8")
+            (project_dir / python_export[0]["path"]).read_text(encoding="utf-8")
         )
         python_source = python_payload["source"]
 
@@ -109,13 +113,13 @@ def test_scoring_export_parity(raw_project_path, api_client, tmp_path):
         ]
         assert sql_export, "scoring-export-sql artifact not found"
         sql_payload = json.loads(
-            (store.root / sql_export[0]["path"]).read_text(encoding="utf-8")
+            (project_dir / sql_export[0]["path"]).read_text(encoding="utf-8")
         )
         sql_source = sql_payload["source"]
 
         for row in apply_model_parquet:
             role = row["role"]
-            df = pl.read_parquet(store.root / row["path"])
+            df = pl.read_parquet(project_dir / row["path"])
             assert "score" in df.columns, f"apply-model {role} missing score column"
             assert "cardre_scaled_score" not in df.columns, (
                 f"apply-model {role} still writes removed cardre_scaled_score column"
@@ -160,9 +164,6 @@ def test_scoring_export_parity(raw_project_path, api_client, tmp_path):
                     )
             finally:
                 conn.close()
-
-    finally:
-        store.close()
 
 
 def test_python_sql_parity_missing_without_bin_zero_policy():

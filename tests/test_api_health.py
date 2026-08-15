@@ -2,6 +2,19 @@
 
 from __future__ import annotations
 
+import pytest
+
+
+@pytest.fixture
+def api_client():
+    from fastapi.testclient import TestClient
+
+    from cardre.api.app import create_app
+    from cardre.bootstrap.container import build_container
+    from cardre.bootstrap.settings import Settings
+
+    return TestClient(create_app(build_container(Settings())))
+
 
 class TestHealth:
     def test_health_returns_ok(self, api_client):

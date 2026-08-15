@@ -23,15 +23,18 @@ from sklearn.isotonic import IsotonicRegression
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import StratifiedKFold
 
-from cardre._evidence.kinds import EvidenceKind
-from cardre._evidence.reader import ArtifactEvidenceReader
 from cardre._evidence.schemas import SCHEMA_CALIBRATION_REPORT, SCHEMA_MODEL_ARTIFACT
-from cardre.artifacts import write_json_artifact
 from cardre.domain.artifacts import ArtifactRef
 from cardre.domain.diagnostics import JsonDict
-from cardre.execution.context import ExecutionContext, NodeOutput
-from cardre.modeling.serialization import write_estimator_artifact
-from cardre.nodes.contracts import NodeType
+from cardre.domain.evidence.kinds import EvidenceKind
+from cardre.nodes.contracts import (
+    ArtifactContract,
+    ArtifactRoleSpec,
+    NodeContext,
+    NodeDefinition,
+    NodeResult,
+    NodeType,
+)
 from cardre.nodes.parameters import (
     MethodOption,
     NodeParameterSchema,
@@ -44,6 +47,11 @@ def _safe_logit(probability: np.ndarray, eps: float = 1e-6) -> np.ndarray:
     """Convert probabilities to log-odds with clipping for numerical safety."""
     p = np.clip(np.asarray(probability, dtype=float), eps, 1.0 - eps)
     return cast(np.ndarray[Any, Any], np.log(p / (1.0 - p)))
+
+
+def _bytes_hash(data: bytes) -> str:
+    import hashlib
+    return hashlib.sha256(data).hexdigest()
 
 
 def _compute_calibration_bins(
@@ -174,6 +182,30 @@ class CalibrateProbabilitiesNode(NodeType):
     input_roles: list[str] = ["train", "test", "oot", "definition", "model"]
     output_roles: list[str] = ["model", "report"]
 
+    __definition__ = NodeDefinition(
+        node_type="cardre.calibrate_probabilities",
+        version="1",
+        category="fit",
+        description="Platt or isotonic calibration of model probabilities",
+        input_contract=ArtifactContract(
+            roles=(
+                ArtifactRoleSpec("train", kinds=(EvidenceKind.MODELLING_METADATA,)),
+                ArtifactRoleSpec("test", required=False),
+                ArtifactRoleSpec("oot", required=False),
+                ArtifactRoleSpec("definition", required=False),
+                ArtifactRoleSpec("model", kinds=(EvidenceKind.MODEL_ARTIFACT,)),
+            ),
+        ),
+        output_contract=ArtifactContract(
+            roles=(
+                ArtifactRoleSpec("model", kinds=(EvidenceKind.MODEL_ARTIFACT,)),
+                ArtifactRoleSpec("report", kinds=(EvidenceKind.CALIBRATION_REPORT,)),
+            ),
+        ),
+        parameter_schema=None,
+        tier="deferred",
+    )
+
     def allows_leakage_artifact(self, artifact: ArtifactRef) -> bool:
         """Allow test/OOT scored datasets only when they carry a model_artifact_id
         metadata proving they are apply-model outputs, not raw training splits."""
@@ -303,10 +335,8 @@ class CalibrateProbabilitiesNode(NodeType):
             errors.append(f"method must be 'platt' or 'isotonic', got {method!r}")
         return errors
 
-    def run(self, context: ExecutionContext) -> NodeOutput:
-        store = context.store
-        reader = ArtifactEvidenceReader(store)
-        params = context.validated_params
+    def run(self, context: NodeContext) -> NodeResult:
+        params = context.params
         method = params.get("method", "platt")
         calibration_sample = params.get("calibration_sample", "train")
         min_prob = float(params.get("min_probability", 0.001))
@@ -318,7 +348,7 @@ class CalibrateProbabilitiesNode(NodeType):
             cross_validated = False
 
         # 1. Read modelling metadata for target definition
-        meta = context.target_metadata()
+        meta = context.inputs.target_metadata()
         target_column = meta.target_column if meta else ""
         good_values = meta.good_values if meta else frozenset()
         bad_values = meta.bad_values if meta else frozenset()
@@ -328,17 +358,14 @@ class CalibrateProbabilitiesNode(NodeType):
             )
 
         # 2. Read the scored calibration sample
-        calib_art = next(
-            (a for a in context.input_artifacts if a.role == calibration_sample),
-            None,
-        )
+        calib_art = context.inputs.first(calibration_sample)
         if calib_art is None:
             raise ValueError(
                 f"Calibration requires a dataset with role={calibration_sample!r}, "
                 f"none found in input artifacts"
             )
 
-        df = reader.read_dataframe(calib_art)
+        df = context.inputs.read_dataframe(calib_art)
 
         if "predicted_bad_probability" not in df.columns:
             raise ValueError(
@@ -402,11 +429,9 @@ class CalibrateProbabilitiesNode(NodeType):
             })
 
         # Read model artifact once for model_family checks and later update
-        model_art = next(a for a in context.input_artifacts if a.role == "model")
-        typed_model = reader.read(model_art.artifact_id, EvidenceKind.MODEL_ARTIFACT)
+        model_art = context.inputs.require("model", "CalibrateProbabilitiesNode")
+        typed_model = context.inputs.read(model_art, EvidenceKind.MODEL_ARTIFACT)
         has_linear_coefficients = _supports_folded_linear_calibration(typed_model)
-
-        # 5. Fit calibrator (skip if too few rows)
 
         # 5. Fit calibrator (skip if too few rows)
         if too_few_rows:
@@ -496,14 +521,19 @@ class CalibrateProbabilitiesNode(NodeType):
             calibrator_bytes = io.BytesIO()
             joblib.dump(calibrator, calibrator_bytes)
             calibrator_bytes.seek(0)
-            calibrator_art_ref = write_estimator_artifact(
-                store,
-                estimator_bytes=calibrator_bytes.read(),
-                estimator_format="joblib",
-                stem=f"calibrator-{context.step_spec.step_id}",
-                creating_run_id=context.run_id,
-                creating_run_step_id=context.step_spec.step_id,
-                metadata={"artifact_subtype": "probability_calibrator", "method": method},
+            calibrator_art_ref = context.outputs.publish_bytes(
+                role="model",
+                kind=EvidenceKind.MODEL_ARTIFACT,
+                data=calibrator_bytes.read(),
+                media_type="application/octet-stream",
+                logical_hash=_bytes_hash(calibrator_bytes.getvalue()),
+                metadata={
+                    "artifact_subtype": "probability_calibrator",
+                    "method": method,
+                    "estimator_format": "joblib",
+                    "creating_run_id": context.run_id,
+                    "creating_run_step_id": context.step_spec.step_id,
+                },
             )
 
             if application_mode == "folded_linear_log_odds":
@@ -516,8 +546,6 @@ class CalibrateProbabilitiesNode(NodeType):
                     for name, value in original_coefficients.items()
                 }
                 model["model_payload"] = model_payload
-        else:
-            calibrator_art_ref = model_art  # placeholder: use original model
 
         # 10. Write calibration report artifact
         cal_report: JsonDict = {
@@ -540,23 +568,23 @@ class CalibrateProbabilitiesNode(NodeType):
                 "woe_unmatched_policy": "fail",
             },
         }
-        report_art = write_json_artifact(
-            store, artifact_type="report", role="report",
-            stem=f"calibration-report-{context.step_spec.step_id}",
+        report_art = context.outputs.publish_json(
+            role="report",
+            kind=EvidenceKind.CALIBRATION_REPORT,
             payload=cal_report,
             metadata={"schema_version": SCHEMA_CALIBRATION_REPORT},
         )
 
         # 11. Update model artifact with calibration block
-        if calibrator_art_ref is not None and calibrator_art_ref != model_art:
+        if calibrator_art_ref is not None:
             model["calibration"] = {
                 "method": method,
                 "application_mode": application_mode,
                 "score_scaling_compatible": score_scaling_compatible,
                 "cross_validated": cross_validated,
-                "calibrator_artifact_id": calibrator_art_ref.artifact_id,
+                "calibrator_artifact_id": calibrator_art_ref.provisional_artifact_id,
                 "calibrator_logical_hash": calibrator_art_ref.logical_hash,
-                "calibration_report_artifact_id": report_art.artifact_id,
+                "calibration_report_artifact_id": report_art.provisional_artifact_id,
                 "calibration_error": round(calibration_error, 6),
                 "max_bin_deviation": round(max_bin_deviation, 6),
                 "calibrator_format": "joblib",
@@ -569,7 +597,7 @@ class CalibrateProbabilitiesNode(NodeType):
                 "cross_validated": cross_validated,
                 "calibrator_artifact_id": "",
                 "calibrator_logical_hash": "",
-                "calibration_report_artifact_id": report_art.artifact_id,
+                "calibration_report_artifact_id": report_art.provisional_artifact_id,
                 "calibration_error": round(calibration_error, 6),
                 "max_bin_deviation": round(max_bin_deviation, 6),
                 "calibrator_format": "none",
@@ -577,9 +605,9 @@ class CalibrateProbabilitiesNode(NodeType):
             }
         model["schema_version"] = SCHEMA_MODEL_ARTIFACT
 
-        updated_model_art = write_json_artifact(
-            store, artifact_type="model", role="model",
-            stem=f"calibrated-model-{context.step_spec.step_id}",
+        context.outputs.publish_json(
+            role="model",
+            kind=EvidenceKind.MODEL_ARTIFACT,
             payload=model,
             metadata={
                 "schema_version": SCHEMA_MODEL_ARTIFACT,
@@ -588,17 +616,9 @@ class CalibrateProbabilitiesNode(NodeType):
             },
         )
 
-        output_artifacts = [updated_model_art, report_art]
-        if calibrator is not None and calibrator_art_ref is not None and calibrator_art_ref != model_art:
-            output_artifacts.append(calibrator_art_ref)
-
-        return NodeOutput(
-            artifacts=output_artifacts,
-            metrics={
-                "method": method,
-                "calibration_sample": calibration_sample,
-                "calibration_error": round(calibration_error, 6),
-                "cross_validated": cross_validated,
-                "calibration_skipped": calibrator is None,
-            },
-        )
+        context.outputs.add_metric("method", method)
+        context.outputs.add_metric("calibration_sample", calibration_sample)
+        context.outputs.add_metric("calibration_error", round(calibration_error, 6))
+        context.outputs.add_metric("cross_validated", cross_validated)
+        context.outputs.add_metric("calibration_skipped", calibrator is None)
+        return context.outputs.build_result()

@@ -52,9 +52,9 @@ preflight:
 	# and unit tests are kept active to catch unrelated regressions. Build, tsc, and
 	# OpenAPI regeneration are skipped until Batch 07 restores the full API surface.
 	cd frontend && npm ci && npm run lint && npm run format:check && npm test
-	# npm run build && npx tsc --noEmit — skipped during migration
-	# python3 scripts/generate-openapi-types.py — skipped during migration
-	# git diff --exit-code -- frontend/src/api/openapi.json frontend/src/api/schema.d.ts — skipped during migration
+	cd frontend && npm run build && npx tsc --noEmit
+	python3 scripts/generate-openapi-types.py
+	git diff --exit-code -- frontend/src/api/openapi.json frontend/src/api/schema.d.ts
 
 v2-phase-check:
 	bash scripts/v2-phase-check.sh "$(PHASE)"

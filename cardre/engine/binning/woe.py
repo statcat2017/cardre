@@ -11,6 +11,8 @@ import math
 from enum import StrEnum
 from typing import Any
 
+import polars as pl
+
 
 class WoeConvention(StrEnum):
     """Which ratio is used for WOE = ln(...).
@@ -64,3 +66,75 @@ def compute_iv(
             woe = compute_woe(good_dist, bad_dist, convention)
         iv += compute_iv_component(good_dist, bad_dist, woe, convention)
     return iv
+
+
+class MissingWoePolicy(StrEnum):
+    """How to handle a bin with no WOE value when applying bin definitions.
+
+    The three policies preserve the historical behavior of the three call
+    sites that previously each implemented this loop independently:
+
+    - ``RAISE``: any bin without a WOE value is a data-integrity error
+      (validate-stream apply-woe-mapping).
+    - ``ZERO``: a missing WOE contributes 0.0 (build-stream WOE transform).
+    - ``SKIP_BIN``: omit the bin from the when/then chain (clustering previews).
+    """
+
+    RAISE = "raise"
+    ZERO = "zero"
+    SKIP_BIN = "skip_bin"
+
+
+def apply_woe_columns(
+    df: pl.DataFrame,
+    var_defs: list[Any],
+    woe_lookup: Any,
+    *,
+    policy: MissingWoePolicy,
+    suffix: str = "_woe",
+    skip_missing_variable: bool = True,
+) -> tuple[pl.DataFrame, list[str]]:
+    """Apply bin definitions to *df*, adding one ``<variable><suffix>`` column per variable.
+
+    *var_defs* are objects with ``.variable``, ``.kind`` and ``.bins`` attributes
+    (or dicts with the same keys). *woe_lookup* is a callable ``(variable, bin_id) -> float | None``.
+
+    Returns the augmented frame and the list of created column names.
+    """
+    from cardre.engine.binning.masks import build_bin_condition
+
+    exprs: list[pl.Expr] = []
+    created: list[str] = []
+
+    for vd in var_defs:
+        variable = vd.variable if hasattr(vd, "variable") else vd.get("variable", "")
+        kind = vd.kind if hasattr(vd, "kind") else vd.get("kind", "")
+        bins = vd.bins if hasattr(vd, "bins") else vd.get("bins", [])
+        if skip_missing_variable and variable not in df.columns:
+            continue
+
+        woe_expr: Any | None = None
+        for be in bins:
+            bin_id = be["bin_id"]
+            mask = build_bin_condition(be, pl.col(variable), kind, bins, variable=variable, bin_id=bin_id)
+            woe_val = woe_lookup(variable, bin_id)
+            if woe_val is None:
+                if policy is MissingWoePolicy.RAISE:
+                    raise ValueError(f"missing WOE for {variable}:{bin_id}")
+                if policy is MissingWoePolicy.SKIP_BIN:
+                    continue
+                woe_val = 0.0
+            clause = pl.when(mask).then(pl.lit(woe_val))
+            woe_expr = clause if woe_expr is None else woe_expr.when(mask).then(pl.lit(woe_val))
+
+        if woe_expr is None:
+            if policy is MissingWoePolicy.ZERO:
+                raise ValueError(f"WOE transform: variable {variable!r} has no bins defined")
+            continue
+
+        exprs.append(woe_expr.otherwise(pl.lit(None, dtype=pl.Float64)).alias(f"{variable}{suffix}"))
+        created.append(f"{variable}{suffix}")
+
+    if exprs:
+        df = df.with_columns(exprs)
+    return df, created
