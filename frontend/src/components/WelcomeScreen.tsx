@@ -200,6 +200,7 @@ export function WelcomeScreen({ onProjectCreated }: Props) {
               items={projectsQuery.data?.projects}
               emptyText="No projects yet in this root."
               loadingText="Loading projects..."
+              listStyle={{ display: "grid", gap: 10 }}
               renderItem={(project) => (
                 <button
                   key={project.project_id}
