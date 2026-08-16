@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 
 import { api, toErrorMessage } from "../api/client";
 import { theme, pageCardStyle } from "../styles";
+import { AsyncList } from "./AsyncList";
 
 interface Props {
   onProjectCreated: (projectId: string) => void;
@@ -194,34 +195,30 @@ export function WelcomeScreen({ onProjectCreated }: Props) {
 
           <section style={{ ...pageCardStyle, padding: 24 }}>
             <h2 style={{ marginTop: 0, fontSize: 18 }}>Existing Projects</h2>
-            {projectsQuery.isLoading ? (
-              <p style={{ margin: 0, color: theme.muted, fontSize: 14 }}>Loading projects...</p>
-            ) : projectsQuery.data?.projects.length ? (
-              <div style={{ display: "grid", gap: 10 }}>
-                {projectsQuery.data.projects.map((project) => (
-                  <button
-                    key={project.project_id}
-                    type="button"
-                    onClick={() => onProjectCreated(project.project_id)}
-                    style={{
-                      textAlign: "left",
-                      border: `1px solid ${theme.border}`,
-                      borderRadius: 12,
-                      padding: 14,
-                      background: theme.canvasSoft,
-                      cursor: "pointer",
-                    }}
-                  >
-                    <div style={{ fontWeight: 600, marginBottom: 4 }}>{project.name}</div>
-                    <div style={{ fontSize: 12, color: theme.muted }}>{project.project_id}</div>
-                  </button>
-                ))}
-              </div>
-            ) : (
-              <p style={{ margin: 0, color: theme.muted, fontSize: 14 }}>
-                No projects yet in this root.
-              </p>
-            )}
+            <AsyncList
+              isLoading={projectsQuery.isLoading}
+              items={projectsQuery.data?.projects}
+              emptyText="No projects yet in this root."
+              loadingText="Loading projects..."
+              renderItem={(project) => (
+                <button
+                  key={project.project_id}
+                  type="button"
+                  onClick={() => onProjectCreated(project.project_id)}
+                  style={{
+                    textAlign: "left",
+                    border: `1px solid ${theme.border}`,
+                    borderRadius: 12,
+                    padding: 14,
+                    background: theme.canvasSoft,
+                    cursor: "pointer",
+                  }}
+                >
+                  <div style={{ fontWeight: 600, marginBottom: 4 }}>{project.name}</div>
+                  <div style={{ fontSize: 12, color: theme.muted }}>{project.project_id}</div>
+                </button>
+              )}
+            />
           </section>
         </section>
       </div>

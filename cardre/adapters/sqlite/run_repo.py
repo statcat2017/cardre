@@ -254,6 +254,23 @@ class RunRepo:
             out.append(data)
         return out
 
+    def get_diagnostics_for_project(self, project_id: str) -> list[dict[str, Any]]:
+        """All diagnostics for a project in one query (avoids N+1 in list endpoints)."""
+        out: list[dict[str, Any]] = []
+        for row in self._conn.execute(
+            "SELECT d.* FROM diagnostics d "
+            "JOIN runs r ON d.run_id = r.run_id "
+            "JOIN plan_versions pv ON r.plan_version_id = pv.plan_version_id "
+            "JOIN plans p ON pv.plan_id = p.plan_id "
+            "WHERE p.project_id = ? ORDER BY d.created_at",
+            (project_id,),
+        ).fetchall():
+            data = dict(row)
+            ctx = json.loads(data.pop("context_json", "{}")) if data.get("context_json") else {}
+            data.update(ctx)
+            out.append(data)
+        return out
+
     def list_for_plan_version(self, plan_version_id: str | None = None) -> list[Run]:
         if plan_version_id is None:
             rows = self._conn.execute("SELECT * FROM runs ORDER BY started_at DESC").fetchall()

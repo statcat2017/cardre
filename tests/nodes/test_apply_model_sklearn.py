@@ -27,6 +27,7 @@ from cardre.domain.artifacts import ArtifactRef, json_logical_hash
 from cardre.domain.evidence.kinds import EvidenceKind
 from cardre.domain.run import RunStepStatus
 from cardre.domain.step import StepSpec
+from cardre.nodes._params import NodeParams
 
 
 class _NullRepo:
@@ -84,7 +85,7 @@ def test_decision_tree_fit_then_apply_through_step_runner(tmp_path: Path):
     # --- Fit the tree through the real node ---
     fit_spec = StepSpec(
         step_id="fit-1", node_type="cardre.decision_tree_classifier",
-        node_version="1", category="fit", params={"max_depth": 2, "random_seed": 42},
+        node_version="1", category="fit", params=NodeParams({"max_depth": 2, "random_seed": 42}),
         params_hash=json_logical_hash({"max_depth": 2, "random_seed": 42}),
         parent_step_ids=[], branch_label="", position=0, canonical_step_id="fit",
     )
@@ -95,7 +96,7 @@ def test_decision_tree_fit_then_apply_through_step_runner(tmp_path: Path):
         run_id="run-1", plan_version_id="plan-1", step_spec=fit_spec,
         inputs=_TrainInputs(store, train_ref),
         outputs=tree_outputs,
-        params={"max_depth": 2, "random_seed": 42},
+        params=NodeParams({"max_depth": 2, "random_seed": 42}),
         runtime=RuntimeMeta("run-1", "plan-1", "fit-1", "cardre.decision_tree_classifier"),
     )
     DecisionTreeNode().run(tree_context)
@@ -110,7 +111,7 @@ def test_decision_tree_fit_then_apply_through_step_runner(tmp_path: Path):
 
     apply_spec = StepSpec(
         step_id="apply-1", node_type="cardre.apply_model",
-        node_version="2", category="apply", params={},
+        node_version="2", category="apply", params=NodeParams({}),
         params_hash="params-hash",
         parent_step_ids=["fit-1", "split-1"], branch_label="", position=1, canonical_step_id="apply",
     )
@@ -259,7 +260,7 @@ def test_gbdt_family_is_supported_for_apply(tmp_path: Path):
 
     apply_spec = StepSpec(
         step_id="apply-1", node_type="cardre.apply_model",
-        node_version="2", category="apply", params={}, params_hash="h",
+        node_version="2", category="apply", params=NodeParams({}), params_hash="h",
         parent_step_ids=["fit-1", "split-1"], branch_label="", position=1, canonical_step_id="apply",
     )
     result = runner.run_step(

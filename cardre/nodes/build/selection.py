@@ -4,6 +4,7 @@ from typing import Any
 
 from cardre.domain.evidence.kinds import EvidenceKind
 from cardre.domain.evidence.schemas import SCHEMA_SELECTION_DEFINITION
+from cardre.nodes._evidence_utils import load_iv_map
 from cardre.nodes.build.selection_policy import (
     ClusterPolicy,
     ManualOverridePolicy,
@@ -165,14 +166,7 @@ class VariableSelectionNode(NodeType):
         manual_includes = {v["variable"]: v["reason"] for v in manual_entries_raw}
         manual_excludes = {v["variable"]: v["reason"] for v in manual_excludes_raw}
 
-        iv_list = context.inputs.by_kind(EvidenceKind.IV_TABLE)
-        if not iv_list:
-            raise ValueError("No IV table found")
-        iv_table = iv_list[0]
-        iv_map: dict[str, float] = {}
-        iv_df = iv_table.dataframe.collect()
-        for row in iv_df.iter_rows():
-            iv_map[str(row[0])] = float(row[1])
+        iv_map = load_iv_map(context.inputs)
 
         clustering_list = context.inputs.by_kind(EvidenceKind.VARIABLE_CLUSTERING)
         clustering_evidence = clustering_list[0] if clustering_list else None

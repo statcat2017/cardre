@@ -60,6 +60,12 @@ class StepInputCollection:
             raise ValueError(f"{node_type} requires a '{role}' artifact")
         return art  # type: ignore[no-any-return]
 
+    def require_kind(self, kind: EvidenceKind, node_type: str) -> ArtifactRef:
+        arts = self.by_kind(kind)
+        if not arts:
+            raise ValueError(f"{node_type}: no input artifact of kind {kind.value}")
+        return arts[0]  # type: ignore[no-any-return]
+
     def read(self, artifact: ArtifactRef, kind: EvidenceKind) -> Any:
         return self._reader.read(artifact.artifact_id, kind)
 

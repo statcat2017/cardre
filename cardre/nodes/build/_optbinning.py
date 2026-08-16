@@ -8,12 +8,10 @@ from cardre.domain.binning.definition import SCHEMA_BIN_DEFINITION, LifecycleBin
 from cardre.domain.binning.diagnostics import run_all as run_diagnostics
 from cardre.domain.binning.optbinning_adapter import fit_variables
 from cardre.domain.evidence.kinds import EvidenceKind
+from cardre.nodes._reporting import NUMERIC_DTYPES
 from cardre.nodes.contracts import NodeContext, NodeResult
 
-_NUMERIC_TYPES = {
-    pl.Float64, pl.Float32, pl.Int64, pl.Int32,
-    pl.Int16, pl.Int8, pl.UInt64, pl.UInt32, pl.UInt16, pl.UInt8,
-}
+_NUMERIC_TYPES = set(NUMERIC_DTYPES)
 
 
 def _resolve_train_input(context: NodeContext):

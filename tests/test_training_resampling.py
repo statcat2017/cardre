@@ -21,6 +21,7 @@ from cardre.application.execution.input_collection import TargetMeta
 from cardre.application.execution.output_publisher import StagingOutputPublisher
 from cardre.domain.evidence.kinds import EvidenceKind
 from cardre.domain.step import StepSpec
+from cardre.nodes._params import NodeParams
 from cardre.nodes.contracts import NodeContext, RuntimeMeta
 
 RESAMPLE_NODE_TYPE = "cardre.resample_training_data"
@@ -120,7 +121,7 @@ def _make_context(
         node_type=node_type,
         node_version="1",
         category="transform",
-        params=params,
+        params=NodeParams(params),
         params_hash="hash",
         parent_step_ids=[],
         canonical_step_id="resample-step",
@@ -131,7 +132,7 @@ def _make_context(
         step_spec=spec,
         inputs=FakeInputs(train_artifact, frame),
         outputs=StagingOutputPublisher(store),
-        params=params,
+        params=NodeParams(params),
         runtime=RuntimeMeta("run-1", "plan-1", "resample-step", node_type),
     )
 

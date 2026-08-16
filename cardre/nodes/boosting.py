@@ -12,6 +12,7 @@ from typing import Any, cast
 import polars as pl
 
 from cardre.nodes._classifier_base import BaseClassifierNode, _ClassifierResult
+from cardre.nodes._classifier_result import FEATURE_STRATEGIES, interpretability_block
 from cardre.nodes.contracts import ArtifactContract, ArtifactRoleSpec, NodeDefinition
 from cardre.nodes.parameters import (
     MethodOption,
@@ -63,7 +64,7 @@ class XGBoostClassifierNode(BaseClassifierNode):
                             kind="enum",
                             default="raw_numeric",
                             constraint=ParameterConstraint(
-                                enum_values=["raw_numeric", "encoded_raw", "woe_challenger"],
+                                enum_values=list(FEATURE_STRATEGIES),
                             ),
                             help_text="Strategy for handling input features.",
                         ),
@@ -157,13 +158,11 @@ class XGBoostClassifierNode(BaseClassifierNode):
                 "estimator_count": n_estimators,
                 "learning_rate": learning_rate,
             },
-            interpretability={
-                "explanation_type": "feature_importance",
-                "explanation_level": "native_semi_transparent",
-                "native_importance_available": True,
-                "limitations": limitations,
-                "global_importance_fields": ["feature_importance"],
-            },
+            interpretability=interpretability_block(
+                explanation_type="feature_importance",
+                explanation_level="native_semi_transparent",
+                limitations=limitations,
+            ),
             training_params={
                 "n_estimators": n_estimators,
                 "max_depth": max_depth,
@@ -205,7 +204,7 @@ class LightGBMClassifierNode(BaseClassifierNode):
                             kind="enum",
                             default="raw_numeric",
                             constraint=ParameterConstraint(
-                                enum_values=["raw_numeric", "encoded_raw", "woe_challenger"],
+                                enum_values=list(FEATURE_STRATEGIES),
                             ),
                             help_text="Strategy for handling input features.",
                         ),
@@ -302,13 +301,11 @@ class LightGBMClassifierNode(BaseClassifierNode):
                 "estimator_count": n_estimators,
                 "learning_rate": learning_rate,
             },
-            interpretability={
-                "explanation_type": "feature_importance",
-                "explanation_level": "native_semi_transparent",
-                "native_importance_available": True,
-                "limitations": limitations,
-                "global_importance_fields": ["feature_importance"],
-            },
+            interpretability=interpretability_block(
+                explanation_type="feature_importance",
+                explanation_level="native_semi_transparent",
+                limitations=limitations,
+            ),
             training_params={
                 "n_estimators": n_estimators,
                 "max_depth": max_depth,
@@ -350,7 +347,7 @@ class CatBoostClassifierNode(BaseClassifierNode):
                             kind="enum",
                             default="raw_numeric",
                             constraint=ParameterConstraint(
-                                enum_values=["raw_numeric", "encoded_raw", "woe_challenger"],
+                                enum_values=list(FEATURE_STRATEGIES),
                             ),
                             help_text="Strategy for handling input features.",
                         ),
@@ -443,13 +440,11 @@ class CatBoostClassifierNode(BaseClassifierNode):
                 "estimator_count": iterations,
                 "learning_rate": learning_rate,
             },
-            interpretability={
-                "explanation_type": "feature_importance",
-                "explanation_level": "native_semi_transparent",
-                "native_importance_available": True,
-                "limitations": limitations,
-                "global_importance_fields": ["feature_importance"],
-            },
+            interpretability=interpretability_block(
+                explanation_type="feature_importance",
+                explanation_level="native_semi_transparent",
+                limitations=limitations,
+            ),
             training_params={
                 "iterations": iterations,
                 "depth": depth,

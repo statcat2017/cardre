@@ -22,6 +22,7 @@ from cardre.application.execution.output_publisher import StagingOutputPublisher
 from cardre.domain.artifacts import ArtifactRef
 from cardre.domain.evidence.schemas import SCHEMA_MODELLING_METADATA
 from cardre.domain.step import StepSpec
+from cardre.nodes._params import NodeParams
 from cardre.nodes.build.models import LogisticRegressionNode
 from cardre.nodes.contracts import NodeContext, RuntimeMeta
 
@@ -160,13 +161,13 @@ def test_logistic_regression_model_artifact_shape(
         node_type="cardre.logistic_regression",
         node_version="1",
         category="fit",
-        params={
+        params=NodeParams({
             "solver": "lbfgs",
             "C": 1.0,
             "max_iter": 1000,
             "random_seed": 42,
             "fail_on_non_convergence": True,
-        },
+        }),
         params_hash="dummy",
         parent_step_ids=[],
         canonical_step_id="lr-1",
@@ -192,13 +193,13 @@ def test_logistic_regression_model_artifact_shape(
             step_spec=step_spec,
             inputs=input_collection,
             outputs=output_publisher,
-            params={
+            params=NodeParams({
                 "solver": "lbfgs",
                 "C": 1.0,
                 "max_iter": 1000,
                 "random_seed": 42,
                 "fail_on_non_convergence": True,
-            },
+            }),
             runtime=RuntimeMeta(
                 run_id="run-1",
                 plan_version_id="pv-1",

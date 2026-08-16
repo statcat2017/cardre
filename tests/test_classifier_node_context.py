@@ -6,6 +6,7 @@ import polars as pl
 
 from cardre.domain.evidence.kinds import EvidenceKind
 from cardre.domain.step import StepSpec
+from cardre.nodes._params import NodeParams
 from cardre.nodes.contracts import NodeContext, NodeResult, RuntimeMeta
 from cardre.nodes.ml_models import DecisionTreeNode
 from cardre.nodes.tuning import HyperparameterTuningNode
@@ -81,7 +82,7 @@ def test_decision_tree_node_uses_node_context_staged_outputs():
         node_type="cardre.decision_tree_classifier",
         node_version="1",
         category="fit",
-        params={},
+        params=NodeParams({}),
         params_hash="params-hash",
         parent_step_ids=[],
         canonical_step_id="fit-1",
@@ -93,7 +94,7 @@ def test_decision_tree_node_uses_node_context_staged_outputs():
         step_spec=step_spec,
         inputs=_Inputs(),
         outputs=outputs,
-        params={"max_depth": 1, "random_seed": 42},
+        params=NodeParams({"max_depth": 1, "random_seed": 42}),
         runtime=RuntimeMeta(
             run_id="run-1",
             plan_version_id="plan-1",
@@ -125,7 +126,7 @@ def test_tuning_node_uses_node_context_staged_outputs():
         node_type="cardre.hyperparameter_tuning",
         node_version="1",
         category="fit",
-        params=params,
+        params=NodeParams(params),
         params_hash="params-hash",
         parent_step_ids=[],
         canonical_step_id="tune-1",
@@ -137,7 +138,7 @@ def test_tuning_node_uses_node_context_staged_outputs():
         step_spec=step_spec,
         inputs=_Inputs(),
         outputs=outputs,
-        params=params,
+        params=NodeParams(params),
         runtime=RuntimeMeta(
             run_id="run-1",
             plan_version_id="plan-1",

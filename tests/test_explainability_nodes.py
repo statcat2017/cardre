@@ -4,6 +4,7 @@ from types import SimpleNamespace
 
 from cardre.domain.step import StepSpec
 from cardre.modeling.schema import ModelArtifactV1
+from cardre.nodes._params import NodeParams
 from cardre.nodes.contracts import NodeContext, NodeResult, RuntimeMeta
 from cardre.nodes.explainability import ModelExplainabilityNode, ModelLimitationsNode
 
@@ -47,7 +48,7 @@ def _context(node_type, inputs, outputs, params):
         node_type=node_type,
         node_version="1",
         category="report",
-        params=params,
+        params=NodeParams(params),
         params_hash="test",
         parent_step_ids=[],
         canonical_step_id="explain-1",
@@ -58,7 +59,7 @@ def _context(node_type, inputs, outputs, params):
         step_spec=step_spec,
         inputs=inputs,
         outputs=outputs,
-        params=params,
+        params=NodeParams(params),
         runtime=RuntimeMeta(
             run_id="run-1",
             plan_version_id="plan-1",
