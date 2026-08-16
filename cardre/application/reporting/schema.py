@@ -417,53 +417,6 @@ class ReportSummary(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# Canonical audit manifest
-# ---------------------------------------------------------------------------
-
-
-class RunManifestStep(BaseModel):
-    step_id: str
-    canonical_step_id: str = ""
-    branch_id: str | None = None
-    node_type: str = ""
-    node_version: str = ""
-    category: str = ""
-    status: str = ""
-    action: str = ""
-    is_carried_forward: bool = False
-    started_at: str = ""
-    finished_at: str | None = None
-    params: dict[str, Any] = Field(default_factory=dict)
-    params_hash: str = ""
-    parent_step_ids: list[str] = Field(default_factory=list)
-    input_artifact_ids: list[str] = Field(default_factory=list)
-    output_artifact_ids: list[str] = Field(default_factory=list)
-    warnings: list[dict[str, Any]] = Field(default_factory=list)
-    errors: list[dict[str, Any]] = Field(default_factory=list)
-    execution_fingerprint: dict[str, Any] = Field(default_factory=dict)
-
-
-class RunManifest(BaseModel):
-    manifest_version: str = "cardre.run_manifest.v1"
-    manifest_hash: str = ""
-    run_id: str
-    plan_version_id: str
-    plan_id: str = ""
-    project_id: str = ""
-    branch_id: str | None = None
-    started_at: str = ""
-    finished_at: str | None = None
-    status: str = ""
-    execution_mode: str = "unknown"
-    cardre_version: str = "0.1.0"
-    pathway_hash: str = ""
-    artifact_root: str = ""
-    in_scope_step_ids: list[str] = Field(default_factory=list)
-    steps: list[RunManifestStep] = Field(default_factory=list)
-    diagnostics: list[dict[str, Any]] = Field(default_factory=list)
-
-
-# ---------------------------------------------------------------------------
 # Run status + diagnostics
 # ---------------------------------------------------------------------------
 

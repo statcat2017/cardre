@@ -7,13 +7,13 @@ import joblib
 import numpy as np
 import polars as pl
 
+from cardre.domain.binning.woe import MissingWoePolicy, apply_woe_columns
 from cardre.domain.diagnostics import JsonDict
 from cardre.domain.evidence.kinds import EvidenceKind
 from cardre.domain.evidence.schemas import (
     SCHEMA_APPLY_MODEL_EVIDENCE,
     SCHEMA_APPLY_WOE_EVIDENCE,
 )
-from cardre.nodes._bin_mask import build_bin_condition
 from cardre.nodes.contracts import (
     ArtifactContract,
     ArtifactRoleSpec,
@@ -151,41 +151,25 @@ class ApplyWoeMappingNode(NodeType):
             woe_columns_created: list[str] = []
             variables_applied: list[str] = []
 
-            for vd in var_defs:
-                var = vd.variable
-                kind = vd.kind
-                bins = vd.bins
-                if var not in df.columns:
-                    continue
-                woe_col = f"{var}_woe"
-                woe_expr: Any = None
-
-                for be in bins:
-                    bid = be["bin_id"]
-
-                    mask = build_bin_condition(be, pl.col(var), kind, bins, variable=var, bin_id=bid)
-
-                    wv = woe_map.get(var, {}).get(bid)
-                    if wv is None:
-                        raise ValueError(f"apply_woe_mapping: missing WOE for {var}:{bid}")
-                    wc = pl.when(mask).then(pl.lit(wv))
-                    woe_expr = wc if woe_expr is None else woe_expr.when(mask).then(pl.lit(wv))
-
-                if woe_expr is not None:
-                    woe_expr = woe_expr.otherwise(pl.lit(None, dtype=pl.Float64))
-                    df = df.with_columns(woe_expr.alias(woe_col))
-                    woe_columns_created.append(woe_col)
-                    variables_applied.append(var)
-                    n_unmatched = df.filter(pl.col(woe_col).is_null()).height
-                    if n_unmatched > 0:
-                        fallback_counts[var] = n_unmatched
-                        unmatched_total += n_unmatched
-                        if woe_unmatched_policy == "fail":
-                            raise ValueError(
-                                f"apply_woe_mapping: {n_unmatched} rows in role={role!r} "
-                                f"variable={var!r} did not match any bin"
-                            )
-                        df = df.with_columns(pl.col(woe_col).fill_null(0.0))
+            df, woe_columns_created = apply_woe_columns(
+                df,
+                var_defs,
+                lambda var, bid: woe_map.get(var, {}).get(bid),
+                policy=MissingWoePolicy.RAISE,
+            )
+            variables_applied = [c[: -len("_woe")] for c in woe_columns_created]
+            for woe_col in woe_columns_created:
+                var = woe_col[: -len("_woe")]
+                n_unmatched = df.filter(pl.col(woe_col).is_null()).height
+                if n_unmatched > 0:
+                    fallback_counts[var] = n_unmatched
+                    unmatched_total += n_unmatched
+                    if woe_unmatched_policy == "fail":
+                        raise ValueError(
+                            f"apply_woe_mapping: {n_unmatched} rows in role={role!r} "
+                            f"variable={var!r} did not match any bin"
+                        )
+                    df = df.with_columns(pl.col(woe_col).fill_null(0.0))
 
             out_art = context.outputs.publish_table(
                 role=role, kind=EvidenceKind.SCORED_DATASET,

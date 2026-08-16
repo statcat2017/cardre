@@ -17,6 +17,7 @@ from cardre.domain.artifacts import ArtifactRef
 from cardre.domain.evidence.kinds import EvidenceKind
 from cardre.domain.evidence.schemas import SCHEMA_MODEL_ARTIFACT
 from cardre.domain.step import StepSpec
+from cardre.nodes._params import NodeParams
 from cardre.nodes.contracts import NodeContext, RuntimeMeta
 from cardre.nodes.validate.apply import ApplyModelNode
 
@@ -93,7 +94,7 @@ def _context(inputs: Any, outputs: Any) -> NodeContext:
         node_type="cardre.apply_model",
         node_version="2",
         category="apply",
-        params={},
+        params=NodeParams({}),
         params_hash="params-hash",
         parent_step_ids=[],
         canonical_step_id="apply-1",
@@ -104,7 +105,7 @@ def _context(inputs: Any, outputs: Any) -> NodeContext:
         step_spec=spec,
         inputs=inputs,
         outputs=outputs,
-        params={},
+        params=NodeParams({}),
         runtime=RuntimeMeta("run-1", "plan-1", "apply-1", "cardre.apply_model"),
     )
 
@@ -293,7 +294,7 @@ def test_apply_model_partial_inputs_through_step_runner(tmp_path: Path):
         node_type="cardre.apply_model",
         node_version="2",
         category="apply",
-        params={},
+        params=NodeParams({}),
         params_hash="params-hash",
         parent_step_ids=["parent-1"],
         canonical_step_id="apply-1",

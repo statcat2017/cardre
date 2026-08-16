@@ -27,6 +27,7 @@ from cardre.domain.artifacts import ArtifactRef
 from cardre.domain.evidence.kinds import EvidenceKind
 from cardre.domain.evidence.schemas import SCHEMA_MODEL_ARTIFACT, SCHEMA_WOE_TABLE
 from cardre.domain.step import StepSpec
+from cardre.nodes._params import NodeParams
 from cardre.nodes.build._logit_helpers import POINTS_ROUND, WOE_ROUND
 from cardre.nodes.build.models import ScoreScalingNode
 from cardre.nodes.contracts import NodeContext, RuntimeMeta
@@ -64,7 +65,7 @@ def _context(inputs: Any, outputs: Any, params: dict) -> NodeContext:
         node_type="cardre.score_scaling",
         node_version="1",
         category="fit",
-        params=params,
+        params=NodeParams(params),
         params_hash="params-hash",
         parent_step_ids=[],
         canonical_step_id="score-scaling-1",
@@ -75,7 +76,7 @@ def _context(inputs: Any, outputs: Any, params: dict) -> NodeContext:
         step_spec=spec,
         inputs=inputs,
         outputs=outputs,
-        params=params,
+        params=NodeParams(params),
         runtime=RuntimeMeta("run-1", "plan-1", "score-scaling-1", "cardre.score_scaling"),
     )
 

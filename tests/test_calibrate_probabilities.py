@@ -13,6 +13,7 @@ from cardre.application.execution.output_publisher import StagingOutputPublisher
 from cardre.domain.evidence.kinds import EvidenceKind
 from cardre.domain.step import StepSpec
 from cardre.modeling.schema import ModelArtifactV1
+from cardre.nodes._params import NodeParams
 from cardre.nodes.calibrate import CalibrateProbabilitiesNode, _supports_folded_linear_calibration
 from cardre.nodes.contracts import NodeContext, NodeResult, RuntimeMeta
 
@@ -56,7 +57,7 @@ def _context(inputs, outputs, params):
         node_type="cardre.calibrate_probabilities",
         node_version="1",
         category="fit",
-        params=params,
+        params=NodeParams(params),
         params_hash="test",
         parent_step_ids=[],
         canonical_step_id="calibrate-1",
@@ -67,7 +68,7 @@ def _context(inputs, outputs, params):
         step_spec=step_spec,
         inputs=inputs,
         outputs=outputs,
-        params=params,
+        params=NodeParams(params),
         runtime=RuntimeMeta(
             run_id="run-1",
             plan_version_id="plan-1",

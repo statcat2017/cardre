@@ -6,6 +6,7 @@ import polars as pl
 
 from cardre.domain.binning.definition import SCHEMA_BIN_DEFINITION, LifecycleBinDefinition
 from cardre.domain.evidence.kinds import EvidenceKind
+from cardre.nodes._reporting import NUMERIC_DTYPES
 from cardre.nodes.build._fine_classing_categorical import bin_categorical
 from cardre.nodes.build._fine_classing_numeric import bin_numeric
 from cardre.nodes.contracts import NodeContext, NodeResult
@@ -64,10 +65,7 @@ def run_fine_classing(context: NodeContext) -> NodeResult:
 
     for col in feature_cols:
         col_dtype = df.schema[col]
-        is_numeric = col_dtype in (
-            pl.Float64, pl.Float32, pl.Int64, pl.Int32,
-            pl.Int16, pl.Int8, pl.UInt64, pl.UInt32, pl.UInt16, pl.UInt8,
-        )
+        is_numeric = col_dtype in NUMERIC_DTYPES
 
         if is_numeric:
             bins = bin_numeric(df, col, target_column, good_values, bad_values,

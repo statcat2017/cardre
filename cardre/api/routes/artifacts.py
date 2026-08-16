@@ -13,7 +13,7 @@ router = APIRouter(prefix="/projects/{project_id}", tags=["artifacts"])
 
 
 @router.get("/artifacts/{artifact_id}", response_model=ArtifactResponse)
-async def get_artifact(project_id: str, artifact_id: str, container=Depends(get_container)):
+def get_artifact(project_id: str, artifact_id: str, container=Depends(get_container)):
     with container.uow_factory.read_only(project_id) as uow:
         art = uow.artifacts.get(artifact_id)
     if art is None:

@@ -11,6 +11,7 @@ from cardre.application.execution.output_publisher import StagingOutputPublisher
 from cardre.domain.artifacts import ArtifactRef
 from cardre.domain.evidence.kinds import EvidenceKind
 from cardre.domain.step import StepSpec
+from cardre.nodes._params import NodeParams
 from cardre.nodes.contracts import NodeContext, RuntimeMeta
 from cardre.nodes.ml_models import DecisionTreeNode
 
@@ -65,7 +66,7 @@ def _run_decision_tree(tmp_path: Path):
         node_type="cardre.decision_tree_classifier",
         node_version="1",
         category="fit",
-        params={"max_depth": 1, "random_seed": 42},
+        params=NodeParams({"max_depth": 1, "random_seed": 42}),
         params_hash="params-hash",
         parent_step_ids=[],
         canonical_step_id="fit-1",
@@ -76,7 +77,7 @@ def _run_decision_tree(tmp_path: Path):
         step_spec=spec,
         inputs=_Inputs(),
         outputs=outputs,
-        params={"max_depth": 1, "random_seed": 42},
+        params=NodeParams({"max_depth": 1, "random_seed": 42}),
         runtime=RuntimeMeta(
             run_id="run-1",
             plan_version_id="plan-1",

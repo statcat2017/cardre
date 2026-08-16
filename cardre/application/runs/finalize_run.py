@@ -23,6 +23,8 @@ from cardre.domain.diagnostics import JsonDict
 from cardre.domain.errors import CardreError
 from cardre.domain.manifest import (
     MANIFEST_VERSION,
+    RunManifest,
+    RunManifestStep,
     compute_manifest_hash,
     compute_pathway_hash,
 )
@@ -278,25 +280,23 @@ class FinalizeRun:
 
         step_ids = [s["step_id"] for s in steps]
 
-        payload: JsonDict = {
-            "manifest_version": MANIFEST_VERSION,
-            "run_id": run_id,
-            "plan_version_id": plan_version_id,
-            "plan_id": plan_id,
-            "project_id": project_id,
-            "branch_id": branch_id,
-            "started_at": started_at,
-            "finished_at": self._clock.now_iso(),
-            "status": status,
-            "execution_mode": "full_plan" if branch_id is None else "branch",
-            "cardre_version": __version__,
-            "pathway_hash": "",
-            "artifact_root": "",
-            "in_scope_step_ids": step_ids,
-            "steps": steps,
-            "diagnostics": diagnostics,
-        }
-        return payload
+        manifest = RunManifest(
+            manifest_version=MANIFEST_VERSION,
+            run_id=run_id,
+            plan_version_id=plan_version_id,
+            plan_id=plan_id,
+            project_id=project_id,
+            branch_id=branch_id,
+            started_at=started_at,
+            finished_at=self._clock.now_iso(),
+            status=status,
+            execution_mode="full_plan" if branch_id is None else "branch",
+            cardre_version=__version__,
+            in_scope_step_ids=step_ids,
+            steps=[RunManifestStep(**s) for s in steps],
+            diagnostics=diagnostics,
+        )
+        return manifest.to_dict()
 
 
 class RunAlreadyFinalised(CardreError):

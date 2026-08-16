@@ -11,6 +11,7 @@ import polars as pl
 from cardre.domain.diagnostics import JsonDict
 from cardre.domain.evidence.kinds import EvidenceKind
 from cardre.domain.step import StepSpec
+from cardre.nodes._params import NodeParams
 from cardre.nodes.parameters import NodeParameterSchema
 
 
@@ -59,6 +60,7 @@ class InputCollection(Protocol):
     def by_kind(self, kind: EvidenceKind) -> list[Any]: ...
     def first(self, role: str) -> Any | None: ...
     def require(self, role: str, node_type: str) -> Any: ...
+    def require_kind(self, kind: EvidenceKind, node_type: str) -> Any: ...
     def read(self, artifact: Any, kind: EvidenceKind) -> Any: ...
     def read_optional(self, artifact: Any, kind: EvidenceKind) -> Any | None: ...
     def read_dataframe(self, artifact: Any) -> pl.DataFrame: ...
@@ -99,7 +101,7 @@ class NodeContext:
     step_spec: StepSpec
     inputs: InputCollection
     outputs: OutputPublisher
-    params: JsonDict
+    params: NodeParams
     runtime: RuntimeMeta
 
 

@@ -5,9 +5,10 @@ from typing import Any, cast
 import numpy as np
 import polars as pl
 
+from cardre.domain.binning.woe import MissingWoePolicy, apply_woe_columns
 from cardre.domain.evidence.kinds import EvidenceKind, EvidenceNotFoundError
 from cardre.domain.evidence.schemas import SCHEMA_VARIABLE_CLUSTERING_EVIDENCE
-from cardre.nodes._bin_mask import build_bin_condition
+from cardre.nodes._evidence_utils import load_iv_map
 from cardre.nodes.contracts import (
     ArtifactContract,
     ArtifactRoleSpec,
@@ -243,34 +244,14 @@ class VariableClusteringNode(NodeType):
 
     def _build_woe_columns(
         self, df: pl.DataFrame, bin_def: Any, woe_table: Any,
-    ) -> list[pl.Expr]:
-        woe_exprs: list[pl.Expr] = []
-        for var_def in bin_def.variables:
-            variable = var_def.variable
-            kind = var_def.kind
-            bins = var_def.bins
-
-            if variable not in df.columns:
-                continue
-
-            woe_expr: Any = None
-            for bin_entry in bins:
-                bin_id = bin_entry["bin_id"]
-                woe_val = woe_table.mapping.get(variable, {}).get(bin_id)
-                if woe_val is None:
-                    continue
-                mask_expr = build_bin_condition(
-                    bin_entry, pl.col(variable), kind, bins,
-                    variable=variable, bin_id=bin_id,
-                )
-                when_clause = pl.when(mask_expr).then(pl.lit(woe_val))
-                woe_expr = when_clause if woe_expr is None else woe_expr.when(mask_expr).then(pl.lit(woe_val))
-
-            if woe_expr is not None:
-                woe_expr = woe_expr.otherwise(pl.lit(None, dtype=pl.Float64))
-                woe_exprs.append(woe_expr.alias(f"{variable}_woe"))
-
-        return woe_exprs
+    ) -> tuple[pl.DataFrame, list[str]]:
+        woe_df, woe_cols = apply_woe_columns(
+            df,
+            bin_def.variables,
+            lambda variable, bin_id: woe_table.mapping.get(variable, {}).get(bin_id),
+            policy=MissingWoePolicy.SKIP_BIN,
+        )
+        return woe_df, woe_cols
 
     @staticmethod
     def _tie_aware_rank(values: np.ndarray) -> np.ndarray:
@@ -609,20 +590,7 @@ class VariableClusteringNode(NodeType):
         return context.outputs.build_result()
 
     def _load_iv_map(self, inputs: InputCollection) -> dict[str, float]:
-        iv_map: dict[str, float] = {}
-        try:
-            iv_list = inputs.by_kind(EvidenceKind.IV_TABLE)
-            iv_table = iv_list[0] if iv_list else None
-        except (KeyError, TypeError):
-            iv_table = None
-        if iv_table is not None:
-            try:
-                iv_df = iv_table.dataframe.collect()
-                for row in iv_df.iter_rows():
-                    iv_map[str(row[0])] = float(row[1])
-            except (KeyError, TypeError):
-                iv_map = {}
-        return iv_map
+        return load_iv_map(inputs, required=False)
 
     def _load_binning_artifacts(
         self, inputs: InputCollection, input_representation: str,
@@ -704,10 +672,8 @@ class VariableClusteringNode(NodeType):
                     "message": "WOE train representation requested but bin definition or WOE table not found; using singleton pass-through on raw variables",
                 })
                 return clusters_out, singleton_variables, warnings_list
-            woe_exprs = self._build_woe_columns(df, bin_def, woe_table)
-            if woe_exprs:
-                woe_df = df.with_columns(woe_exprs)
-                woe_cols = [str(e.meta.output_name) for e in woe_exprs]
+            woe_df, woe_cols = self._build_woe_columns(df, bin_def, woe_table)
+            if woe_cols:
                 woe_cols = [c for c in woe_cols if c.replace("_woe", "") in candidates]
                 woe_cols = woe_cols[:candidate_limit]
                 if len(woe_cols) < 2:

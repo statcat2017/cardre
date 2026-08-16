@@ -7,6 +7,7 @@ import polars as pl
 
 from cardre.domain.evidence.kinds import EvidenceKind
 from cardre.domain.step import StepSpec
+from cardre.nodes._params import NodeParams
 from cardre.nodes.contracts import NodeContext, NodeResult, RuntimeMeta
 from cardre.nodes.fairness import (
     AlternativeDataManifestNode,
@@ -103,7 +104,7 @@ def make_context(inputs: FakeInputs, outputs: FakeOutputs, params: dict[str, Any
         node_type="test.node",
         node_version="1",
         category="test",
-        params=params,
+        params=NodeParams(params),
         params_hash="hash",
         parent_step_ids=[],
         canonical_step_id="step",
@@ -114,7 +115,7 @@ def make_context(inputs: FakeInputs, outputs: FakeOutputs, params: dict[str, Any
         step_spec=spec,
         inputs=inputs,
         outputs=outputs,
-        params=params,
+        params=NodeParams(params),
         runtime=RuntimeMeta("run", "plan", "step", "test.node"),
     )
 

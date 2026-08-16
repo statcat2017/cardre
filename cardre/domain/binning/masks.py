@@ -1,4 +1,8 @@
-"""Shared bin-mask construction for WOE and apply nodes."""
+"""Shared bin-mask construction for WOE and apply nodes.
+
+Pure polars logic — lives in ``domain`` so both build and validate stream
+nodes can use it without crossing the nodes/domain boundary.
+"""
 
 from __future__ import annotations
 

@@ -1,5 +1,6 @@
 import type { components } from "../api/schema.d";
 import { theme, pageCardStyle } from "../styles";
+import { AsyncList } from "./AsyncList";
 
 type Plan = Pick<components["schemas"]["PlanResponse"], "plan_id" | "name">;
 type Run = Pick<components["schemas"]["RunResponse"], "run_id" | "status">;
@@ -33,8 +34,6 @@ export function PlanSidebar({
   effectiveSelectedRunId,
   onSelectRun,
 }: Props) {
-  const displayRuns = runs;
-
   return (
     <aside style={{ ...pageCardStyle, padding: 16, display: "grid", gap: 16 }}>
       <div>
@@ -75,10 +74,12 @@ export function PlanSidebar({
         </form>
 
         <div style={{ display: "grid", gap: 8 }}>
-          {plansLoading ? (
-            <div style={{ color: theme.muted, fontSize: 14 }}>Loading plans...</div>
-          ) : plans?.length ? (
-            plans.map((plan) => (
+          <AsyncList
+            isLoading={plansLoading}
+            items={plans}
+            emptyText="No plans yet."
+            loadingText="Loading plans..."
+            renderItem={(plan) => (
               <button
                 key={plan.plan_id}
                 type="button"
@@ -96,18 +97,16 @@ export function PlanSidebar({
                 <div style={{ fontWeight: 600 }}>{plan.name}</div>
                 <div style={{ color: theme.muted, fontSize: 12 }}>{plan.plan_id}</div>
               </button>
-            ))
-          ) : (
-            <div style={{ color: theme.muted, fontSize: 14 }}>No plans yet.</div>
-          )}
+            )}
+          />
         </div>
       </div>
 
       <div>
         <h2 style={{ margin: "0 0 10px", fontSize: 16 }}>Runs</h2>
         <div style={{ display: "grid", gap: 8 }}>
-          {displayRuns.length > 0 ? (
-            displayRuns.map((run) => (
+          {runs.length > 0 ? (
+            runs.map((run) => (
               <button
                 key={run.run_id}
                 type="button"

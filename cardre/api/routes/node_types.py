@@ -12,7 +12,7 @@ router = APIRouter(prefix="/projects/{project_id}", tags=["node-types"])
 
 
 @router.get("/node-types", response_model=NodeTypeListResponse)
-async def list_node_types(project_id: str, container=Depends(get_container)):
+def list_node_types(project_id: str, container=Depends(get_container)):
     catalogue = container.node_catalogue
     node_types = [
         node_type_to_response(

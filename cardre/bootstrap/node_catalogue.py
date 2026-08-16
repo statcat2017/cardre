@@ -42,8 +42,8 @@ def _probe_optional_dep(group: str) -> bool:
     return True
 
 
-def _resolve_tier(cls: type[NodeType]) -> NodeTier:
-    if getattr(cls, "_deferred", False):
+def _resolve_tier(cls: type[NodeType], deferred_types: set[str]) -> NodeTier:
+    if cls.node_type in deferred_types:
         return "deferred"
     return getattr(cls, "tier", "launch")
 
@@ -53,8 +53,10 @@ class NodeCatalogue:
         self,
         settings: Settings,
         node_classes: list[type[NodeType]],
+        deferred_types: set[str] | None = None,
     ) -> None:
         self._settings = settings
+        self._deferred_types = deferred_types or set()
         self._nodes: dict[str, type[NodeType]] = {}
         for cls in node_classes:
             node_type = getattr(cls, "node_type", None)
@@ -81,7 +83,7 @@ class NodeCatalogue:
                 tier="unknown",
                 disabled_reason=f"Unknown node type {node_type!r}.",
             )
-        tier = _resolve_tier(cls)
+        tier = _resolve_tier(cls, self._deferred_types)
 
         dep_groups = getattr(cls, "optional_dependencies", None) or ()
         missing = [g for g in dep_groups if not _probe_optional_dep(g)]
@@ -134,7 +136,7 @@ class NodeCatalogue:
     def list_types_by_tier(self, tier: NodeTier) -> list[str]:
         return [
             nt for nt, cls in self._nodes.items()
-            if _resolve_tier(cls) == tier
+            if _resolve_tier(cls, self._deferred_types) == tier
         ]
 
     def list_launch_types(self) -> list[str]:
@@ -142,11 +144,6 @@ class NodeCatalogue:
 
     def list_deferred_types(self) -> list[str]:
         return self.list_types_by_tier("deferred")
-
-
-def _deferred(cls: type[NodeType]) -> type[NodeType]:
-    cls._deferred = True
-    return cls
 
 
 def build_default_catalogue(settings: Settings) -> NodeCatalogue:
@@ -270,7 +267,7 @@ def build_default_catalogue(settings: Settings) -> NodeCatalogue:
         ThresholdOptimizationNode,
     ]
 
-    for n in deferred_nodes:
-        _deferred(n)
+    deferred_types = {cls.node_type for cls in deferred_nodes}
+    assert not (set(launch_nodes) & set(deferred_nodes)), "node registered in both tiers"
 
-    return NodeCatalogue(settings, launch_nodes + deferred_nodes)
+    return NodeCatalogue(settings, launch_nodes + deferred_nodes, deferred_types=deferred_types)
