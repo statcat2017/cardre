@@ -135,7 +135,11 @@ def test_apply_model_node_applies_runtime_calibration(tmp_path: Path):
         data=cal_bytes,
         media_type="application/octet-stream",
         logical_hash=__import__("hashlib").sha256(cal_bytes).hexdigest(),
-        metadata={"schema_version": SCHEMA_MODEL_ARTIFACT},
+        metadata={
+            "schema_version": SCHEMA_MODEL_ARTIFACT,
+            "creating_run_id": "run-1",
+            "creating_run_step_id": "fit-1",
+        },
     )
 
     model_dict: dict[str, Any] = {
@@ -231,12 +235,12 @@ def test_apply_model_partial_inputs_pass_input_contract(tmp_path: Path):
     for staged in (model_staged, data_staged):
         store.finalize(staged)
 
-    from cardre.nodes.validate.apply import __definition_apply_model
+    from cardre.nodes.validate.apply import ApplyModelNode
 
     # The framework-level check must accept model+test only (this is what
     # StepRunner runs before node.run()).
     validate_input_contract(
-        __definition_apply_model.input_contract,
+        ApplyModelNode.__definition__.input_contract,
         [_staged_to_ref(model_staged), _staged_to_ref(data_staged)],
         node_type="cardre.apply_model",
         step_id="apply-1",
