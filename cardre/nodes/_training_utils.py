@@ -1,17 +1,13 @@
 from __future__ import annotations
 
-import hashlib
-import io
 from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
-import joblib
 import numpy as np
 import polars as pl
 
-from cardre.domain.evidence.kinds import EvidenceKind
-from cardre.nodes.contracts import InputCollection, OutputPublisher
+from cardre.nodes.contracts import InputCollection
 
 INTERNAL_COLUMN_PREFIX = "_"
 
@@ -135,80 +131,4 @@ def prepare_supervised_training_data(
         bad_values=frozenset(target_spec.bad_values),
         y_binary=y_binary,
         metadata=meta,
-    )
-
-
-def _estimator_parts(
-    clf: Any,
-    step_id: str,
-    run_id: str,
-    model_family: str,
-) -> tuple[bytes, str, dict[str, Any]]:
-    """Serialize a fitted estimator and return ``(bytes, sha256, metadata)``.
-
-    The descriptor id of the eventual staged artifact is deterministic from
-    these parts, so the JSON model artifact can reference the estimator id
-    *before* the binary is staged — letting callers publish the JSON model
-    first (matching the historical role-consumer ordering).
-    """
-    buf = io.BytesIO()
-    joblib.dump(clf, buf)
-    estimator_bytes = buf.getvalue()
-    logical_hash = hashlib.sha256(estimator_bytes).hexdigest()
-    metadata = {
-        "estimator_format": "joblib",
-        "byte_count": len(estimator_bytes),
-        "creating_run_id": run_id,
-        "creating_run_step_id": step_id,
-        "model_family": model_family,
-    }
-    return estimator_bytes, logical_hash, metadata
-
-
-def _model_binary_descriptor_id(
-    data: bytes,
-    logical_hash: str,
-    metadata: dict[str, Any],
-) -> str:
-    """Compute the descriptor id the store will assign to a binary estimator.
-
-    Used for estimator blobs (classifier/tuning nodes) and the calibrator
-    blob so the JSON model artifact can reference the binary's id before it is
-    staged. The binary is published under the distinct ``estimator`` role
-    (media ``application/octet-stream``), separate from the JSON ``model``
-    role, so the descriptor id must use that role to match what the store
-    assigns on publication.
-    """
-    from cardre.domain.artifacts import descriptor_id
-
-    kind_value = EvidenceKind.MODEL_ARTIFACT.value
-    return descriptor_id(
-        artifact_type=kind_value.split(".")[-1] if "." in kind_value else kind_value,
-        role="estimator",
-        media_type="application/octet-stream",
-        kind=kind_value,
-        schema_version=str(metadata.get("schema_version", "")),
-        logical_hash=logical_hash,
-        physical_hash=hashlib.sha256(data).hexdigest(),
-        metadata=metadata,
-    )
-
-
-def _write_estimator(
-    outputs: OutputPublisher,
-    clf: Any,
-    step_id: str,
-    run_id: str,
-    model_family: str,
-) -> Any:
-    estimator_bytes, logical_hash, metadata = _estimator_parts(
-        clf, step_id, run_id, model_family,
-    )
-    return outputs.publish_bytes(
-        role="estimator",
-        kind=EvidenceKind.MODEL_ARTIFACT,
-        data=estimator_bytes,
-        media_type="application/octet-stream",
-        logical_hash=logical_hash,
-        metadata=metadata,
     )

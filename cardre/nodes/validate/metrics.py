@@ -14,6 +14,7 @@ from cardre.domain.diagnostics import JsonDict
 from cardre.domain.errors import NodeFailedWithArtifacts
 from cardre.domain.evidence.kinds import EvidenceKind
 from cardre.domain.evidence.schemas import SCHEMA_VALIDATION_METRICS
+from cardre.nodes._samples import sample_bundle
 from cardre.nodes.contracts import (
     ArtifactContract,
     ArtifactRoleSpec,
@@ -49,6 +50,27 @@ class ValidationMetricsNode(NodeType):
     node_type = "cardre.validation_metrics"
     version = "2"
     category = "apply"
+
+    __definition__ = NodeDefinition(
+        node_type="cardre.validation_metrics",
+        version="2",
+        category="apply",
+        description="Compute validation metrics (AUC, KS, Gini, precision, recall, F1, G-Mean) at given cutoffs",
+        input_contract=ArtifactContract(
+            # No role is hard-required: the node processes whichever datasets are
+            # supplied and gates on presence via params (require_test/require_oot).
+            roles=(
+                ArtifactRoleSpec("train", required=False),
+                ArtifactRoleSpec("test", required=False),
+                ArtifactRoleSpec("oot", required=False),
+                ArtifactRoleSpec("definition", required=False),
+                ArtifactRoleSpec("report", required=False),
+            ),
+        ),
+        output_contract=ArtifactContract(
+            roles=(ArtifactRoleSpec("report", required=True),),
+        ),
+    )
 
     @classmethod
     def parameter_schema(cls) -> NodeParameterSchema:
@@ -149,10 +171,7 @@ class ValidationMetricsNode(NodeType):
         score_evidence_arts = context.inputs.by_kind(EvidenceKind.APPLY_MODEL_EVIDENCE)
         score_evidence_art = score_evidence_arts[0] if score_evidence_arts else None
 
-        train_arts = context.inputs.by_role("train")
-        test_arts = context.inputs.by_role("test")
-        oot_arts = context.inputs.by_role("oot")
-        data_arts = train_arts + test_arts + oot_arts
+        data_arts = sample_bundle(context.inputs)
 
         roles_metrics, psi_data, gates = self._compute_role_metrics(
             context.inputs, data_arts, target_col, set(good), set(bad), bad_list,
@@ -433,26 +452,3 @@ class ValidationMetricsNode(NodeType):
             payload["score_application_evidence_artifact_id"] = score_evidence_art.source_artifact_id
         return payload
 
-
-__definition__ = NodeDefinition(
-    node_type=ValidationMetricsNode.node_type,
-    version=ValidationMetricsNode.version,
-    category=ValidationMetricsNode.category,
-    description="Compute validation metrics (AUC, KS, Gini, precision, recall, F1, G-Mean) at given cutoffs",
-    input_contract=ArtifactContract(
-        # No role is hard-required: the node processes whichever datasets are
-        # supplied and gates on presence via params (require_test/require_oot).
-        roles=(
-            ArtifactRoleSpec("train", required=False),
-            ArtifactRoleSpec("test", required=False),
-            ArtifactRoleSpec("oot", required=False),
-            ArtifactRoleSpec("definition", required=False),
-            ArtifactRoleSpec("report", required=False),
-        ),
-    ),
-    output_contract=ArtifactContract(
-        roles=(ArtifactRoleSpec("report", required=True),),
-    ),
-)
-
-ValidationMetricsNode.__definition__ = __definition__

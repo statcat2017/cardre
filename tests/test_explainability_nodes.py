@@ -1,72 +1,10 @@
 from __future__ import annotations
 
-from types import SimpleNamespace
+from node_harness import FakeArtifact, FakeInputCollection, FakeOutputPublisher, make_context
 
-from cardre.domain.step import StepSpec
+from cardre.domain.evidence.kinds import EvidenceKind
 from cardre.modeling.schema import ModelArtifactV1
-from cardre.nodes._params import NodeParams
-from cardre.nodes.contracts import NodeContext, NodeResult, RuntimeMeta
 from cardre.nodes.explainability import ModelExplainabilityNode, ModelLimitationsNode
-
-
-class _Inputs:
-    def __init__(self, model):
-        self.model = model
-        self.model_artifact = SimpleNamespace(role="model", artifact_id="model-1")
-
-    def require(self, role, node_type):
-        if role != "model":
-            raise ValueError(f"{node_type} requires a {role!r} artifact")
-        return self.model_artifact
-
-    def read(self, artifact, kind):
-        return self.model
-
-    def first(self, role):
-        return None
-
-
-class _Outputs:
-    def __init__(self):
-        self.payloads = []
-        self.metrics = {}
-
-    def publish_json(self, **kwargs):
-        self.payloads.append(kwargs)
-        return SimpleNamespace(artifact_id="report-1", logical_hash="report-hash")
-
-    def add_metric(self, name, value):
-        self.metrics[name] = value
-
-    def build_result(self):
-        return NodeResult(metrics=self.metrics)
-
-
-def _context(node_type, inputs, outputs, params):
-    step_spec = StepSpec(
-        step_id="explain-1",
-        node_type=node_type,
-        node_version="1",
-        category="report",
-        params=NodeParams(params),
-        params_hash="test",
-        parent_step_ids=[],
-        canonical_step_id="explain-1",
-    )
-    return NodeContext(
-        run_id="run-1",
-        plan_version_id="plan-1",
-        step_spec=step_spec,
-        inputs=inputs,
-        outputs=outputs,
-        params=NodeParams(params),
-        runtime=RuntimeMeta(
-            run_id="run-1",
-            plan_version_id="plan-1",
-            step_id="explain-1",
-            node_type=node_type,
-        ),
-    )
 
 
 def _model():
@@ -84,29 +22,32 @@ def _model():
     })
 
 
-def test_explainability_node_publishes_report_through_node_context():
-    outputs = _Outputs()
-    result = ModelExplainabilityNode().run(_context(
-        "cardre.model_explainability",
-        _Inputs(_model()),
-        outputs,
-        {},
-    ))
+def _run(node, params):
+    model = _model()
+    model_art = FakeArtifact(role="model", artifact_id="model-1")
+    inputs = FakeInputCollection(
+        roles={"model": [model_art]},
+        evidence={EvidenceKind.MODEL_ARTIFACT: model},
+    )
+    outputs = FakeOutputPublisher()
+    context = make_context(
+        inputs, outputs, params, node_type=node.node_type, step_id="explain-1",
+    )
+    result = node.run(context)
+    return outputs, result
 
-    assert outputs.payloads[0]["kind"].value == "explainability_report"
-    assert outputs.payloads[0]["payload"]["explanation_type"] == "coefficients"
+
+def test_explainability_node_publishes_report_through_node_context():
+    node = ModelExplainabilityNode()
+    outputs, result = _run(node, {})
+    report = outputs.by_kind(EvidenceKind.EXPLAINABILITY_REPORT)[0]
+    assert report.payload["explanation_type"] == "coefficients"
     assert result.metrics == {"model_family": "logistic_regression"}
 
 
 def test_limitations_node_publishes_report_through_node_context():
-    outputs = _Outputs()
-    result = ModelLimitationsNode().run(_context(
-        "cardre.model_limitations",
-        _Inputs(_model()),
-        outputs,
-        {"accepted_limitations": []},
-    ))
-
-    assert outputs.payloads[0]["kind"].value == "explainability_report"
-    assert outputs.payloads[0]["payload"]["overall_status"] == "pass"
+    node = ModelLimitationsNode()
+    outputs, result = _run(node, {"accepted_limitations": []})
+    report = outputs.by_kind(EvidenceKind.EXPLAINABILITY_REPORT)[0]
+    assert report.payload["overall_status"] == "pass"
     assert result.metrics == {"overall_status": "pass"}

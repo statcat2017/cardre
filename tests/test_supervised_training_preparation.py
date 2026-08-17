@@ -7,18 +7,12 @@ integration is exercised through existing executor and classifier tests.
 
 from __future__ import annotations
 
-import hashlib
-from types import SimpleNamespace
-
 import numpy as np
 import polars as pl
 import pytest
-from sklearn.tree import DecisionTreeClassifier
 
-from cardre.domain.evidence.kinds import EvidenceKind
 from cardre.nodes._training_utils import (
     SupervisedTrainingData,
-    _write_estimator,
     resolve_supervised_feature_columns,
 )
 
@@ -162,34 +156,3 @@ class TestSupervisedTrainingData:
         )
         features = data.feature_columns({"exclude_columns": ["second_feature"]})
         assert "second_feature" not in features
-
-
-class TestWriteEstimator:
-    def test_stages_joblib_estimator_through_output_publisher(self):
-        class Outputs:
-            def publish_bytes(self, **kwargs):
-                self.published = kwargs
-                return SimpleNamespace(provisional_artifact_id="estimator-artifact")
-
-        outputs = Outputs()
-        artifact = _write_estimator(
-            outputs,
-            DecisionTreeClassifier(),
-            step_id="fit-1",
-            run_id="run-1",
-            model_family="decision_tree",
-        )
-
-        published = outputs.published
-        assert artifact.provisional_artifact_id == "estimator-artifact"
-        assert published["role"] == "estimator"
-        assert published["kind"] is EvidenceKind.MODEL_ARTIFACT
-        assert published["media_type"] == "application/octet-stream"
-        assert published["logical_hash"] == hashlib.sha256(published["data"]).hexdigest()
-        assert published["metadata"] == {
-            "estimator_format": "joblib",
-            "byte_count": len(published["data"]),
-            "creating_run_id": "run-1",
-            "creating_run_step_id": "fit-1",
-            "model_family": "decision_tree",
-        }
