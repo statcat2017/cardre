@@ -13,6 +13,11 @@ bytes, **verify** the published `logical_hash` against the bytes' SHA-256, and
 untrusted binaries is the only trust policy — there is no "unverified" or
 "skip-hash-check" load path, on any stream.
 
+A reference that **omits or malforms** `logical_hash` is rejected *before* any
+bytes are read or deserialised: verification is not optional, and "I could not
+verify" must fail closed, not fall through to an unverified deserialise. The
+value must be a well-formed SHA-256 hex digest.
+
 ## Context
 
 Estimators are published as two Artifacts sharing one descriptor family: a
@@ -63,13 +68,18 @@ leans toward a single, closed trust policy over a per-call flag.
 
 - The single estimator-load module owns the trust policy; callers cannot opt
   out. A future node that needs an unverified load must reopen this ADR.
+- The load module rejects a reference with a missing or malformed `logical_hash`
+  before reading bytes — a model JSON that omits the hash fails the load rather
+  than silently deserialising an unverifiable binary.
 - `cardre/nodes/validate/apply.py` gains hash verification + `creating_run_id`
   enforcement on both its estimator load and its runtime-calibrator load. Any
   test fixture that stages a binary without `creating_run_id` metadata will
   now fail to load and must be updated to carry the metadata.
 - The publish side is unchanged: the JSON-must-precede-bytes ordering and the
   `creating_run_id`-on-publish requirement already hold and are recorded in
-  `CONTEXT.md`.
+  `CONTEXT.md`. Publish-side estimator metadata identity is preserved for
+  calibrators (no `model_family` field is added), so byte-identical
+  calibrators keep the same descriptor id as before centralisation.
 - This ADR should be revisited if a legitimate unverified-load need appears
   (e.g. loading a third-party estimator with no provenance metadata); the
   resolution must be recorded in a new ADR.

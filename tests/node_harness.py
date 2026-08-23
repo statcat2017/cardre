@@ -197,10 +197,18 @@ class FakeInputCollection:
         return None
 
     def artifact_ref(self, artifact_id, *, physical_hash=None):
+        # Mirror production StepInputCollection.artifact_ref: resolve by ID
+        # first, then fall back to the physical hash (deduplicated artifacts
+        # may carry a different canonical ID than the embedded provisional one).
         for arts in self._roles.values():
             for a in arts:
                 if getattr(a, "artifact_id", None) == artifact_id:
                     return a
+        if physical_hash:
+            for arts in self._roles.values():
+                for a in arts:
+                    if getattr(a, "physical_hash", None) == physical_hash:
+                        return a
         return None
 
 

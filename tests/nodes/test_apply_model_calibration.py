@@ -158,6 +158,7 @@ def test_apply_model_node_applies_runtime_calibration(tmp_path: Path):
             "score_scaling_compatible": False,
             "cross_validated": False,
             "calibrator_artifact_id": cal_staged.provisional_artifact_id,
+            "calibrator_logical_hash": cal_staged.logical_hash,
             "calibrator_format": "joblib",
         },
     }

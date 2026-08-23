@@ -523,7 +523,6 @@ class CalibrateProbabilitiesNode(NodeType):
                 calibrator,
                 step_id=context.runtime.step_id,
                 run_id=context.run_id,
-                model_family="probability_calibrator",
                 metadata={
                     "schema_version": SCHEMA_MODEL_ARTIFACT,
                     "artifact_subtype": "probability_calibrator",

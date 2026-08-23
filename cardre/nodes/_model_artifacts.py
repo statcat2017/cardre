@@ -31,6 +31,8 @@ from cardre.nodes.contracts import InputCollection, OutputPublisher
 
 ESTIMATOR_ROLE = "estimator"
 ESTIMATOR_MEDIA_TYPE = "application/octet-stream"
+_SHA256_HEX_LENGTH = 64
+_HEX_DIGITS = frozenset("0123456789abcdefABCDEF")
 
 
 @dataclass(frozen=True)
@@ -76,7 +78,7 @@ def publish_estimator(
     *,
     step_id: str,
     run_id: str,
-    model_family: str,
+    model_family: str | None = None,
     metadata: JsonDict | None = None,
 ) -> EstimatorRef:
     """Serialise *estimator* and return an ``EstimatorRef`` the model JSON cites.
@@ -85,6 +87,9 @@ def publish_estimator(
     first (citing ``EstimatorRef.provisional_artifact_id``), then calls
     :func:`stage_estimator_bytes`. *metadata* is merged over the base estimator
     metadata (e.g. ``schema_version``, ``artifact_subtype`` for a calibrator).
+    ``model_family`` is added to the metadata (and thus participates in the
+    descriptor identity) only when supplied — a calibrator that historically
+    carried no ``model_family`` field keeps its identity unchanged.
     """
     buf = io.BytesIO()
     joblib.dump(estimator, buf)
@@ -96,8 +101,9 @@ def publish_estimator(
         "byte_count": len(estimator_bytes),
         "creating_run_id": run_id,
         "creating_run_step_id": step_id,
-        "model_family": model_family,
     }
+    if model_family is not None:
+        merged["model_family"] = model_family
     if metadata:
         merged.update(metadata)
 
@@ -131,13 +137,24 @@ def load_estimator(
     """Resolve, verify and deserialise the estimator a model JSON references.
 
     Returns ``None`` when no reference is embedded or the referenced artifact
-    is not among the step's inputs. Raises ``ValueError`` when the binary fails
-    hash verification or lacks ``creating_run_id`` provenance — load
-    verification is mandatory and there is no unverified path (ADR-0016).
+    is not among the step's inputs. Raises ``ValueError`` when the reference
+    lacks a valid SHA-256 ``logical_hash``, when the bytes fail hash
+    verification, or when the artifact lacks ``creating_run_id`` provenance.
+    Load verification is mandatory and there is no unverified path (ADR-0016):
+    a missing ``logical_hash`` is rejected *before* any bytes are read or
+    deserialised.
     """
     artifact_id = estimator_reference.get("artifact_id", "")
     if not artifact_id:
         return None
+
+    expected_hash = estimator_reference.get("logical_hash") or ""
+    if not _is_sha256_hex(expected_hash):
+        raise ValueError(
+            f"Estimator reference for artifact {artifact_id!r} carries an invalid "
+            f"or missing logical_hash ({expected_hash!r}); refusing to load an "
+            "unverifiable binary (ADR-0016)."
+        )
 
     physical_hash = estimator_reference.get("physical_hash") or None
     estimator_art = inputs.artifact_ref(artifact_id, physical_hash=physical_hash)
@@ -145,9 +162,8 @@ def load_estimator(
         return None
 
     estimator_bytes = inputs.read_bytes(estimator_art)
-    expected_hash = estimator_reference.get("logical_hash")
     actual_hash = hashlib.sha256(estimator_bytes).hexdigest()
-    if expected_hash and actual_hash != expected_hash:
+    if actual_hash != expected_hash:
         raise ValueError(
             f"Estimator artifact hash mismatch: expected {expected_hash!r}, "
             f"got {actual_hash!r}. The artifact may have been tampered with."
@@ -161,6 +177,15 @@ def load_estimator(
         )
 
     return joblib.load(io.BytesIO(estimator_bytes))
+
+
+def _is_sha256_hex(value: str) -> bool:
+    """True when *value* is a 64-character lowercase hex SHA-256 digest."""
+    return (
+        len(value) == _SHA256_HEX_LENGTH
+        and all(ch in _HEX_DIGITS for ch in value)
+        and value == value.lower()
+    )
 
 
 __all__ = [

@@ -244,6 +244,7 @@ def test_gbdt_family_is_supported_for_apply(tmp_path: Path):
             "training": {"row_count": 6},
             "estimator_reference": {
                 "artifact_id": est_staged.provisional_artifact_id,
+                "logical_hash": est_hash,
                 "physical_hash": est_hash,
             },
         },
@@ -304,7 +305,13 @@ def test_load_estimator_falls_back_to_physical_hash(tmp_path: Path):
     # The model JSON embeds a *provisional* content-addressed ID that does NOT
     # match the canonical ref (deduped to a legacy UUID); only the physical hash
     # matches.
-    model = {"estimator_reference": {"artifact_id": "legacy-uuid", "physical_hash": est_hash}}
+    model = {
+        "estimator_reference": {
+            "artifact_id": "legacy-uuid",
+            "logical_hash": est_hash,
+            "physical_hash": est_hash,
+        },
+    }
 
     class _FallbackInputs:
         def artifact_ref(self, artifact_id, *, physical_hash=None):
@@ -355,6 +362,7 @@ def test_apply_runtime_calibration_falls_back_to_physical_hash(tmp_path: Path):
     calibration = {
         "calibrator_artifact_id": "legacy-cal-uuid",
         "calibrator_physical_hash": cal_hash,
+        "calibrator_logical_hash": cal_hash,
     }
 
     class _CalInputs:

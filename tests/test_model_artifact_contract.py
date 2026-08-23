@@ -114,6 +114,18 @@ class TestPublishOrderingAndRef:
         assert ref.metadata["method"] == "platt"
         assert ref.metadata["estimator_format"] == "joblib"
 
+    def test_calibrator_identity_preserved_without_model_family(self):
+        """A calibrator published without model_family keeps the metadata shape
+        it had before the centralisation, so its descriptor identity (which
+        hashes non-provenance metadata) is unchanged."""
+        est = _fitted()
+        calibrator_ref = publish_estimator(
+            est, step_id="fit-1", run_id="run-1",
+            metadata={"schema_version": "cardre.model_artifact.v1",
+                      "artifact_subtype": "probability_calibrator"},
+        )
+        assert "model_family" not in calibrator_ref.metadata
+
 
 # ---------------------------------------------------------------------------
 # Tier-2: round-trip through the real store
@@ -220,10 +232,59 @@ class TestMandatoryVerification:
             est, step_id="fit-1", run_id="run-1", model_family=MODEL_FAMILY,
         )
         inputs = FakeInputCollection()
+        # No embedded reference at all.
         assert load_estimator(inputs, {}, node_type="test") is None
+        # Reference present with a valid hash, but the artifact is not among
+        # the step inputs.
         assert load_estimator(
-            inputs, {"artifact_id": ref.provisional_artifact_id}, node_type="test",
+            inputs,
+            {
+                "artifact_id": ref.provisional_artifact_id,
+                "logical_hash": ref.logical_hash,
+            },
+            node_type="test",
         ) is None
+
+    def test_refuses_missing_logical_hash(self):
+        """Regression: a reference without a logical_hash must be rejected
+        before any bytes are read/deserialised — there is no unverified path."""
+        est = _fitted()
+        outputs = FakeOutputPublisher()
+        ref = publish_estimator(
+            est, step_id="fit-1", run_id="run-1", model_family=MODEL_FAMILY,
+        )
+        staged = stage_estimator_bytes(outputs, ref)
+        art = _art(role="estimator", artifact_id=staged.artifact_id,
+                   metadata=dict(ref.metadata), data=ref.bytes)
+        inputs = FakeInputCollection(
+            roles={"estimator": [art]},
+            bytes_by_id={staged.artifact_id: ref.bytes},
+        )
+        with pytest.raises(ValueError, match="logical_hash"):
+            load_estimator(
+                inputs, {"artifact_id": staged.artifact_id}, node_type="test",
+            )
+
+    def test_refuses_invalid_logical_hash_shape(self):
+        est = _fitted()
+        outputs = FakeOutputPublisher()
+        ref = publish_estimator(
+            est, step_id="fit-1", run_id="run-1", model_family=MODEL_FAMILY,
+        )
+        staged = stage_estimator_bytes(outputs, ref)
+        art = _art(role="estimator", artifact_id=staged.artifact_id,
+                   metadata=dict(ref.metadata), data=ref.bytes)
+        inputs = FakeInputCollection(
+            roles={"estimator": [art]},
+            bytes_by_id={staged.artifact_id: ref.bytes},
+        )
+        for bad_hash in ("", "not-a-hash", "A" * 64, "a" * 63):
+            with pytest.raises(ValueError, match="logical_hash"):
+                load_estimator(
+                    inputs,
+                    {"artifact_id": staged.artifact_id, "logical_hash": bad_hash},
+                    node_type="test",
+                )
 
 
 # ---------------------------------------------------------------------------
@@ -248,6 +309,23 @@ class TestSampleBundle:
         assert sample_bundle(inputs) == []
 
 
+class TestHarnessArtifactRefFallback:
+    def test_falls_back_to_physical_hash(self):
+        """The harness adapter must mirror production StepInputCollection:
+        resolve by ID first, then fall back to the physical hash so a
+        deduplicated artifact with a different canonical ID is still found."""
+        art = _art(role="estimator", artifact_id="canonical-id")
+        art.physical_hash = "phys-hash"
+        inputs = FakeInputCollection(roles={"estimator": [art]})
+
+        # By ID.
+        assert inputs.artifact_ref("canonical-id") is art
+        # By physical hash when the embedded ID does not match.
+        assert inputs.artifact_ref("provisional-id", physical_hash="phys-hash") is art
+        # No match.
+        assert inputs.artifact_ref("provisional-id", physical_hash="other-hash") is None
+
+
 def _art(role: str, artifact_id: str | None = None, data: bytes | None = None,
-         logical_hash: str = "log"):
-    return FakeArtifact(role=role, artifact_id=artifact_id, data=data)
+         logical_hash: str = "log", metadata: dict | None = None):
+    return FakeArtifact(role=role, artifact_id=artifact_id, data=data, metadata=metadata)
