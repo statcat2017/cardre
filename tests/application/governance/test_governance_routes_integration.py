@@ -173,7 +173,7 @@ def test_create_branch_head_version_mismatch_rejected(governance_env, tmp_path):
             ]},
         },
     )
-    assert resp.status_code == 400, resp.text
+    assert resp.status_code == 409, resp.text
     assert resp.json()["detail"]["code"] == "STALE_HEAD_VERSION"
 
 

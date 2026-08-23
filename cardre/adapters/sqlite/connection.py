@@ -224,18 +224,18 @@ class SqliteUnitOfWorkFactory:
     def _open_conn(self, project_id: str) -> sqlite3.Connection:
         root = self._registry.resolve_root(project_id)
         if root is None:
-            from cardre.domain.errors import CardreError
+            from cardre.domain.errors import CardreError, ErrorCode
             raise CardreError(
                 f"Project {project_id!r} not found",
-                code="PROJECT_NOT_FOUND",
+                code=ErrorCode.PROJECT_NOT_FOUND,
                 context={"project_id": project_id},
             )
         db_path = root / "project.sqlite"
         if not db_path.exists():
-            from cardre.domain.errors import CardreError
+            from cardre.domain.errors import CardreError, ErrorCode
             raise CardreError(
                 f"Project database not found at {db_path}",
-                code="PROJECT_NOT_FOUND",
+                code=ErrorCode.PROJECT_NOT_FOUND,
                 context={"project_id": project_id, "path": str(db_path)},
             )
         conn = sqlite3.connect(str(db_path), timeout=30, check_same_thread=False)
@@ -247,10 +247,10 @@ class SqliteUnitOfWorkFactory:
 
     def _open_readonly_conn(self, db_path: Path) -> sqlite3.Connection:
         if not db_path.exists():
-            from cardre.domain.errors import CardreError
+            from cardre.domain.errors import CardreError, ErrorCode
             raise CardreError(
                 f"Project database not found at {db_path}",
-                code="PROJECT_NOT_FOUND",
+                code=ErrorCode.PROJECT_NOT_FOUND,
                 context={"path": str(db_path)},
             )
         uri = db_path.absolute().as_uri() + "?mode=ro"
@@ -268,10 +268,10 @@ class SqliteUnitOfWorkFactory:
     def for_root(self, root: Path) -> UnitOfWork:
         db_path = root / "project.sqlite"
         if not db_path.exists():
-            from cardre.domain.errors import CardreError
+            from cardre.domain.errors import CardreError, ErrorCode
             raise CardreError(
                 f"Project database not found at {db_path}",
-                code="PROJECT_NOT_FOUND",
+                code=ErrorCode.PROJECT_NOT_FOUND,
                 context={"path": str(db_path)},
             )
         conn = sqlite3.connect(str(db_path), timeout=30, check_same_thread=False)
@@ -284,10 +284,10 @@ class SqliteUnitOfWorkFactory:
     def read_only(self, project_id: str) -> ReadOnlyUnitOfWork:
         root = self._registry.resolve_root(project_id)
         if root is None:
-            from cardre.domain.errors import CardreError
+            from cardre.domain.errors import CardreError, ErrorCode
             raise CardreError(
                 f"Project {project_id!r} not found",
-                code="PROJECT_NOT_FOUND",
+                code=ErrorCode.PROJECT_NOT_FOUND,
                 context={"project_id": project_id},
             )
         db_path = root / "project.sqlite"

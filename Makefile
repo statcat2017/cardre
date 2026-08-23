@@ -51,6 +51,8 @@ preflight:
 	cd frontend && npm run build && npx tsc --noEmit
 	python3 scripts/generate-openapi-types.py
 	git diff --exit-code -- frontend/src/api/openapi.json frontend/src/api/schema.d.ts
+	python3 scripts/generate-error-codes.py
+	git diff --exit-code -- frontend/src/api/errorCodes.ts
 
 v2-phase-check:
 	bash scripts/v2-phase-check.sh "$(PHASE)"

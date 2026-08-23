@@ -54,7 +54,7 @@ class AssignChampion:
         if not command.assigned_reason.strip():
             raise CardreError(
                 "CHAMPION_REASON_REQUIRED: Champion assignment requires a non-empty rationale.",
-                code="CHAMPION_REASON_REQUIRED",
+                code=ErrorCode.CHAMPION_REASON_REQUIRED,
                 status_code=400,
             )
 
@@ -62,22 +62,22 @@ class AssignChampion:
             branch = uow.branches.get_branch(command.branch_id)
             if branch is None:
                 raise CardreError(
-                    f"CHAMPION_BRANCH_NOT_FOUND: No branch with ID {command.branch_id}",
-                    code="CHAMPION_BRANCH_NOT_FOUND",
+                    f"BRANCH_NOT_FOUND: champion branch ID {command.branch_id}",
+                    code=ErrorCode.BRANCH_NOT_FOUND,
                     context={"branch_id": command.branch_id},
                     status_code=404,
                 )
             if branch.get("status") != "active":
                 raise CardreError(
-                    f"CHAMPION_BRANCH_INACTIVE: Branch {command.branch_id} is not active.",
-                    code="CHAMPION_BRANCH_INACTIVE",
+                    f"BRANCH_NOT_ACTIVE: Branch {command.branch_id} is not active.",
+                    code=ErrorCode.BRANCH_NOT_ACTIVE,
                     context={"branch_id": command.branch_id},
                     status_code=400,
                 )
             if branch.get("project_id") != command.project_id or branch.get("plan_id") != command.plan_id:
                 raise CardreError(
                     f"CHAMPION_BRANCH_MISMATCH: Branch {command.branch_id} does not belong to plan {command.plan_id}.",
-                    code="CHAMPION_BRANCH_MISMATCH",
+                    code=ErrorCode.CHAMPION_BRANCH_MISMATCH,
                     context={"branch_id": command.branch_id, "plan_id": command.plan_id},
                     status_code=400,
                 )
@@ -86,7 +86,7 @@ class AssignChampion:
             if comparison is None:
                 raise CardreError(
                     f"COMPARISON_NOT_FOUND: {command.comparison_id}",
-                    code="COMPARISON_NOT_FOUND",
+                    code=ErrorCode.COMPARISON_NOT_FOUND,
                     context={"comparison_id": command.comparison_id},
                     status_code=404,
                 )
@@ -96,7 +96,7 @@ class AssignChampion:
                 raise CardreError(
                     f"COMPARISON_SNAPSHOT_NOT_FOUND: {command.comparison_snapshot_id} "
                     f"does not belong to comparison {command.comparison_id}.",
-                    code="COMPARISON_SNAPSHOT_NOT_FOUND",
+                    code=ErrorCode.COMPARISON_SNAPSHOT_NOT_FOUND,
                     context={"comparison_snapshot_id": command.comparison_snapshot_id, "comparison_id": command.comparison_id},
                     status_code=404,
                 )
@@ -105,7 +105,7 @@ class AssignChampion:
             if not readiness.get("ready", False):
                 raise CardreError(
                     "COMPARISON_NOT_READY: Comparison snapshot is not ready.",
-                    code="COMPARISON_NOT_READY",
+                    code=ErrorCode.COMPARISON_NOT_READY,
                     context={"comparison_snapshot_id": command.comparison_snapshot_id},
                     status_code=400,
                 )
@@ -128,7 +128,7 @@ class AssignChampion:
                 raise CardreError(
                     f"BRANCH_NOT_IN_COMPARISON: Branch {command.branch_id} is not included "
                     f"in comparison {command.comparison_id}.",
-                    code="BRANCH_NOT_IN_COMPARISON",
+                    code=ErrorCode.BRANCH_NOT_IN_COMPARISON,
                     context={"branch_id": command.branch_id, "comparison_id": command.comparison_id},
                     status_code=400,
                 )

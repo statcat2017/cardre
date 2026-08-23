@@ -134,7 +134,7 @@ class TestAssignChampion:
             uow.commit()
 
         use_case = AssignChampion(uow_factory)
-        with pytest.raises(CardreError, match="CHAMPION_BRANCH_NOT_FOUND"):
+        with pytest.raises(CardreError, match="champion branch ID nonexistent"):
             use_case(AssignChampionCommand(
                 project_id=project_id, plan_id=plan_id, branch_id="nonexistent",
                 comparison_id=comp_id, comparison_snapshot_id=snap_id,
@@ -151,7 +151,7 @@ class TestAssignChampion:
             uow.commit()
 
         use_case = AssignChampion(uow_factory)
-        with pytest.raises(CardreError, match="CHAMPION_BRANCH_INACTIVE"):
+        with pytest.raises(CardreError, match="is not active"):
             use_case(AssignChampionCommand(
                 project_id=project_id, plan_id=plan_id, branch_id=branch_id,
                 comparison_id=comp_id, comparison_snapshot_id=snap_id,

@@ -5,7 +5,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends
 
 from cardre.api.dependencies import get_container
-from cardre.api.errors import CardreApiError, ErrorCode, translate_domain_error
+from cardre.api.errors import CardreApiError, ErrorCode
 from cardre.api.mappers import plan_to_response, plan_version_to_response, step_spec_to_response
 from cardre.api.schemas import (
     CanonicalScorecardVersionRequest,
@@ -62,29 +62,25 @@ def create_canonical_scorecard_version(
         CreateCanonicalScorecardVersion,
         CreateCanonicalScorecardVersionCommand,
     )
-    from cardre.domain.errors import CardreError
 
-    try:
-        pv = CreateCanonicalScorecardVersion(
-            _uow_factory(container, project_id), container.node_catalogue,
-        )(
-            CreateCanonicalScorecardVersionCommand(
-                plan_id=plan_id,
-                source_path=body.source_path,
-                target_column=body.target_column,
-                good_values=body.good_values,
-                bad_values=body.bad_values,
-                product=body.product,
-                segment=body.segment,
-                observation_window=body.observation_window,
-                performance_window=body.performance_window,
-                reject_inference_position=body.reject_inference_position,
-                accept_automated=body.accept_automated,
-                smoothing=body.smoothing,
-            )
+    pv = CreateCanonicalScorecardVersion(
+        _uow_factory(container, project_id), container.node_catalogue,
+    )(
+        CreateCanonicalScorecardVersionCommand(
+            plan_id=plan_id,
+            source_path=body.source_path,
+            target_column=body.target_column,
+            good_values=body.good_values,
+            bad_values=body.bad_values,
+            product=body.product,
+            segment=body.segment,
+            observation_window=body.observation_window,
+            performance_window=body.performance_window,
+            reject_inference_position=body.reject_inference_position,
+            accept_automated=body.accept_automated,
+            smoothing=body.smoothing,
         )
-    except CardreError as exc:
-        raise translate_domain_error(exc) from exc
+    )
     return plan_version_to_response(pv)
 
 
@@ -132,15 +128,11 @@ def update_plan_version(project_id: str, plan_version_id: str, body: PlanVersion
         UpdatePlanVersion,
         UpdatePlanVersionCommand,
     )
-    from cardre.domain.errors import CardreError
 
     if body.description is not None:
-        try:
-            UpdatePlanVersion(_uow_factory(container, project_id))(
-                UpdatePlanVersionCommand(plan_version_id=plan_version_id, description=body.description)
-            )
-        except CardreError as exc:
-            raise translate_domain_error(exc) from exc
+        UpdatePlanVersion(_uow_factory(container, project_id))(
+            UpdatePlanVersionCommand(plan_version_id=plan_version_id, description=body.description)
+        )
     pv = GetPlanVersion(_read_uow_factory(container, project_id))(
         GetPlanVersionCommand(plan_version_id=plan_version_id)
     )
@@ -155,16 +147,12 @@ def commit_plan_version(project_id: str, plan_version_id: str, container=Depends
         CommitPlanVersion,
         CommitPlanVersionCommand,
     )
-    from cardre.domain.errors import CardreError
 
-    try:
-        committed = CommitPlanVersion(
-            _uow_factory(container, project_id), container.node_catalogue,
-        )(
-            CommitPlanVersionCommand(plan_version_id=plan_version_id)
-        )
-    except CardreError as exc:
-        raise translate_domain_error(exc) from exc
+    committed = CommitPlanVersion(
+        _uow_factory(container, project_id), container.node_catalogue,
+    )(
+        CommitPlanVersionCommand(plan_version_id=plan_version_id)
+    )
     return plan_version_to_response(committed)
 
 
@@ -181,18 +169,14 @@ def update_step_params(
         UpdateStepParams,
         UpdateStepParamsCommand,
     )
-    from cardre.domain.errors import CardreError
 
-    try:
-        UpdateStepParams(_uow_factory(container, project_id), container.node_catalogue)(
-            UpdateStepParamsCommand(
-                plan_version_id=plan_version_id,
-                step_id=step_id,
-                params=body.params,
-            )
+    UpdateStepParams(_uow_factory(container, project_id), container.node_catalogue)(
+        UpdateStepParamsCommand(
+            plan_version_id=plan_version_id,
+            step_id=step_id,
+            params=body.params,
         )
-    except CardreError as exc:
-        raise translate_domain_error(exc) from exc
+    )
     pv = GetPlanVersion(_read_uow_factory(container, project_id))(
         GetPlanVersionCommand(plan_version_id=plan_version_id)
     )

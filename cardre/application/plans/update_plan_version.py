@@ -21,10 +21,10 @@ class UpdatePlanVersion:
         try:
             existing = uow.plans.get_version(command.plan_version_id)
             if existing is None:
-                from cardre.domain.errors import CardreError
+                from cardre.domain.errors import CardreError, ErrorCode
                 raise CardreError(
                     f"Plan version {command.plan_version_id!r} not found.",
-                    code="PLAN_VERSION_NOT_FOUND",
+                    code=ErrorCode.PLAN_VERSION_NOT_FOUND,
                     context={"plan_version_id": command.plan_version_id},
                     status_code=404,
                 )

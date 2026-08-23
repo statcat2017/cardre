@@ -18,7 +18,7 @@ from cardre.application.ports.artifact_store import DurableArtifactWriter
 from cardre.application.reporting.contracts import REQUIRED_STEPS_COMPARISON
 from cardre.domain.artifacts import ArtifactRef
 from cardre.domain.diagnostics import utc_now_iso
-from cardre.domain.errors import CardreError, GovernanceNotEnabled
+from cardre.domain.errors import CardreError, ErrorCode, GovernanceNotEnabled
 from cardre.domain.evidence.kinds import EvidenceKind
 from cardre.domain.evidence.schemas import SCHEMA_COMPARISON_ARTIFACT
 
@@ -95,7 +95,7 @@ class RefreshComparison:
             if comparison is None:
                 raise CardreError(
                     f"COMPARISON_NOT_FOUND: {command.comparison_id}",
-                    code="COMPARISON_NOT_FOUND",
+                    code=ErrorCode.COMPARISON_NOT_FOUND,
                     context={"comparison_id": command.comparison_id},
                     status_code=404,
                 )
@@ -104,7 +104,7 @@ class RefreshComparison:
             if project_id != command.project_id:
                 raise CardreError(
                     "Comparison does not belong to the requested project.",
-                    code="COMPARISON_SCOPE_MISMATCH",
+                    code=ErrorCode.BRANCH_SCOPE_MISMATCH,
                     context={"comparison_id": command.comparison_id, "project_id": command.project_id},
                     status_code=404,
                 )
@@ -117,8 +117,8 @@ class RefreshComparison:
             baseline = uow.branches.get_branch(baseline_branch_id)
             if baseline is None:
                 raise CardreError(
-                    f"BASELINE_BRANCH_NOT_FOUND: {baseline_branch_id}",
-                    code="BASELINE_BRANCH_NOT_FOUND",
+                    f"BRANCH_NOT_FOUND: baseline {baseline_branch_id}",
+                    code=ErrorCode.BRANCH_NOT_FOUND,
                     context={"branch_id": baseline_branch_id},
                     status_code=404,
                 )

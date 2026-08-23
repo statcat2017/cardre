@@ -161,7 +161,7 @@ class GetRunManifest:
         if manifest is None:
             raise CardreError(
                 f"No manifest published for run {run_id!r}",
-                code="CANONICAL_MANIFEST_MISSING",
+                code=ErrorCode.CANONICAL_MANIFEST_MISSING,
                 context={"run_id": run_id},
                 status_code=404,
             )

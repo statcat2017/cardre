@@ -17,7 +17,7 @@ from cardre.application.ports.unit_of_work import UnitOfWork, UnitOfWorkFactory
 from cardre.application.reporting.contracts import ReportMode
 from cardre.application.reporting.generate_report import GenerateReport, GenerateReportCommand
 from cardre.domain.diagnostics import utc_now_iso
-from cardre.domain.errors import CardreError
+from cardre.domain.errors import CardreError, ErrorCode
 
 ROW_LEVEL_ARTIFACT_TYPES = {"dataset", "tabular"}
 
@@ -117,13 +117,13 @@ class ExportAuditPack:
         branch = uow.branches.get_branch(command.branch_id)
         plan = uow.plans.get_plan(command.plan_id)
         if project is None:
-            raise self._not_found("PROJECT_NOT_FOUND", command.project_id)
+            raise self._not_found(ErrorCode.PROJECT_NOT_FOUND, command.project_id)
         if plan is None or plan.project_id != command.project_id:
-            raise self._not_found("PLAN_NOT_FOUND", command.plan_id)
+            raise self._not_found(ErrorCode.PLAN_NOT_FOUND, command.plan_id)
         if branch is None:
-            raise self._not_found("BRANCH_NOT_FOUND", command.branch_id)
+            raise self._not_found(ErrorCode.BRANCH_NOT_FOUND, command.branch_id)
         if branch.get("project_id") != command.project_id or branch.get("plan_id") != command.plan_id:
-            raise CardreError("Branch does not belong to the requested project and plan.", code="BRANCH_SCOPE_MISMATCH", context={})
+            raise CardreError("Branch does not belong to the requested project and plan.", code=ErrorCode.BRANCH_SCOPE_MISMATCH, context={})
 
         head_plan_version_id = str(branch.get("head_plan_version_id") or "")
         step_map = uow.branches.get_step_map(command.branch_id, head_plan_version_id) if head_plan_version_id else []
@@ -134,7 +134,7 @@ class ExportAuditPack:
         if run_id is None:
             raise CardreError(
                 "Audit-pack exports require a successful branch or plan run.",
-                code="EXPORT_RUN_NOT_FOUND",
+                code=ErrorCode.EXPORT_RUN_NOT_FOUND,
                 context={"branch_id": command.branch_id, "plan_version_id": head_plan_version_id},
                 status_code=409,
             )
@@ -316,5 +316,5 @@ class ExportAuditPack:
             shutil.rmtree(backup, ignore_errors=True)
 
     @staticmethod
-    def _not_found(code: str, resource_id: str) -> CardreError:
+    def _not_found(code: ErrorCode, resource_id: str) -> CardreError:
         return CardreError(f"{code.replace('_', ' ').title()}: {resource_id}", code=code, context={})
