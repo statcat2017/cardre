@@ -90,6 +90,25 @@ class DecisionTreeNode(BaseClassifierNode):
     category = "fit"
     model_family = "decision_tree"
 
+    __definition__ = NodeDefinition(
+        node_type="cardre.decision_tree_classifier",
+        version="1",
+        category="fit",
+        description="Decision tree classifier — first non-logistic challenger",
+        input_contract=ArtifactContract(
+            roles=(
+                ArtifactRoleSpec("train", required=True),
+                ArtifactRoleSpec("definition", required=True),
+            ),
+        ),
+        output_contract=ArtifactContract(
+            roles=(
+                ArtifactRoleSpec("model", required=True),
+                ArtifactRoleSpec("estimator", required=True, media_types=("application/octet-stream",)),
+            ),
+        ),
+    )
+
     @classmethod
     def parameter_schema(cls) -> NodeParameterSchema:
         return NodeParameterSchema(
@@ -247,6 +266,25 @@ class RandomForestClassifierNode(BaseClassifierNode):
     version = "1"
     category = "fit"
     model_family = "random_forest"
+
+    __definition__ = NodeDefinition(
+        node_type="cardre.random_forest_classifier",
+        version="1",
+        category="fit",
+        description="Random forest classifier — semi-transparent ensemble challenger",
+        input_contract=ArtifactContract(
+            roles=(
+                ArtifactRoleSpec("train", required=True),
+                ArtifactRoleSpec("definition", required=True),
+            ),
+        ),
+        output_contract=ArtifactContract(
+            roles=(
+                ArtifactRoleSpec("model", required=True),
+                ArtifactRoleSpec("estimator", required=True, media_types=("application/octet-stream",)),
+            ),
+        ),
+    )
 
     @classmethod
     def parameter_schema(cls) -> NodeParameterSchema:
@@ -409,6 +447,25 @@ class GradientBoostingClassifierNode(BaseClassifierNode):
     category = "fit"
     model_family = "gbdt"
 
+    __definition__ = NodeDefinition(
+        node_type="cardre.gradient_boosting_classifier",
+        version="1",
+        category="fit",
+        description="Sklearn gradient boosting classifier — semi-transparent ensemble challenger",
+        input_contract=ArtifactContract(
+            roles=(
+                ArtifactRoleSpec("train", required=True),
+                ArtifactRoleSpec("definition", required=True),
+            ),
+        ),
+        output_contract=ArtifactContract(
+            roles=(
+                ArtifactRoleSpec("model", required=True),
+                ArtifactRoleSpec("estimator", required=True, media_types=("application/octet-stream",)),
+            ),
+        ),
+    )
+
     @classmethod
     def parameter_schema(cls) -> NodeParameterSchema:
         return NodeParameterSchema(
@@ -537,64 +594,3 @@ class GradientBoostingClassifierNode(BaseClassifierNode):
             extra_metrics={"estimator_count": n_estimators},
         )
 
-
-__definition__ = NodeDefinition(
-    node_type=DecisionTreeNode.node_type,
-    version=DecisionTreeNode.version,
-    category=DecisionTreeNode.category,
-    description="Decision tree classifier — first non-logistic challenger",
-    input_contract=ArtifactContract(
-        roles=(
-            ArtifactRoleSpec("train", required=True),
-            ArtifactRoleSpec("definition", required=True),
-        ),
-    ),
-    output_contract=ArtifactContract(
-        roles=(
-            ArtifactRoleSpec("model", required=True),
-            ArtifactRoleSpec("estimator", required=True, media_types=("application/octet-stream",)),
-        ),
-    ),
-)
-
-__definition_random_forest = NodeDefinition(
-    node_type=RandomForestClassifierNode.node_type,
-    version=RandomForestClassifierNode.version,
-    category=RandomForestClassifierNode.category,
-    description="Random forest classifier — semi-transparent ensemble challenger",
-    input_contract=ArtifactContract(
-        roles=(
-            ArtifactRoleSpec("train", required=True),
-            ArtifactRoleSpec("definition", required=True),
-        ),
-    ),
-    output_contract=ArtifactContract(
-        roles=(
-            ArtifactRoleSpec("model", required=True),
-            ArtifactRoleSpec("estimator", required=True, media_types=("application/octet-stream",)),
-        ),
-    ),
-)
-
-__definition_gbdt = NodeDefinition(
-    node_type=GradientBoostingClassifierNode.node_type,
-    version=GradientBoostingClassifierNode.version,
-    category=GradientBoostingClassifierNode.category,
-    description="Sklearn gradient boosting classifier — semi-transparent ensemble challenger",
-    input_contract=ArtifactContract(
-        roles=(
-            ArtifactRoleSpec("train", required=True),
-            ArtifactRoleSpec("definition", required=True),
-        ),
-    ),
-    output_contract=ArtifactContract(
-        roles=(
-            ArtifactRoleSpec("model", required=True),
-            ArtifactRoleSpec("estimator", required=True, media_types=("application/octet-stream",)),
-        ),
-    ),
-)
-
-DecisionTreeNode.__definition__ = __definition__
-RandomForestClassifierNode.__definition__ = __definition_random_forest
-GradientBoostingClassifierNode.__definition__ = __definition_gbdt
