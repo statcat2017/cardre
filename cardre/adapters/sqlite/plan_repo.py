@@ -146,5 +146,4 @@ class PlanRepo:
                 f"Step {step_id!r} not found on plan version {plan_version_id!r}.",
                 code=ErrorCode.STEP_NOT_FOUND,
                 context={"plan_version_id": plan_version_id, "step_id": step_id},
-                status_code=404,
             )

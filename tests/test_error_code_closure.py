@@ -13,7 +13,12 @@ from pathlib import Path
 import pytest
 
 from cardre.api.errors import _DOMAIN_ERROR_MAP
-from cardre.domain.errors import CardreError, ErrorCode, NodeFailedWithArtifacts
+from cardre.domain.errors import (
+    INTERNAL_ERROR_CODES,
+    CardreError,
+    ErrorCode,
+    NodeFailedWithArtifacts,
+)
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 CARDRE_ROOT = REPO_ROOT / "cardre"
@@ -92,6 +97,29 @@ def test_domain_error_map_codes_in_enum() -> None:
         assert code in ErrorCode, f"Map value-code {code!r} is not an ErrorCode member."
 
 
+def test_domain_error_map_statuses_are_int() -> None:
+    """Every map status is an int, and the key/value codes are ErrorCode."""
+    for key, (code, status) in _DOMAIN_ERROR_MAP.items():
+        assert isinstance(status, int), f"Map status for {key!r} is not an int: {status!r}."
+        assert isinstance(code, ErrorCode), f"Map value-code for {key!r} is not an ErrorCode."
+        assert isinstance(key, ErrorCode), f"Map key {key!r} is not an ErrorCode."
+
+
+def test_internal_error_codes_are_enum_members() -> None:
+    """Every member of INTERNAL_ERROR_CODES is a real ErrorCode member."""
+    for code in INTERNAL_ERROR_CODES:
+        assert code in ErrorCode, f"{code!r} in INTERNAL_ERROR_CODES is not an ErrorCode member."
+
+
+def test_internal_error_codes_not_in_domain_map() -> None:
+    """Internal-only codes must never be mapped to an HTTP status."""
+    leaked = INTERNAL_ERROR_CODES & set(_DOMAIN_ERROR_MAP)
+    assert not leaked, (
+        f"Internal-only codes must not have an HTTP status in _DOMAIN_ERROR_MAP: "
+        f"{sorted(c.value for c in leaked)}"
+    )
+
+
 def test_constructor_rejects_unknown_code() -> None:
     """CardreError rejects a code not in ErrorCode at construction time."""
     with pytest.raises(ValueError):
@@ -101,7 +129,7 @@ def test_constructor_rejects_unknown_code() -> None:
     assert err.code == ErrorCode.BAD_REQUEST
 
 
-def test_node_failed_with_artifacts_exposes_staged_artifacts() -> None:
+def test_node_failed_with_artifacts_exposes_artifacts() -> None:
     staged = [object()]
     error = NodeFailedWithArtifacts("partial failure", staged)
-    assert error.staged_artifacts is staged
+    assert error.artifacts is staged

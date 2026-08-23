@@ -55,7 +55,6 @@ class AssignChampion:
             raise CardreError(
                 "CHAMPION_REASON_REQUIRED: Champion assignment requires a non-empty rationale.",
                 code=ErrorCode.CHAMPION_REASON_REQUIRED,
-                status_code=400,
             )
 
         with self._uow_factory.for_project(command.project_id) as uow:
@@ -65,21 +64,18 @@ class AssignChampion:
                     f"BRANCH_NOT_FOUND: champion branch ID {command.branch_id}",
                     code=ErrorCode.BRANCH_NOT_FOUND,
                     context={"branch_id": command.branch_id},
-                    status_code=404,
                 )
             if branch.get("status") != "active":
                 raise CardreError(
                     f"BRANCH_NOT_ACTIVE: Branch {command.branch_id} is not active.",
                     code=ErrorCode.BRANCH_NOT_ACTIVE,
                     context={"branch_id": command.branch_id},
-                    status_code=400,
                 )
             if branch.get("project_id") != command.project_id or branch.get("plan_id") != command.plan_id:
                 raise CardreError(
                     f"CHAMPION_BRANCH_MISMATCH: Branch {command.branch_id} does not belong to plan {command.plan_id}.",
                     code=ErrorCode.CHAMPION_BRANCH_MISMATCH,
                     context={"branch_id": command.branch_id, "plan_id": command.plan_id},
-                    status_code=400,
                 )
 
             comparison = uow.comparisons.get_comparison(command.comparison_id)
@@ -88,7 +84,6 @@ class AssignChampion:
                     f"COMPARISON_NOT_FOUND: {command.comparison_id}",
                     code=ErrorCode.COMPARISON_NOT_FOUND,
                     context={"comparison_id": command.comparison_id},
-                    status_code=404,
                 )
 
             snap = uow.comparisons.get_comparison_snapshot(command.comparison_snapshot_id)
@@ -98,7 +93,6 @@ class AssignChampion:
                     f"does not belong to comparison {command.comparison_id}.",
                     code=ErrorCode.COMPARISON_SNAPSHOT_NOT_FOUND,
                     context={"comparison_snapshot_id": command.comparison_snapshot_id, "comparison_id": command.comparison_id},
-                    status_code=404,
                 )
 
             readiness = json.loads(snap["readiness_json"])
@@ -107,7 +101,6 @@ class AssignChampion:
                     "COMPARISON_NOT_READY: Comparison snapshot is not ready.",
                     code=ErrorCode.COMPARISON_NOT_READY,
                     context={"comparison_snapshot_id": command.comparison_snapshot_id},
-                    status_code=400,
                 )
 
             source_versions = uow.comparisons.get_snapshot_plan_versions(command.comparison_snapshot_id)
@@ -119,7 +112,6 @@ class AssignChampion:
                     "Refresh the comparison before assigning champion.",
                     code=ErrorCode.STALE_SNAPSHOT,
                     context={"branch_id": command.branch_id, "comparison_id": command.comparison_id},
-                    status_code=409,
                 )
 
             challenger_rows = uow.comparisons.get_challenger_branches(command.comparison_id)
@@ -130,7 +122,6 @@ class AssignChampion:
                     f"in comparison {command.comparison_id}.",
                     code=ErrorCode.BRANCH_NOT_IN_COMPARISON,
                     context={"branch_id": command.branch_id, "comparison_id": command.comparison_id},
-                    status_code=400,
                 )
 
             # --- Transactional writes ---

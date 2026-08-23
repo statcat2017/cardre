@@ -104,6 +104,27 @@ class ErrorCode(StrEnum):
     RUN_LEASE_LOST = "RUN_LEASE_LOST"
 
 
+# Internal-only codes that never cross the HTTP boundary. They surface via run
+# diagnostics or process-local exceptions, never as API error envelopes, so
+# they are excluded from the public TypeScript union. Kept in one canonical set
+# shared by scripts/generate-error-codes.py and tests/test_error_code_sync.py.
+INTERNAL_ERROR_CODES: frozenset[ErrorCode] = frozenset({
+    ErrorCode.CARDRE_ERROR,
+    ErrorCode.NODE_FAILED_WITH_ARTIFACTS,
+    ErrorCode.NODE_ROLE_ACCESS_VIOLATION,
+    ErrorCode.RUN_LEASE_LOST,
+    ErrorCode.RUN_LIFECYCLE_ERROR,
+    ErrorCode.MANIFEST_STEP_MISSING,
+    ErrorCode.MANIFEST_PLAN_MISSING,
+    ErrorCode.INPUT_CONTRACT_VIOLATION,
+    ErrorCode.OUTPUT_CONTRACT_VIOLATION,
+    ErrorCode.ARTIFACT_STAGING_FAILED,
+    ErrorCode.ARTIFACT_PUBLISH_FAILED,
+    ErrorCode.RUN_EXECUTION_FAILED,
+    ErrorCode.RUN_CANCELLED,
+})
+
+
 @dataclasses.dataclass
 class Diagnostic:
     """A typed diagnostic message (error, warning, info)."""
@@ -136,17 +157,11 @@ class CardreError(Exception):
         super().__init__(message or self.code)
         if code is not None:
             self.code = ErrorCode(code)
-        self._status_code_explicit = status_code is not None
         if status_code is not None:
             self.status_code = status_code
         self.message = message or self.code
         self.context = context or {}
         self.diagnostics = diagnostics or []
-        if self.code not in ErrorCode:
-            raise ValueError(
-                f"Unknown error code {self.code!r}. Add it to ErrorCode in "
-                "cardre/domain/errors.py before raising it."
-            )
 
 
 class NodeFailedWithArtifacts(CardreError):
@@ -167,7 +182,6 @@ class NodeFailedWithArtifacts(CardreError):
         code: ErrorCode | str | None = None,
     ) -> None:
         self.artifacts = artifacts
-        self.staged_artifacts = artifacts
         super().__init__(message, code=code)
 
 
@@ -377,6 +391,7 @@ __all__ = [
     "ErrorCode",
     "GovernanceNotEnabled",
     "GraphValidationError",
+    "INTERNAL_ERROR_CODES",
     "MissingInputArtifactError",
     "NodeRoleAccessViolation",
     "NodeNotAvailableForLaunch",

@@ -136,7 +136,6 @@ class ExportAuditPack:
                 "Audit-pack exports require a successful branch or plan run.",
                 code=ErrorCode.EXPORT_RUN_NOT_FOUND,
                 context={"branch_id": command.branch_id, "plan_version_id": head_plan_version_id},
-                status_code=409,
             )
 
         self._write_json(export_dir / "project.json", project.to_dict())

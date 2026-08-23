@@ -97,16 +97,14 @@ class RefreshComparison:
                     f"COMPARISON_NOT_FOUND: {command.comparison_id}",
                     code=ErrorCode.COMPARISON_NOT_FOUND,
                     context={"comparison_id": command.comparison_id},
-                    status_code=404,
                 )
 
             project_id: str = comparison["project_id"]
             if project_id != command.project_id:
                 raise CardreError(
                     "Comparison does not belong to the requested project.",
-                    code=ErrorCode.BRANCH_SCOPE_MISMATCH,
+                    code=ErrorCode.COMPARISON_NOT_FOUND,
                     context={"comparison_id": command.comparison_id, "project_id": command.project_id},
-                    status_code=404,
                 )
             plan_id: str = comparison["plan_id"]
             baseline_branch_id: str = comparison["baseline_branch_id"]
@@ -120,7 +118,6 @@ class RefreshComparison:
                     f"BRANCH_NOT_FOUND: baseline {baseline_branch_id}",
                     code=ErrorCode.BRANCH_NOT_FOUND,
                     context={"branch_id": baseline_branch_id},
-                    status_code=404,
                 )
             pv_id_baseline: str = baseline["head_plan_version_id"]
 

@@ -56,7 +56,6 @@ class SubmitRun:
                 f"Plan version {command.plan_version_id!r} not found",
                 code=ErrorCode.PLAN_VERSION_NOT_FOUND,
                 context={"plan_version_id": command.plan_version_id},
-                status_code=404,
             )
         if not getattr(pv, "is_committed", False):
             from cardre.domain.errors import CardreError, ErrorCode
@@ -64,7 +63,6 @@ class SubmitRun:
                 f"Plan version {command.plan_version_id!r} is not committed",
                 code=ErrorCode.PLAN_VERSION_NOT_COMMITTED,
                 context={"plan_version_id": command.plan_version_id},
-                status_code=409,
             )
 
         if scope.value == "branch":
@@ -94,7 +92,6 @@ class SubmitRun:
                     "a concurrent run",
                     code=ErrorCode.CONCURRENT_RUN,
                     context={"plan_version_id": command.plan_version_id},
-                    status_code=409,
                 )
             uow3.dispatches.enqueue(run_id)
             uow3.commit()
@@ -143,21 +140,18 @@ class SubmitRun:
                 f"{[s.value for s in RunScope]}",
                 code=ErrorCode.RUN_SCOPE_INVALID,
                 context={"run_scope": command.run_scope},
-                status_code=400,
             ) from None
         if scope is RunScope.BRANCH and not command.branch_id:
             raise CardreError(
                 "branch scope requires a branch_id",
                 code=ErrorCode.BRANCH_VALIDATION_ERROR,
                 context={"run_scope": command.run_scope},
-                status_code=400,
             )
         if scope is RunScope.FULL_PLAN and command.branch_id is not None:
             raise CardreError(
                 "full_plan scope must not specify a branch_id",
                 code=ErrorCode.BRANCH_VALIDATION_ERROR,
                 context={"run_scope": command.run_scope, "branch_id": command.branch_id},
-                status_code=400,
             )
         return scope
 
@@ -176,21 +170,18 @@ class SubmitRun:
                 f"Branch {command.branch_id!r} not found",
                 code=ErrorCode.BRANCH_NOT_FOUND,
                 context={"branch_id": command.branch_id},
-                status_code=404,
             )
         if branch["project_id"] != self._project_id or branch["plan_id"] != plan_id:
             raise CardreError(
                 "Branch does not belong to the requested plan version.",
                 code=ErrorCode.BRANCH_SCOPE_MISMATCH,
                 context={"branch_id": command.branch_id, "plan_version_id": command.plan_version_id},
-                status_code=409,
             )
         if branch["head_plan_version_id"] != command.plan_version_id:
             raise CardreError(
                 "Branch head does not match the requested plan version.",
                 code=ErrorCode.BRANCH_PLAN_VERSION_MISMATCH,
                 context={"branch_id": command.branch_id, "plan_version_id": command.plan_version_id},
-                status_code=409,
             )
 
     def _sweep_stale(self) -> None:

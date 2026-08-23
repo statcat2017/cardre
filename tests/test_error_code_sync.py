@@ -11,7 +11,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from cardre.domain.errors import ErrorCode
+from cardre.domain.errors import INTERNAL_ERROR_CODES, ErrorCode
 
 
 def _parse_ts_server_codes() -> set[str]:
@@ -43,7 +43,7 @@ def _parse_ts_server_codes() -> set[str]:
 class TestErrorCodeSync:
     def test_ts_server_codes_are_subset_of_python(self):
         ts_codes = _parse_ts_server_codes()
-        py_codes = {e.value for e in ErrorCode}
+        py_codes = {e.value for e in ErrorCode} - {e.value for e in INTERNAL_ERROR_CODES}
         extra = ts_codes - py_codes
         assert not extra, (
             f"errorCodes.ts has server codes not in cardre/domain/errors.py: "
@@ -53,9 +53,18 @@ class TestErrorCodeSync:
 
     def test_python_codes_have_ts_counterpart(self):
         ts_codes = _parse_ts_server_codes()
-        py_codes = {e.value for e in ErrorCode}
+        py_codes = {e.value for e in ErrorCode} - {e.value for e in INTERNAL_ERROR_CODES}
         missing = py_codes - ts_codes
         assert not missing, (
             f"cardre/domain/errors.py has codes not in errorCodes.ts: "
             f"{sorted(missing)}. Add them to errorCodes.ts."
+        )
+
+    def test_internal_codes_excluded_from_ts(self):
+        """Internal-only ErrorCode members must not appear in errorCodes.ts."""
+        ts_codes = _parse_ts_server_codes()
+        leaked = {e.value for e in INTERNAL_ERROR_CODES} & ts_codes
+        assert not leaked, (
+            f"Internal-only ErrorCode members leaked into errorCodes.ts: "
+            f"{sorted(leaked)}. They are excluded by the generator."
         )

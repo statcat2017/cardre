@@ -705,6 +705,54 @@ def test_snapshot_write_is_atomic(tmp_path):
 # ---------------------------------------------------------------------------
 
 
+def test_refresh_comparison_cross_project_uses_comparison_not_found():
+    """A comparison from another project surfaces as COMPARISON_NOT_FOUND, so
+    one code maps to one HTTP status (404) in the domain-error map."""
+    from cardre.application.governance.refresh_comparison import (
+        RefreshComparison,
+        RefreshComparisonCommand,
+    )
+    from cardre.domain.errors import CardreError, ErrorCode
+
+    class _MismatchComparisons:
+        def get_comparison(self, comparison_id) -> dict:
+            return {
+                "project_id": "other-project", "plan_id": "plan",
+                "baseline_branch_id": "base-1", "comparison_spec_json": "{}",
+            }
+
+    class _MismatchUow:
+        @property
+        def comparisons(self):
+            return _MismatchComparisons()
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+    class _MismatchFactory:
+        def for_project(self, project_id):
+            return _MismatchUow()
+
+    class _Writer:
+        def stage_json(self, *args, **kwargs):
+            return None
+
+    uc = RefreshComparison(
+        _MismatchFactory(),
+        None,
+        _Writer(),
+        _stub_publisher_factory(None),
+        governance_enabled=True,
+    )
+
+    with pytest.raises(CardreError) as exc_info:
+        uc(RefreshComparisonCommand(project_id="proj", comparison_id="cmp-1"))
+    assert exc_info.value.code == ErrorCode.COMPARISON_NOT_FOUND
+
+
 def test_refresh_comparison_database_failure_leaves_no_orphan_object(tmp_path):
     """A DB failure after staging a comparison artifact must leave no file in
     objects/ without a durable descriptor/outbox record. Uses the real

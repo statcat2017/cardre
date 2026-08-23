@@ -59,7 +59,6 @@ class ListReports:
                         f"Run {run_id!r} not found",
                         code=ErrorCode.RUN_NOT_FOUND,
                         context={"run_id": run_id},
-                        status_code=404,
                     )
                 rows = uow.reports.list_for_run(run_id)
             else:
@@ -155,7 +154,6 @@ class GetRunManifest:
                 f"Run {run_id!r} not found",
                 code=ErrorCode.RUN_NOT_FOUND,
                 context={"run_id": run_id},
-                status_code=404,
             )
         manifest = self._manifest_publisher_factory(project_id).read(run_id)
         if manifest is None:
@@ -163,6 +161,5 @@ class GetRunManifest:
                 f"No manifest published for run {run_id!r}",
                 code=ErrorCode.CANONICAL_MANIFEST_MISSING,
                 context={"run_id": run_id},
-                status_code=404,
             )
         return manifest

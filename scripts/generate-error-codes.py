@@ -54,12 +54,15 @@ export function isErrorCode(value: unknown): value is ErrorCode {
 def main() -> None:
     sys.path.insert(0, str(REPO_ROOT))
 
-    from cardre.domain.errors import ErrorCode
+    from cardre.domain.errors import INTERNAL_ERROR_CODES, ErrorCode
 
+    internal_names = {m.name for m in INTERNAL_ERROR_CODES}
     lines = [HEADER]
     for name in TRANSPORT_CODES:
         lines.append(f"  {name}: \"{name}\",")
     for member in ErrorCode:
+        if member.name in internal_names:
+            continue
         lines.append(f"  {member.name}: \"{member.value}\",")
     lines.append(TAIL.rstrip("\n"))
 

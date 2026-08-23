@@ -11,7 +11,7 @@ from __future__ import annotations
 import pytest
 
 from cardre.api.errors import _DOMAIN_ERROR_MAP, translate_domain_error
-from cardre.domain.errors import CardreError
+from cardre.domain.errors import CardreError, ErrorCode
 
 
 def test_unwrapped_project_not_found_returns_404(monkeypatch, tmp_path):
@@ -48,16 +48,28 @@ def test_translate_domain_error_map_entries(key: str) -> None:
 @pytest.mark.parametrize(
     ("code", "explicit_status"),
     [
-        ("BRANCH_SCOPE_MISMATCH", 409),
-        ("BRANCH_NOT_ACTIVE", 409),
-        ("COMPARISON_NOT_READY", 400),
-        ("CANONICAL_MANIFEST_MISSING", 404),
+        ("BRANCH_SCOPE_MISMATCH", 403),
+        ("BRANCH_NOT_ACTIVE", 403),
+        ("COMPARISON_NOT_READY", 403),
+        ("CANONICAL_MANIFEST_MISSING", 403),
     ],
 )
-def test_explicit_domain_status_overrides_map_default(code: str, explicit_status: int) -> None:
-    """The map supplies defaults but must not erase contextual domain status."""
+def test_mapped_status_is_authoritative(code: str, explicit_status: int) -> None:
+    """The map is the sole status source: a per-call status_code on a mapped
+    domain error is ignored, and the mapped status wins."""
     api_error = translate_domain_error(
         CardreError("message", code=code, status_code=explicit_status),
     )
+    mapped_status = _DOMAIN_ERROR_MAP[code][1]
     assert api_error.code == _DOMAIN_ERROR_MAP[code][0]
-    assert api_error.status_code == explicit_status
+    assert api_error.status_code == mapped_status
+    assert api_error.status_code != explicit_status
+
+
+def test_unmapped_code_passthrough() -> None:
+    """Codes not in the map pass through with their own code and status."""
+    api_error = translate_domain_error(
+        CardreError("message", code=ErrorCode.BAD_REQUEST, status_code=400),
+    )
+    assert api_error.code == ErrorCode.BAD_REQUEST
+    assert api_error.status_code == 400

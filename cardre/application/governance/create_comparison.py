@@ -71,7 +71,6 @@ class CreateComparison:
                     f"BRANCH_NOT_FOUND: baseline {command.baseline_branch_id}",
                     code=ErrorCode.BRANCH_NOT_FOUND,
                     context={"branch_id": command.baseline_branch_id},
-                    status_code=404,
                 )
 
             for cid in command.challenger_branch_ids:
@@ -80,7 +79,6 @@ class CreateComparison:
                         f"BRANCH_NOT_FOUND: challenger {cid}",
                         code=ErrorCode.BRANCH_NOT_FOUND,
                         context={"branch_id": cid},
-                        status_code=404,
                     )
 
             plan = uow.plans.get_plan(command.plan_id)
@@ -89,7 +87,6 @@ class CreateComparison:
                     f"PLAN_NOT_FOUND: {command.plan_id}",
                     code=ErrorCode.PLAN_NOT_FOUND,
                     context={"plan_id": command.plan_id},
-                    status_code=404,
                 )
             pid = plan.project_id if hasattr(plan, "project_id") else plan.get("project_id")
             if pid != command.project_id:
@@ -97,7 +94,6 @@ class CreateComparison:
                     f"BRANCH_SCOPE_MISMATCH: plan {command.plan_id}",
                     code=ErrorCode.BRANCH_SCOPE_MISMATCH,
                     context={"plan_id": command.plan_id, "project_id": command.project_id},
-                    status_code=409,
                 )
 
             self._require_branch_for_plan(
@@ -166,12 +162,10 @@ class CreateComparison:
                     "branch_project_id": branch.get("project_id"),
                     "branch_plan_id": branch.get("plan_id"),
                 },
-                status_code=409,
             )
         if branch.get("status") != "active":
             raise CardreError(
                 f"BRANCH_NOT_ACTIVE: {branch_id}",
                 code=ErrorCode.BRANCH_NOT_ACTIVE,
                 context={"branch_id": branch_id, "label": label, "status": branch.get("status")},
-                status_code=409,
             )
