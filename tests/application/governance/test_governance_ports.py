@@ -753,6 +753,47 @@ def test_refresh_comparison_cross_project_uses_comparison_not_found():
     assert exc_info.value.code == ErrorCode.COMPARISON_NOT_FOUND
 
 
+def test_refresh_comparison_missing_comparison_is_not_found():
+    from cardre.application.governance.refresh_comparison import (
+        RefreshComparison,
+        RefreshComparisonCommand,
+    )
+    from cardre.domain.errors import CardreError, ErrorCode
+
+    class _MissingComparisons:
+        def get_comparison(self, comparison_id):
+            return None
+
+    class _MissingUow:
+        comparisons = _MissingComparisons()
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+    class _MissingFactory:
+        def for_project(self, project_id):
+            return _MissingUow()
+
+    class _Writer:
+        def stage_json(self, *args, **kwargs):
+            return None
+
+    uc = RefreshComparison(
+        _MissingFactory(),
+        None,
+        _Writer(),
+        _stub_publisher_factory(None),
+        governance_enabled=True,
+    )
+
+    with pytest.raises(CardreError) as exc_info:
+        uc(RefreshComparisonCommand(project_id="proj", comparison_id="missing"))
+    assert exc_info.value.code == ErrorCode.COMPARISON_NOT_FOUND
+
+
 def test_refresh_comparison_database_failure_leaves_no_orphan_object(tmp_path):
     """A DB failure after staging a comparison artifact must leave no file in
     objects/ without a durable descriptor/outbox record. Uses the real

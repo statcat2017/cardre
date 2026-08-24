@@ -116,7 +116,7 @@ class RefreshComparison:
             if baseline is None:
                 raise CardreError(
                     f"BRANCH_NOT_FOUND: baseline {baseline_branch_id}",
-                    code=ErrorCode.BRANCH_NOT_FOUND,
+                    code=ErrorCode.BASELINE_BRANCH_NOT_FOUND,
                     context={"branch_id": baseline_branch_id},
                 )
             pv_id_baseline: str = baseline["head_plan_version_id"]
@@ -128,6 +128,9 @@ class RefreshComparison:
             for cid in challenger_ids:
                 challenger = uow.branches.get_branch(cid)
                 if challenger is None:
+                    # Refresh reports all challenger readiness gaps together;
+                    # unlike a missing baseline, a missing challenger is a
+                    # soft not-ready result so the caller gets the full list.
                     all_missing.append({"branch_id": cid, "canonical_step_id": "", "step_id": "", "status": "not_found"})
                     continue
                 missing = self._check_readiness(uow, cid, challenger["head_plan_version_id"])
@@ -302,4 +305,3 @@ class RefreshComparison:
             branch_id_baseline, branch_id_challenger,
             spec,
         )
-

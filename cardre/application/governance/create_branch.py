@@ -165,7 +165,7 @@ class CreateBranch:
             pid = plan.project_id if hasattr(plan, "project_id") else plan.get("project_id")
             if pid != command.project_id:
                 raise BranchValidationError(
-                    code=ErrorCode.BRANCH_SCOPE_MISMATCH,
+                    code=ErrorCode.PLAN_PROJECT_MISMATCH,
                     message=f"Plan {command.plan_id} does not belong to project {command.project_id}",
                     context={"plan_id": command.plan_id, "project_id": command.project_id},
                 )
@@ -175,7 +175,7 @@ class CreateBranch:
                 base_branch = uow.branches.get_branch(command.base_branch_id)
                 if base_branch is None:
                     raise BranchValidationError(
-                        code=ErrorCode.BRANCH_NOT_FOUND,
+                        code=ErrorCode.BASE_BRANCH_NOT_FOUND,
                         message=f"No branch with ID {command.base_branch_id}",
                         context={"base_branch_id": command.base_branch_id},
                     )
@@ -187,7 +187,7 @@ class CreateBranch:
                     or base_branch.get("plan_id") != command.plan_id
                 ):
                     raise BranchValidationError(
-                        code=ErrorCode.BRANCH_SCOPE_MISMATCH,
+                        code=ErrorCode.BASE_BRANCH_SCOPE_MISMATCH,
                         message=(
                             f"Base branch {command.base_branch_id} does not belong "
                             f"to plan {command.plan_id} in project {command.project_id}."
@@ -226,7 +226,7 @@ class CreateBranch:
 
             if base_branch and base_branch.get("status") != "active":
                 raise BranchValidationError(
-                    code=ErrorCode.BRANCH_NOT_ACTIVE,
+                    code=ErrorCode.BASE_BRANCH_INACTIVE,
                     message=f"Base branch {command.base_branch_id} is not active.",
                     context={
                         "base_branch_id": command.base_branch_id,

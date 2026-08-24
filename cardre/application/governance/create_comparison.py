@@ -69,7 +69,7 @@ class CreateComparison:
             if baseline is None:
                 raise CardreError(
                     f"BRANCH_NOT_FOUND: baseline {command.baseline_branch_id}",
-                    code=ErrorCode.BRANCH_NOT_FOUND,
+                    code=ErrorCode.BASELINE_BRANCH_NOT_FOUND,
                     context={"branch_id": command.baseline_branch_id},
                 )
 
@@ -77,7 +77,7 @@ class CreateComparison:
                 if uow.branches.get_branch(cid) is None:
                     raise CardreError(
                         f"BRANCH_NOT_FOUND: challenger {cid}",
-                        code=ErrorCode.BRANCH_NOT_FOUND,
+                        code=ErrorCode.CHALLENGER_BRANCH_NOT_FOUND,
                         context={"branch_id": cid},
                     )
 
@@ -92,7 +92,7 @@ class CreateComparison:
             if pid != command.project_id:
                 raise CardreError(
                     f"BRANCH_SCOPE_MISMATCH: plan {command.plan_id}",
-                    code=ErrorCode.BRANCH_SCOPE_MISMATCH,
+                    code=ErrorCode.COMPARISON_PLAN_PROJECT_MISMATCH,
                     context={"plan_id": command.plan_id, "project_id": command.project_id},
                 )
 

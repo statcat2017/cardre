@@ -62,13 +62,13 @@ class AssignChampion:
             if branch is None:
                 raise CardreError(
                     f"BRANCH_NOT_FOUND: champion branch ID {command.branch_id}",
-                    code=ErrorCode.BRANCH_NOT_FOUND,
+                    code=ErrorCode.CHAMPION_BRANCH_NOT_FOUND,
                     context={"branch_id": command.branch_id},
                 )
             if branch.get("status") != "active":
                 raise CardreError(
                     f"BRANCH_NOT_ACTIVE: Branch {command.branch_id} is not active.",
-                    code=ErrorCode.BRANCH_NOT_ACTIVE,
+                    code=ErrorCode.CHAMPION_BRANCH_INACTIVE,
                     context={"branch_id": command.branch_id},
                 )
             if branch.get("project_id") != command.project_id or branch.get("plan_id") != command.plan_id:

@@ -196,7 +196,7 @@ class TestValidationEdgeCases:
                 base_branch_id=base_branch_id, base_plan_version_id=pv_id,
                 created_reason="Should fail.",
             ))
-        assert exc_info.value.code == "BRANCH_NOT_ACTIVE"
+        assert exc_info.value.code == "BASE_BRANCH_INACTIVE"
 
     def test_create_branch_rejects_base_branch_from_another_plan(self, provisioned_project):
         """A branch must never be created on top of a base branch from a
@@ -226,7 +226,7 @@ class TestValidationEdgeCases:
                 base_branch_id=base_b, base_plan_version_id=pv_a,
                 created_reason="Should fail.",
             ))
-        assert exc_info.value.code == "BRANCH_SCOPE_MISMATCH"
+        assert exc_info.value.code == "BASE_BRANCH_SCOPE_MISMATCH"
 
         # Nothing may be persisted: no new plan version and no new branch.
         with uow_factory.read_only(project_id) as uow:
