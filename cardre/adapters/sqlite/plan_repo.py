@@ -141,10 +141,9 @@ class PlanRepo:
             (json.dumps(params), params_hash, plan_version_id, step_id),
         )
         if cur.rowcount == 0:
-            from cardre.domain.errors import CardreError
+            from cardre.domain.errors import CardreError, ErrorCode
             raise CardreError(
                 f"Step {step_id!r} not found on plan version {plan_version_id!r}.",
-                code="STEP_NOT_FOUND",
+                code=ErrorCode.STEP_NOT_FOUND,
                 context={"plan_version_id": plan_version_id, "step_id": step_id},
-                status_code=404,
             )

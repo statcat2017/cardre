@@ -8,7 +8,7 @@ from typing import Any
 import pytest
 
 from cardre.application.projects.create_project import CreateProject
-from cardre.domain.errors import CardreError
+from cardre.domain.errors import CardreError, ErrorCode
 
 # ---------------------------------------------------------------------------
 # In-memory fakes
@@ -35,7 +35,7 @@ class _FakeRegistry:
 
     def register(self, project_id: str, root: str | Path) -> None:
         if self._fail:
-            raise CardreError("Registry write failed", code="REGISTRY_FAILURE")
+            raise CardreError("Registry write failed", code=ErrorCode.REGISTRY_CORRUPTED)
         self._data[project_id] = str(Path(root).resolve())
 
     def resolve_root(self, project_id: str) -> Path | None:

@@ -20,7 +20,7 @@ from cardre.application.ports.clock import ClockPort
 from cardre.application.ports.manifest_publisher import ManifestPublisherPort
 from cardre.application.publications.publisher import PublicationPublisher
 from cardre.domain.diagnostics import JsonDict
-from cardre.domain.errors import CardreError
+from cardre.domain.errors import CardreError, ErrorCode
 from cardre.domain.manifest import (
     MANIFEST_VERSION,
     RunManifest,
@@ -69,7 +69,7 @@ class FinalizeRun:
             if run_record is None:
                 raise CardreError(
                     f"Run {run_id!r} not found for finalization",
-                    code="RUN_NOT_FOUND",
+                    code=ErrorCode.RUN_NOT_FOUND,
                     context={"run_id": run_id},
                 )
 
@@ -199,7 +199,7 @@ class FinalizeRun:
                 raise CardreError(
                     f"Run step {rs.step_id!r} of run {run_id!r} has no plan "
                     "specification; cannot build a canonical manifest",
-                    code="MANIFEST_STEP_MISSING",
+                    code=ErrorCode.MANIFEST_STEP_MISSING,
                     context={"run_id": run_id, "step_id": rs.step_id, "plan_version_id": pv_id},
                 )
             result.append({
@@ -249,21 +249,21 @@ class FinalizeRun:
                 raise CardreError(
                     f"Plan version {plan_version_id!r} has no plan record; "
                     "cannot build a canonical manifest",
-                    code="MANIFEST_PLAN_MISSING",
+                    code=ErrorCode.MANIFEST_PLAN_MISSING,
                     context={"run_id": run_id, "plan_version_id": plan_version_id},
                 )
             plan = uow.plans.get_plan(plan_id)
             if plan is None:
                 raise CardreError(
                     f"Plan {plan_id!r} not found; cannot build a canonical manifest",
-                    code="MANIFEST_PLAN_MISSING",
+                    code=ErrorCode.MANIFEST_PLAN_MISSING,
                     context={"run_id": run_id, "plan_id": plan_id},
                 )
             project_id = plan.project_id or ""
             if not project_id:
                 raise CardreError(
                     f"Plan {plan_id!r} has no project; cannot build a canonical manifest",
-                    code="MANIFEST_PLAN_MISSING",
+                    code=ErrorCode.MANIFEST_PLAN_MISSING,
                     context={"run_id": run_id, "plan_id": plan_id},
                 )
 

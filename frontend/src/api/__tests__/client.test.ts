@@ -171,14 +171,14 @@ describe("fetchJson", () => {
 
 describe("ApiError", () => {
   it("stores code, message, status, and context", () => {
-    const err = new ApiError(ErrorCodes.RUN_EXECUTION_FAILED, "Test message", 418, {
+    const err = new ApiError(ErrorCodes.RUN_NOT_FOUND, "Test message", 418, {
       key: "value",
     });
-    expect(err.code).toBe(ErrorCodes.RUN_EXECUTION_FAILED);
+    expect(err.code).toBe(ErrorCodes.RUN_NOT_FOUND);
     expect(err.message).toBe("Test message");
     expect(err.status).toBe(418);
     expect(err.context).toEqual({ key: "value" });
-    expect(err.detail).toBe("RUN_EXECUTION_FAILED: Test message (HTTP 418)");
+    expect(err.detail).toBe("RUN_NOT_FOUND: Test message (HTTP 418)");
   });
 
   it("defaults status to 500 and context to {}", () => {
@@ -210,8 +210,8 @@ describe("ApiError", () => {
 
 describe("toErrorMessage", () => {
   it("returns ApiError.detail for ApiError", () => {
-    const err = new ApiError(ErrorCodes.RUN_EXECUTION_FAILED, "boom", 500);
-    expect(toErrorMessage(err)).toBe("RUN_EXECUTION_FAILED: boom (HTTP 500)");
+    const err = new ApiError(ErrorCodes.RUN_NOT_FOUND, "boom", 500);
+    expect(toErrorMessage(err)).toBe("RUN_NOT_FOUND: boom (HTTP 500)");
   });
 
   it("returns Error.message for plain Error", () => {

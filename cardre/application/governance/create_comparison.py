@@ -12,7 +12,7 @@ from typing import Any
 
 from cardre.application.ports.id_generator import IdGeneratorPort
 from cardre.domain.diagnostics import utc_now_iso
-from cardre.domain.errors import CardreError, GovernanceNotEnabled
+from cardre.domain.errors import CardreError, ErrorCode, GovernanceNotEnabled
 
 DEFAULT_COMPARISON_SPEC: dict[str, Any] = {
     "roles": ["train", "test", "oot"],
@@ -68,36 +68,32 @@ class CreateComparison:
             baseline = uow.branches.get_branch(command.baseline_branch_id)
             if baseline is None:
                 raise CardreError(
-                    f"BASELINE_BRANCH_NOT_FOUND: {command.baseline_branch_id}",
-                    code="BASELINE_BRANCH_NOT_FOUND",
+                    f"BRANCH_NOT_FOUND: baseline {command.baseline_branch_id}",
+                    code=ErrorCode.BASELINE_BRANCH_NOT_FOUND,
                     context={"branch_id": command.baseline_branch_id},
-                    status_code=404,
                 )
 
             for cid in command.challenger_branch_ids:
                 if uow.branches.get_branch(cid) is None:
                     raise CardreError(
-                        f"CHALLENGER_BRANCH_NOT_FOUND: {cid}",
-                        code="CHALLENGER_BRANCH_NOT_FOUND",
+                        f"BRANCH_NOT_FOUND: challenger {cid}",
+                        code=ErrorCode.CHALLENGER_BRANCH_NOT_FOUND,
                         context={"branch_id": cid},
-                        status_code=404,
                     )
 
             plan = uow.plans.get_plan(command.plan_id)
             if plan is None:
                 raise CardreError(
                     f"PLAN_NOT_FOUND: {command.plan_id}",
-                    code="PLAN_NOT_FOUND",
+                    code=ErrorCode.PLAN_NOT_FOUND,
                     context={"plan_id": command.plan_id},
-                    status_code=404,
                 )
             pid = plan.project_id if hasattr(plan, "project_id") else plan.get("project_id")
             if pid != command.project_id:
                 raise CardreError(
-                    f"PLAN_PROJECT_MISMATCH: {command.plan_id}",
-                    code="PLAN_PROJECT_MISMATCH",
+                    f"BRANCH_SCOPE_MISMATCH: plan {command.plan_id}",
+                    code=ErrorCode.COMPARISON_PLAN_PROJECT_MISMATCH,
                     context={"plan_id": command.plan_id, "project_id": command.project_id},
-                    status_code=409,
                 )
 
             self._require_branch_for_plan(
@@ -157,7 +153,7 @@ class CreateComparison:
         if branch.get("project_id") != project_id or branch.get("plan_id") != plan_id:
             raise CardreError(
                 f"BRANCH_SCOPE_MISMATCH: {branch_id}",
-                code="BRANCH_SCOPE_MISMATCH",
+                code=ErrorCode.BRANCH_SCOPE_MISMATCH,
                 context={
                     "branch_id": branch_id,
                     "label": label,
@@ -166,12 +162,10 @@ class CreateComparison:
                     "branch_project_id": branch.get("project_id"),
                     "branch_plan_id": branch.get("plan_id"),
                 },
-                status_code=409,
             )
         if branch.get("status") != "active":
             raise CardreError(
                 f"BRANCH_NOT_ACTIVE: {branch_id}",
-                code="BRANCH_NOT_ACTIVE",
+                code=ErrorCode.BRANCH_NOT_ACTIVE,
                 context={"branch_id": branch_id, "label": label, "status": branch.get("status")},
-                status_code=409,
             )

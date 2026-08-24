@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from cardre.domain.artifacts import json_logical_hash
-from cardre.domain.errors import CardreError
+from cardre.domain.errors import CardreError, ErrorCode
 from cardre.domain.step import StepSpec
 
 
@@ -41,14 +41,14 @@ class ApplyManualBinningEdit:
             if base_pv is None:
                 raise CardreError(
                     f"Plan version {command.plan_version_id!r} not found.",
-                    code="PLAN_VERSION_NOT_FOUND",
+                    code=ErrorCode.PLAN_VERSION_NOT_FOUND,
                     context={"plan_version_id": command.plan_version_id},
                 )
             if not base_pv.is_committed:
                 raise CardreError(
                     f"Plan version {command.plan_version_id!r} is not committed; "
                     "only committed plan versions are eligible for mutation.",
-                    code="PLAN_VERSION_NOT_COMMITTED",
+                    code=ErrorCode.PLAN_VERSION_NOT_COMMITTED,
                     context={"plan_version_id": command.plan_version_id},
                 )
 
@@ -71,7 +71,7 @@ class ApplyManualBinningEdit:
                 raise CardreError(
                     f"Step {command.step_id!r} not found in plan version "
                     f"{command.plan_version_id!r}.",
-                    code="STEP_NOT_FOUND",
+                    code=ErrorCode.STEP_NOT_FOUND,
                     context={"plan_version_id": command.plan_version_id, "step_id": command.step_id},
                 )
 
@@ -137,7 +137,7 @@ class ApplyManualBinningEdit:
                 raise CardreError(
                     f"Evidence edge {edge.evidence_edge_id!r} for step "
                     f"{step_id!r} is missing source run references.",
-                    code="EVIDENCE_VALIDATION_ERROR",
+                    code=ErrorCode.EVIDENCE_VALIDATION_ERROR,
                 )
 
         for edge in edges:
@@ -146,5 +146,5 @@ class ApplyManualBinningEdit:
                 raise CardreError(
                     f"Evidence edge {edge.evidence_edge_id!r} for step "
                     f"{step_id!r} has no evidence artifacts.",
-                    code="EVIDENCE_VALIDATION_ERROR",
+                    code=ErrorCode.EVIDENCE_VALIDATION_ERROR,
                 )

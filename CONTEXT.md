@@ -97,6 +97,14 @@ The boundary: once score scaling produces the finalized scorecard, the validate 
 
 Governance features (branching, comparison, champion assignment) are gated behind `CARDRE_GOVERNANCE=1`. The API uses `Depends(require_governance)` to return 403 when governance is not enabled.
 
+## Error Codes
+
+`ErrorCode` (`cardre/domain/errors.py`) is the single closed error-code vocabulary. Every `CardreError` code — whether passed as a `code=` kwarg or set as a class-level default — must be an `ErrorCode` member; the constructor rejects unknown codes at construction time. `_DOMAIN_ERROR_MAP` in `cardre/api/errors.py` is the sole source of HTTP status (and any API code translation) for every mapped code: per-call `status_code=` on a mapped `CardreError` is ignored, so one code maps to exactly one status. The global `cardre_error_handler` applies `translate_domain_error` so unwrapped routes get the same behaviour as wrapped ones. Two guards enforce closure in CI: `tests/test_error_code_closure.py` (AST scan) and `tests/test_error_code_sync.py` (TS mirror).
+
+The TypeScript union `frontend/src/api/errorCodes.ts` is generated from the Python enum by `scripts/generate-error-codes.py`; a `make preflight` drift check fails the gate if it goes stale. Internal-only `ErrorCode` members (the `INTERNAL_ERROR_CODES` set in `cardre/domain/errors.py`) — such as `MANIFEST_STEP_MISSING` and `MANIFEST_PLAN_MISSING`, which are raised during run finalization and surface via run diagnostics rather than the HTTP envelope — are excluded from the public TypeScript union. The 8 client-only transport codes (SIDECAR_UNREACHABLE, REQUEST_TIMEOUT, etc.) are hand-maintained and have no Python counterpart.
+
+Run *diagnostics* (gate codes, manifest diagnostics, `MAXIMUM_PSI_*`, `RUN_VALIDATION_FAILED`, `RUN_EXECUTION_FAILED`) are deliberately open strings — node-generated and unbounded — and are out of scope for the closed `ErrorCode` vocabulary. They are distinct from the closed internal codes above, which are real `ErrorCode` members even though they never cross the HTTP boundary.
+
 ## Licensing
 
 Apache 2.0. Chosen over MIT for its patent grant clause, which is important for adoption in regulated financial institutions. Downstream users get explicit protection from patent claims related to the code.

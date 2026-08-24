@@ -27,7 +27,6 @@ class CancelRun:
                     f"Run {command.run_id!r} not found",
                     code=ErrorCode.RUN_NOT_FOUND,
                     context={"run_id": command.run_id},
-                    status_code=404,
                 )
             if run.status in (RunStatus.RUNNING, RunStatus.SUBMITTED):
                 if run.status in (RunStatus.SUBMITTED,):
@@ -55,7 +54,6 @@ class CancelRun:
                     f"Run {command.run_id!r} is not running (status={run.status})",
                     code=ErrorCode.RUN_NOT_RUNNING,
                     context={"run_id": command.run_id, "status": run.status},
-                    status_code=409,
                 )
             uow.commit()
         except Exception:

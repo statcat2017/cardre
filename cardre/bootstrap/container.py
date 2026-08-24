@@ -83,8 +83,8 @@ def build_container(settings: Settings) -> Container:
     def project_root(project_id: str) -> Path:
         root = registry.resolve_root(project_id)
         if root is None:
-            from cardre.domain.errors import CardreError
-            raise CardreError(f"Project {project_id!r} not found", code="PROJECT_NOT_FOUND", context={})
+            from cardre.domain.errors import CardreError, ErrorCode
+            raise CardreError(f"Project {project_id!r} not found", code=ErrorCode.PROJECT_NOT_FOUND, context={})
         return root
 
     def artifact_reader_factory(project_id: str) -> ArtifactReader:
