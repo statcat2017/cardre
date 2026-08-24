@@ -18,7 +18,7 @@ from cardre.application.ports.artifact_store import DurableArtifactWriter
 from cardre.application.reporting.contracts import REQUIRED_STEPS_COMPARISON
 from cardre.domain.artifacts import ArtifactRef
 from cardre.domain.diagnostics import utc_now_iso
-from cardre.domain.errors import CardreError, GovernanceNotEnabled
+from cardre.domain.errors import CardreError, ErrorCode, GovernanceNotEnabled
 from cardre.domain.evidence.kinds import EvidenceKind
 from cardre.domain.evidence.schemas import SCHEMA_COMPARISON_ARTIFACT
 
@@ -95,18 +95,16 @@ class RefreshComparison:
             if comparison is None:
                 raise CardreError(
                     f"COMPARISON_NOT_FOUND: {command.comparison_id}",
-                    code="COMPARISON_NOT_FOUND",
+                    code=ErrorCode.COMPARISON_NOT_FOUND,
                     context={"comparison_id": command.comparison_id},
-                    status_code=404,
                 )
 
             project_id: str = comparison["project_id"]
             if project_id != command.project_id:
                 raise CardreError(
                     "Comparison does not belong to the requested project.",
-                    code="COMPARISON_SCOPE_MISMATCH",
+                    code=ErrorCode.COMPARISON_NOT_FOUND,
                     context={"comparison_id": command.comparison_id, "project_id": command.project_id},
-                    status_code=404,
                 )
             plan_id: str = comparison["plan_id"]
             baseline_branch_id: str = comparison["baseline_branch_id"]
@@ -117,10 +115,9 @@ class RefreshComparison:
             baseline = uow.branches.get_branch(baseline_branch_id)
             if baseline is None:
                 raise CardreError(
-                    f"BASELINE_BRANCH_NOT_FOUND: {baseline_branch_id}",
-                    code="BASELINE_BRANCH_NOT_FOUND",
+                    f"BRANCH_NOT_FOUND: baseline {baseline_branch_id}",
+                    code=ErrorCode.BASELINE_BRANCH_NOT_FOUND,
                     context={"branch_id": baseline_branch_id},
-                    status_code=404,
                 )
             pv_id_baseline: str = baseline["head_plan_version_id"]
 
@@ -131,6 +128,9 @@ class RefreshComparison:
             for cid in challenger_ids:
                 challenger = uow.branches.get_branch(cid)
                 if challenger is None:
+                    # Refresh reports all challenger readiness gaps together;
+                    # unlike a missing baseline, a missing challenger is a
+                    # soft not-ready result so the caller gets the full list.
                     all_missing.append({"branch_id": cid, "canonical_step_id": "", "step_id": "", "status": "not_found"})
                     continue
                 missing = self._check_readiness(uow, cid, challenger["head_plan_version_id"])
@@ -305,4 +305,3 @@ class RefreshComparison:
             branch_id_baseline, branch_id_challenger,
             spec,
         )
-

@@ -18,7 +18,7 @@ from cardre.application.ports.unit_of_work import (
 from cardre.application.reporting.contracts import ReportMode
 from cardre.application.reporting.readiness import check_report_readiness
 from cardre.application.reporting.schema import Limitation, ReportBundle
-from cardre.domain.errors import CardreError
+from cardre.domain.errors import CardreError, ErrorCode
 
 
 @dataclass(frozen=True)
@@ -73,7 +73,7 @@ class GenerateReport:
             if not readiness.ready:
                 raise CardreError(
                     "Report generation is blocked by readiness checks.",
-                    code="REPORT_BLOCKED",
+                    code=ErrorCode.REPORT_BLOCKED,
                     context={
                         "run_id": command.run_id,
                         "branch_id": command.target_branch_id,
@@ -97,7 +97,7 @@ class GenerateReport:
             if blockers:
                 raise CardreError(
                     "Report generation is blocked by collected evidence.",
-                    code="REPORT_BLOCKED",
+                    code=ErrorCode.REPORT_BLOCKED,
                     context={
                         "run_id": command.run_id,
                         "branch_id": command.target_branch_id,

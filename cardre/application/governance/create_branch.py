@@ -11,7 +11,7 @@ import json
 from dataclasses import dataclass, field
 from typing import Any
 
-from cardre.domain.errors import BranchValidationError, GovernanceNotEnabled
+from cardre.domain.errors import BranchValidationError, ErrorCode, GovernanceNotEnabled
 from cardre.domain.plans.graph import remap_step_graph
 from cardre.domain.step import StepSpec
 
@@ -61,7 +61,7 @@ def _validate_segment_filter_rules(spec: dict[str, Any]) -> None:
     rules = spec.get("rules", [])
     if not rules:
         raise BranchValidationError(
-            code="SEGMENT_FILTER_RULES_REQUIRED",
+            code=ErrorCode.SEGMENT_FILTER_RULES_REQUIRED,
             message="Segment filter must have at least one rule.",
         )
     for rule in rules:
@@ -71,31 +71,31 @@ def _validate_segment_filter_rules(spec: dict[str, Any]) -> None:
         value = rule.get("value")
         if not column:
             raise BranchValidationError(
-                code="SEGMENT_FILTER_INVALID",
+                code=ErrorCode.SEGMENT_FILTER_INVALID,
                 message="Rule must specify a non-empty 'column'.",
                 context={"column": column},
             )
         if not operator:
             raise BranchValidationError(
-                code="SEGMENT_FILTER_INVALID",
+                code=ErrorCode.SEGMENT_FILTER_INVALID,
                 message="Rule must specify an 'operator'.",
                 context={"column": column},
             )
         if operator not in SUPPORTED_FILTER_OPERATORS:
             raise BranchValidationError(
-                code="SEGMENT_FILTER_UNSUPPORTED_OPERATOR",
+                code=ErrorCode.SEGMENT_FILTER_UNSUPPORTED_OPERATOR,
                 message=f"'{operator}' is not supported. Allowed: {sorted(SUPPORTED_FILTER_OPERATORS)}",
                 context={"operator": operator, "column": column},
             )
         if not reason:
             raise BranchValidationError(
-                code="SEGMENT_FILTER_REASON_REQUIRED",
+                code=ErrorCode.SEGMENT_FILTER_REASON_REQUIRED,
                 message=f"Rule for column '{column}' requires a non-empty 'reason'.",
                 context={"column": column},
             )
         if operator not in ("is_null", "is_not_null") and value is None:
             raise BranchValidationError(
-                code="SEGMENT_FILTER_VALUE_REQUIRED",
+                code=ErrorCode.SEGMENT_FILTER_VALUE_REQUIRED,
                 message=f"Rule for column '{column}' with operator '{operator}' requires a 'value'.",
                 context={"column": column, "operator": operator},
             )
@@ -117,13 +117,13 @@ class CreateBranch:
         bp_type = ALLOWED_BRANCH_POINTS.get(command.branch_point_step_id)
         if bp_type is None:
             raise BranchValidationError(
-                code="BRANCH_POINT_NOT_ALLOWED",
+                code=ErrorCode.BRANCH_POINT_NOT_ALLOWED,
                 message=f"Branching from step {command.branch_point_step_id} is not supported.",
                 context={"branch_point_step_id": command.branch_point_step_id},
             )
         if command.branch_type != bp_type:
             raise BranchValidationError(
-                code="BRANCH_TYPE_MISMATCH",
+                code=ErrorCode.BRANCH_TYPE_MISMATCH,
                 message=f"Branch point {command.branch_point_step_id} requires branch_type {bp_type}, got {command.branch_type}.",
                 context={
                     "branch_point_step_id": command.branch_point_step_id,
@@ -133,20 +133,20 @@ class CreateBranch:
             )
         if not command.name:
             raise BranchValidationError(
-                code="BRANCH_NAME_REQUIRED",
+                code=ErrorCode.BRANCH_NAME_REQUIRED,
                 message="Branch name must not be empty.",
                 context={"plan_id": command.plan_id},
             )
         if not command.created_reason:
             raise BranchValidationError(
-                code="BRANCH_REASON_REQUIRED",
+                code=ErrorCode.BRANCH_REASON_REQUIRED,
                 message="Branch creation requires a non-empty reason.",
                 context={"plan_id": command.plan_id, "name": command.name},
             )
         if command.branch_type == "segment_challenger":
             if not command.segment_filter_spec:
                 raise BranchValidationError(
-                    code="SEGMENT_FILTER_REQUIRED",
+                    code=ErrorCode.SEGMENT_FILTER_REQUIRED,
                     message="Segment challenger branches require a non-empty segment_filter_spec.",
                     context={"branch_type": command.branch_type},
                 )
@@ -158,14 +158,14 @@ class CreateBranch:
             plan = uow.plans.get_plan(command.plan_id)
             if plan is None:
                 raise BranchValidationError(
-                    code="PLAN_NOT_FOUND",
+                    code=ErrorCode.PLAN_NOT_FOUND,
                     message=f"No plan with ID {command.plan_id}",
                     context={"plan_id": command.plan_id},
                 )
             pid = plan.project_id if hasattr(plan, "project_id") else plan.get("project_id")
             if pid != command.project_id:
                 raise BranchValidationError(
-                    code="PLAN_PROJECT_MISMATCH",
+                    code=ErrorCode.PLAN_PROJECT_MISMATCH,
                     message=f"Plan {command.plan_id} does not belong to project {command.project_id}",
                     context={"plan_id": command.plan_id, "project_id": command.project_id},
                 )
@@ -175,7 +175,7 @@ class CreateBranch:
                 base_branch = uow.branches.get_branch(command.base_branch_id)
                 if base_branch is None:
                     raise BranchValidationError(
-                        code="BASE_BRANCH_NOT_FOUND",
+                        code=ErrorCode.BASE_BRANCH_NOT_FOUND,
                         message=f"No branch with ID {command.base_branch_id}",
                         context={"base_branch_id": command.base_branch_id},
                     )
@@ -187,7 +187,7 @@ class CreateBranch:
                     or base_branch.get("plan_id") != command.plan_id
                 ):
                     raise BranchValidationError(
-                        code="BASE_BRANCH_SCOPE_MISMATCH",
+                        code=ErrorCode.BASE_BRANCH_SCOPE_MISMATCH,
                         message=(
                             f"Base branch {command.base_branch_id} does not belong "
                             f"to plan {command.plan_id} in project {command.project_id}."
@@ -206,7 +206,7 @@ class CreateBranch:
             # override: the branch's head is always derived from its base.
             if command.head_plan_version_id and command.head_plan_version_id != head_pv_id:
                 raise BranchValidationError(
-                    code="STALE_HEAD_VERSION",
+                    code=ErrorCode.STALE_HEAD_VERSION,
                     message="head_plan_version_id does not match the derived head plan version.",
                     context={
                         "head_plan_version_id": command.head_plan_version_id,
@@ -216,7 +216,7 @@ class CreateBranch:
 
             if command.base_plan_version_id and head_pv_id != command.base_plan_version_id:
                 raise BranchValidationError(
-                    code="STALE_BASE_VERSION",
+                    code=ErrorCode.STALE_BASE_VERSION,
                     message="base_plan_version_id does not match the base branch's head_plan_version_id.",
                     context={
                         "base_plan_version_id": command.base_plan_version_id,
@@ -226,7 +226,7 @@ class CreateBranch:
 
             if base_branch and base_branch.get("status") != "active":
                 raise BranchValidationError(
-                    code="BASE_BRANCH_INACTIVE",
+                    code=ErrorCode.BASE_BRANCH_INACTIVE,
                     message=f"Base branch {command.base_branch_id} is not active.",
                     context={
                         "base_branch_id": command.base_branch_id,
@@ -243,7 +243,7 @@ class CreateBranch:
                     break
             if bp_step is None:
                 raise BranchValidationError(
-                    code="BRANCH_POINT_NOT_IN_PLAN",
+                    code=ErrorCode.BRANCH_POINT_NOT_IN_PLAN,
                     message=f"Step {command.branch_point_step_id} not found in plan version {head_pv_id}.",
                     context={"branch_point_step_id": command.branch_point_step_id, "head_pv_id": head_pv_id},
                 )
@@ -255,7 +255,7 @@ class CreateBranch:
                 )
                 if sample_def_step is None:
                     raise BranchValidationError(
-                        code="REJECT_INFERENCE_CHALLENGER_MISSING_SAMPLE_DEF",
+                        code=ErrorCode.REJECT_INFERENCE_CHALLENGER_MISSING_SAMPLE_DEF,
                         message="No sample-definition step found in plan. "
                                 "A reject inference challenger requires a sample-definition step.",
                         context={"plan_id": command.plan_id},
@@ -263,7 +263,7 @@ class CreateBranch:
                 sample_domain = sample_def_step.params.get("sample_domain", "ttd")
                 if sample_domain != "ttd":
                     raise BranchValidationError(
-                        code="REJECT_INFERENCE_CHALLENGER_REQUIRES_TTD",
+                        code=ErrorCode.REJECT_INFERENCE_CHALLENGER_REQUIRES_TTD,
                         message=f"sample_domain must be 'ttd', got {sample_domain!r}. "
                                 "Cannot add reject inference to an OTB sample.",
                         context={"sample_domain": sample_domain},

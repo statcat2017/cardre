@@ -59,7 +59,7 @@ class CommitPlanVersion:
             if existing is None:
                 raise CardreError(
                     f"Plan version {command.plan_version_id!r} not found.",
-                    code="PLAN_VERSION_NOT_FOUND",
+                    code=ErrorCode.PLAN_VERSION_NOT_FOUND,
                     context={"plan_version_id": command.plan_version_id},
                 )
             if existing.is_committed:
@@ -120,7 +120,7 @@ class CommitPlanVersion:
             if committed is None:
                 raise CardreError(
                     f"Plan version {command.plan_version_id!r} not found after commit.",
-                    code="PLAN_VERSION_NOT_FOUND",
+                    code=ErrorCode.PLAN_VERSION_NOT_FOUND,
                     context={"plan_version_id": command.plan_version_id},
                 )
             return committed

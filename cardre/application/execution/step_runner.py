@@ -194,7 +194,7 @@ class StepRunner:
             )
 
         except NodeFailedWithArtifacts as exc:
-            staged = list(getattr(exc, 'staged_artifacts', []))
+            staged = list(exc.artifacts)
             fp = build_execution_fingerprint(
                 plan_version_id, spec, parent_run_steps,
                 input_artifacts, staged,

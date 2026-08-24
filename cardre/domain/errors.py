@@ -9,8 +9,6 @@ import dataclasses
 from enum import StrEnum
 from typing import Any
 
-from cardre.domain.artifacts import ArtifactRef
-
 
 class ErrorCode(StrEnum):
     BAD_REQUEST = "BAD_REQUEST"
@@ -57,6 +55,84 @@ class ErrorCode(StrEnum):
     ARTIFACT_STAGING_FAILED = "ARTIFACT_STAGING_FAILED"
     ARTIFACT_PUBLISH_FAILED = "ARTIFACT_PUBLISH_FAILED"
 
+    # --- Branch / governance validation (HTTP 400 family) ---
+    SEGMENT_FILTER_RULES_REQUIRED = "SEGMENT_FILTER_RULES_REQUIRED"
+    SEGMENT_FILTER_REQUIRED = "SEGMENT_FILTER_REQUIRED"
+    SEGMENT_FILTER_INVALID = "SEGMENT_FILTER_INVALID"
+    SEGMENT_FILTER_UNSUPPORTED_OPERATOR = "SEGMENT_FILTER_UNSUPPORTED_OPERATOR"
+    SEGMENT_FILTER_REASON_REQUIRED = "SEGMENT_FILTER_REASON_REQUIRED"
+    SEGMENT_FILTER_VALUE_REQUIRED = "SEGMENT_FILTER_VALUE_REQUIRED"
+    BRANCH_NAME_REQUIRED = "BRANCH_NAME_REQUIRED"
+    BRANCH_REASON_REQUIRED = "BRANCH_REASON_REQUIRED"
+    BRANCH_TYPE_MISMATCH = "BRANCH_TYPE_MISMATCH"
+    BRANCH_POINT_NOT_ALLOWED = "BRANCH_POINT_NOT_ALLOWED"
+    BRANCH_POINT_NOT_IN_PLAN = "BRANCH_POINT_NOT_IN_PLAN"
+    BASE_BRANCH_NOT_FOUND = "BASE_BRANCH_NOT_FOUND"
+    BASE_BRANCH_INACTIVE = "BASE_BRANCH_INACTIVE"
+    BASE_BRANCH_SCOPE_MISMATCH = "BASE_BRANCH_SCOPE_MISMATCH"
+    PLAN_PROJECT_MISMATCH = "PLAN_PROJECT_MISMATCH"
+    BRANCH_SCOPE_MISMATCH = "BRANCH_SCOPE_MISMATCH"
+    BRANCH_NOT_ACTIVE = "BRANCH_NOT_ACTIVE"
+    BRANCH_PLAN_VERSION_MISMATCH = "BRANCH_PLAN_VERSION_MISMATCH"
+
+    REJECT_INFERENCE_CHALLENGER_MISSING_SAMPLE_DEF = "REJECT_INFERENCE_CHALLENGER_MISSING_SAMPLE_DEF"
+    REJECT_INFERENCE_CHALLENGER_REQUIRES_TTD = "REJECT_INFERENCE_CHALLENGER_REQUIRES_TTD"
+    EVIDENCE_VALIDATION_ERROR = "EVIDENCE_VALIDATION_ERROR"
+    STALE_HEAD_VERSION = "STALE_HEAD_VERSION"
+    STALE_BASE_VERSION = "STALE_BASE_VERSION"
+
+    # --- Champion / comparison ---
+    CHAMPION_REASON_REQUIRED = "CHAMPION_REASON_REQUIRED"
+    CHAMPION_BRANCH_NOT_FOUND = "CHAMPION_BRANCH_NOT_FOUND"
+    CHAMPION_BRANCH_INACTIVE = "CHAMPION_BRANCH_INACTIVE"
+    CHAMPION_BRANCH_MISMATCH = "CHAMPION_BRANCH_MISMATCH"
+    COMPARISON_SNAPSHOT_NOT_FOUND = "COMPARISON_SNAPSHOT_NOT_FOUND"
+    COMPARISON_NOT_READY = "COMPARISON_NOT_READY"
+    COMPARISON_PLAN_PROJECT_MISMATCH = "COMPARISON_PLAN_PROJECT_MISMATCH"
+    BRANCH_NOT_IN_COMPARISON = "BRANCH_NOT_IN_COMPARISON"
+    BASELINE_BRANCH_NOT_FOUND = "BASELINE_BRANCH_NOT_FOUND"
+    CHALLENGER_BRANCH_NOT_FOUND = "CHALLENGER_BRANCH_NOT_FOUND"
+
+    # --- Reporting / export ---
+    REPORT_BLOCKED = "REPORT_BLOCKED"
+    CANONICAL_MANIFEST_MISSING = "CANONICAL_MANIFEST_MISSING"
+    EXPORT_RUN_NOT_FOUND = "EXPORT_RUN_NOT_FOUND"
+
+    # --- Run manifest (internal: raised during finalization, not HTTP) ---
+    MANIFEST_STEP_MISSING = "MANIFEST_STEP_MISSING"
+    MANIFEST_PLAN_MISSING = "MANIFEST_PLAN_MISSING"
+
+    # --- Infrastructure ---
+    REGISTRY_CORRUPTED = "REGISTRY_CORRUPTED"
+    RUN_SCOPE_INVALID = "RUN_SCOPE_INVALID"
+
+    # --- Internal execution (class-level defaults; surface via run diagnostics) ---
+    CARDRE_ERROR = "CARDRE_ERROR"
+    NODE_FAILED_WITH_ARTIFACTS = "NODE_FAILED_WITH_ARTIFACTS"
+    NODE_ROLE_ACCESS_VIOLATION = "NODE_ROLE_ACCESS_VIOLATION"
+    RUN_LEASE_LOST = "RUN_LEASE_LOST"
+
+
+# Internal-only codes that never cross the HTTP boundary. They surface via run
+# diagnostics or process-local exceptions, never as API error envelopes, so
+# they are excluded from the public TypeScript union. Kept in one canonical set
+# shared by scripts/generate-error-codes.py and tests/test_error_code_sync.py.
+INTERNAL_ERROR_CODES: frozenset[ErrorCode] = frozenset({
+    ErrorCode.CARDRE_ERROR,
+    ErrorCode.NODE_FAILED_WITH_ARTIFACTS,
+    ErrorCode.NODE_ROLE_ACCESS_VIOLATION,
+    ErrorCode.RUN_LEASE_LOST,
+    ErrorCode.RUN_LIFECYCLE_ERROR,
+    ErrorCode.MANIFEST_STEP_MISSING,
+    ErrorCode.MANIFEST_PLAN_MISSING,
+    ErrorCode.INPUT_CONTRACT_VIOLATION,
+    ErrorCode.OUTPUT_CONTRACT_VIOLATION,
+    ErrorCode.ARTIFACT_STAGING_FAILED,
+    ErrorCode.ARTIFACT_PUBLISH_FAILED,
+    ErrorCode.RUN_EXECUTION_FAILED,
+    ErrorCode.RUN_CANCELLED,
+})
+
 
 @dataclasses.dataclass
 class Diagnostic:
@@ -75,21 +151,21 @@ class CardreError(Exception):
     Subclasses set class-level defaults for code and status_code.
     """
 
-    code: str = "CARDRE_ERROR"
+    code: ErrorCode = ErrorCode.CARDRE_ERROR
     status_code: int = 500
 
     def __init__(
         self,
         message: str | None = None,
         *,
-        code: str | None = None,
+        code: ErrorCode | str | None = None,
         context: dict[str, Any] | None = None,
         diagnostics: list[Diagnostic] | None = None,
         status_code: int | None = None,
     ) -> None:
         super().__init__(message or self.code)
         if code is not None:
-            self.code = code
+            self.code = ErrorCode(code)
         if status_code is not None:
             self.status_code = status_code
         self.message = message or self.code
@@ -104,37 +180,35 @@ class NodeFailedWithArtifacts(CardreError):
     encountering the failure condition.
     """
 
-    code: str = "NODE_FAILED_WITH_ARTIFACTS"
+    code: ErrorCode = ErrorCode.NODE_FAILED_WITH_ARTIFACTS
     status_code: int = 500
 
     def __init__(
         self,
         message: str,
-        artifacts: list[ArtifactRef],
+        artifacts: list[Any],
         *,
-        code: str | None = None,
+        code: ErrorCode | str | None = None,
     ) -> None:
         self.artifacts = artifacts
-        super().__init__(message)
-        if code is not None:
-            self.code = code
+        super().__init__(message, code=code)
 
 
 class GovernanceNotEnabled(CardreError):
     """Raised when a governance-gated feature is accessed without CARDRE_GOVERNANCE=1."""
-    code = "GOVERNANCE_NOT_ENABLED"
+    code = ErrorCode.GOVERNANCE_NOT_ENABLED
     status_code = 403
 
 
 class GraphValidationError(CardreError):
     """Raised when a plan graph fails validation."""
-    code = "GRAPH_VALIDATION_ERROR"
+    code = ErrorCode.GRAPH_VALIDATION_ERROR
     status_code = 500
 
 
 class PlanContainsUnavailableNodesError(CardreError):
     """Raised before a run starts when a plan contains unavailable nodes."""
-    code = "PLAN_CONTAINS_UNAVAILABLE_NODES"
+    code = ErrorCode.PLAN_CONTAINS_UNAVAILABLE_NODES
     status_code = 400
 
     def __init__(self, issues: list[dict[str, Any]]) -> None:
@@ -149,36 +223,36 @@ class PlanContainsUnavailableNodesError(CardreError):
 
 class PlanVersionNotCommittedError(CardreError):
     """Raised when a draft plan version is submitted for execution."""
-    code = "PLAN_VERSION_NOT_COMMITTED"
+    code = ErrorCode.PLAN_VERSION_NOT_COMMITTED
     status_code = 409
 
 
 class ConcurrentRunError(CardreError):
     """Raised when a run is already in progress for a plan version."""
-    code = "CONCURRENT_RUN"
+    code = ErrorCode.CONCURRENT_RUN
     status_code = 409
 
 
 class SchemaVersionError(CardreError):
     """Raised when the store schema identity does not match the app."""
-    code = "STORE_VERSION_INCOMPATIBLE"
+    code = ErrorCode.STORE_VERSION_INCOMPATIBLE
     status_code = 409
 
 
 class RunLifecycleError(CardreError):
-    code = "RUN_LIFECYCLE_ERROR"
+    code = ErrorCode.RUN_LIFECYCLE_ERROR
     status_code = 500
 
 
 class RunNotFoundError(CardreError):
     """Raised when a run record does not exist."""
-    code = "RUN_NOT_FOUND"
+    code = ErrorCode.RUN_NOT_FOUND
     status_code = 404
 
 
 class RunNotRunningError(CardreError):
     """Raised when a run is not in the 'running' state."""
-    code = "RUN_NOT_RUNNING"
+    code = ErrorCode.RUN_NOT_RUNNING
     status_code = 409
 
 
@@ -186,7 +260,7 @@ class LeaseLost(CardreError):
     """Raised when a worker's lease is no longer valid (stale recovery,
     cancellation, or a replacement worker took over)."""
 
-    code = "RUN_LEASE_LOST"
+    code = ErrorCode.RUN_LEASE_LOST
     status_code = 409
 
     def __init__(self, run_id: str, reason: str) -> None:
@@ -200,49 +274,49 @@ class LeaseLost(CardreError):
 
 class RunPlanVersionMismatchError(CardreError):
     """Raised when a run's plan version does not match the expected one."""
-    code = "RUN_PLAN_VERSION_MISMATCH"
+    code = ErrorCode.RUN_PLAN_VERSION_MISMATCH
     status_code = 409
 
 
 class MissingInputArtifactError(CardreError):
     """Raised when a parent step has no output artifacts for a child to consume."""
-    code = "MISSING_INPUT_ARTIFACT"
+    code = ErrorCode.MISSING_INPUT_ARTIFACT
     status_code = 400
 
 
 class NodeRoleAccessViolation(CardreError):
     """Raised when a node receives an artifact role outside its contract."""
-    code = "NODE_ROLE_ACCESS_VIOLATION"
+    code = ErrorCode.NODE_ROLE_ACCESS_VIOLATION
     status_code = 400
 
 
 class ParameterValidationError(CardreError):
     """Raised when node parameter validation fails."""
-    code = "PARAMETER_VALIDATION_ERROR"
+    code = ErrorCode.PARAMETER_VALIDATION_ERROR
     status_code = 400
 
 
 class ArtifactReadError(CardreError):
     """Raised when an artifact file cannot be read (missing or hash mismatch)."""
-    code = "ARTIFACT_READ_ERROR"
+    code = ErrorCode.ARTIFACT_READ_ERROR
     status_code = 400
 
 
 class ArtifactWriteError(CardreError):
     """Raised when an artifact file cannot be written."""
-    code = "ARTIFACT_WRITE_ERROR"
+    code = ErrorCode.ARTIFACT_WRITE_ERROR
     status_code = 500
 
 
 class NodeNotAvailableForLaunch(CardreError):
     """Raised when a deferred node is instantiated in launch mode."""
-    code = "NODE_NOT_AVAILABLE_FOR_LAUNCH"
+    code = ErrorCode.NODE_NOT_AVAILABLE_FOR_LAUNCH
     status_code = 400
 
 
 class NodeVersionMismatchError(CardreError):
     """Raised when a persisted step's node_version differs from the running node's version."""
-    code = "NODE_VERSION_MISMATCH"
+    code = ErrorCode.NODE_VERSION_MISMATCH
     status_code = 409
 
     def __init__(self, step_id: str, node_type: str, persisted: str, current: str) -> None:
@@ -290,19 +364,19 @@ class NodeVersionMismatchError(CardreError):
 
 class RunScopeNotAvailableForLaunch(CardreError):
     """Raised when a run scope is disabled for launch (e.g. ``to_node``)."""
-    code = "RUN_SCOPE_NOT_AVAILABLE_FOR_LAUNCH"
+    code = ErrorCode.RUN_SCOPE_NOT_AVAILABLE_FOR_LAUNCH
     status_code = 400
 
 
 class BranchValidationError(CardreError):
     """Raised when branch creation or management validation fails."""
-    code = "BRANCH_VALIDATION_ERROR"
+    code = ErrorCode.BRANCH_VALIDATION_ERROR
     status_code = 400
 
 
 class OptionalDependencyNotInstalled(CardreError):
     """Raised when a node's optional dependency group is not installed."""
-    code = "OPTIONAL_DEPENDENCY_NOT_INSTALLED"
+    code = ErrorCode.OPTIONAL_DEPENDENCY_NOT_INSTALLED
     status_code = 400
 
     def __init__(self, node_type: str, missing_groups: list[str]) -> None:
@@ -326,6 +400,7 @@ __all__ = [
     "ErrorCode",
     "GovernanceNotEnabled",
     "GraphValidationError",
+    "INTERNAL_ERROR_CODES",
     "MissingInputArtifactError",
     "NodeRoleAccessViolation",
     "NodeNotAvailableForLaunch",
