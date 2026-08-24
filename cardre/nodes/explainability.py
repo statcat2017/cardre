@@ -7,8 +7,6 @@ explainability report before it is champion-eligible.
 
 from __future__ import annotations
 
-import hashlib
-import io
 from typing import Any
 
 import joblib
@@ -16,6 +14,7 @@ from polars.exceptions import ComputeError
 
 from cardre.domain.evidence.kinds import EvidenceKind, RoleKind
 from cardre.domain.evidence.schemas import SCHEMA_EXPLAINABILITY_REPORT
+from cardre.nodes._model_artifacts import load_estimator
 from cardre.nodes.contracts import (
     ArtifactContract,
     ArtifactRoleSpec,
@@ -58,27 +57,12 @@ def _require_model(context: NodeContext, node_type: str) -> Any:
 
 
 def _load_estimator(inputs: InputCollection, estimator_ref: dict[str, Any]) -> Any | None:
-    artifact_id = estimator_ref.get("artifact_id", "")
-    physical_hash = estimator_ref.get("physical_hash", "")
+    """Load the estimator a model references through the shared deep module.
 
-    estimator_art = inputs.artifact_ref(artifact_id, physical_hash=physical_hash or None)
-    if estimator_art is None:
-        return None
-
-    estimator_bytes = inputs.read_bytes(estimator_art)
-    expected_hash = estimator_ref.get("logical_hash")
-    actual_hash = hashlib.sha256(estimator_bytes).hexdigest()
-    if expected_hash and actual_hash != expected_hash:
-        raise ValueError(
-            f"Estimator artifact hash mismatch: expected {expected_hash!r}, got {actual_hash!r}. "
-            "The artifact may have been tampered with."
-        )
-    if not estimator_art.metadata.get("creating_run_id", ""):
-        raise ValueError(
-            f"Estimator artifact {artifact_id!r} has no creating_run_id metadata. "
-            "Refusing to load untrusted binary model."
-        )
-    return joblib.load(io.BytesIO(estimator_bytes))
+    Verification (hash + ``creating_run_id`` provenance) is mandatory and
+    centralized (see ADR-0016).
+    """
+    return load_estimator(inputs, estimator_ref, node_type="model_explainability")
 
 
 class ModelExplainabilityNode(NodeType):

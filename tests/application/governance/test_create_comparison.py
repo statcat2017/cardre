@@ -90,7 +90,7 @@ class TestCreateComparison:
     def test_create_comparison_missing_baseline_raises(self, provisioned_project):
         project_id, uow_factory, _, _ = provisioned_project
         use_case = CreateComparison(uow_factory, _FakeIdGenerator())
-        with pytest.raises(CardreError, match="BASELINE_BRANCH_NOT_FOUND"):
+        with pytest.raises(CardreError, match="baseline nonexistent"):
             use_case(CreateComparisonCommand(
                 project_id=project_id, plan_id="pl1",
                 baseline_branch_id="nonexistent",
@@ -106,7 +106,7 @@ class TestCreateComparison:
             uow.commit()
 
         use_case = CreateComparison(uow_factory, _FakeIdGenerator())
-        with pytest.raises(CardreError, match="CHALLENGER_BRANCH_NOT_FOUND"):
+        with pytest.raises(CardreError, match="challenger nonexistent"):
             use_case(CreateComparisonCommand(
                 project_id=project_id, plan_id=plan_id,
                 baseline_branch_id=baseline_id,

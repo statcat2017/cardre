@@ -126,7 +126,7 @@ def test_reports_empty_when_no_manifest(env, tmp_path):
 
 
 def test_run_manifest_missing_manifest_404(env, tmp_path):
-    """A run with no published manifest (e.g. a failed seed) returns 404."""
+    """A run with no published manifest (e.g. a failed seed) returns 409."""
     client, container = env
     project_id, root = _provision(container, tmp_path)
     from cardre.domain.run import RunStatus

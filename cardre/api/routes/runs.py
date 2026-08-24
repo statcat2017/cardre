@@ -7,7 +7,7 @@ from typing import Any
 from fastapi import APIRouter, Depends
 
 from cardre.api.dependencies import get_container
-from cardre.api.errors import CardreApiError, ErrorCode, translate_domain_error
+from cardre.api.errors import CardreApiError, ErrorCode
 from cardre.api.mappers import evidence_edge_to_response, run_step_to_response, run_to_response
 from cardre.api.schemas import (
     RunCreateRequest,
@@ -46,19 +46,15 @@ def _load_run(container: Container, project_id: str, run_id: str) -> RunResponse
 @router.post("/runs", response_model=RunResponse, status_code=201)
 def create_run(project_id: str, body: RunCreateRequest, container=Depends(get_container)):
     from cardre.application.runs.submit_run import SubmitRunCommand
-    from cardre.domain.errors import CardreError
 
     submit = container.submit_run_factory(project_id)
-    try:
-        result = submit(SubmitRunCommand(
-            plan_version_id=body.plan_version_id,
-            run_scope=body.run_scope or "full_plan",
-            branch_id=body.branch_id,
-            force=body.force,
-            sync=body.sync,
-        ))
-    except CardreError as exc:
-        raise translate_domain_error(exc) from exc
+    result = submit(SubmitRunCommand(
+        plan_version_id=body.plan_version_id,
+        run_scope=body.run_scope or "full_plan",
+        branch_id=body.branch_id,
+        force=body.force,
+        sync=body.sync,
+    ))
     return _load_run(container, project_id, result.run_id)
 
 
@@ -125,13 +121,9 @@ def get_run_evidence(project_id: str, run_id: str, container=Depends(get_contain
 @router.post("/runs/{run_id}/cancel", response_model=RunResponse)
 def cancel_run(project_id: str, run_id: str, container=Depends(get_container)):
     from cardre.application.runs.cancel_run import CancelRun, CancelRunCommand
-    from cardre.domain.errors import CardreError
 
     def factory():
         return container.uow_factory.for_project(project_id)
 
-    try:
-        CancelRun(factory)(CancelRunCommand(run_id=run_id))
-    except CardreError as exc:
-        raise translate_domain_error(exc) from exc
+    CancelRun(factory)(CancelRunCommand(run_id=run_id))
     return _load_run(container, project_id, run_id)

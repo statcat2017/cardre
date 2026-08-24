@@ -22,6 +22,7 @@ from __future__ import annotations
 import inspect
 import time
 from dataclasses import dataclass, field
+from types import SimpleNamespace
 from typing import Any
 
 import polars as pl
@@ -30,11 +31,8 @@ from sklearn.model_selection import StratifiedKFold, cross_validate
 from cardre.domain.evidence.kinds import EvidenceKind
 from cardre.domain.evidence.schemas import SCHEMA_MODEL_ARTIFACT
 from cardre.modeling.builders import build_model_artifact
-from cardre.nodes._training_utils import (
-    _estimator_parts,
-    _model_binary_descriptor_id,
-    prepare_supervised_training_data,
-)
+from cardre.nodes._model_artifacts import publish_estimator, stage_estimator_bytes
+from cardre.nodes._training_utils import prepare_supervised_training_data
 from cardre.nodes.contracts import NodeContext, NodeResult, NodeType
 
 
@@ -188,18 +186,17 @@ class BaseClassifierNode(NodeType):
         # select the first model artifact by role, and it must be the parseable
         # JSON model, not the joblib blob (which the MODEL_ARTIFACT profile
         # rejects on media type).
-        estimator_bytes, estimator_hash, estimator_metadata = _estimator_parts(
-            clf, step_id, context.run_id, self.model_family,
+        estimator_ref = publish_estimator(
+            clf,
+            step_id=step_id,
+            run_id=context.run_id,
+            model_family=self.model_family,
         )
-        from types import SimpleNamespace
-
         estimator_art = SimpleNamespace(
             artifact_id=None,
-            provisional_artifact_id=_model_binary_descriptor_id(
-                estimator_bytes, estimator_hash, estimator_metadata,
-            ),
-            logical_hash=estimator_hash,
-            physical_hash=estimator_hash,
+            provisional_artifact_id=estimator_ref.provisional_artifact_id,
+            logical_hash=estimator_ref.logical_hash,
+            physical_hash=estimator_ref.physical_hash,
         )
 
         # 8. Build model artifact
@@ -255,14 +252,7 @@ class BaseClassifierNode(NodeType):
 
         # 10. Stage the binary estimator SECOND (same descriptor id as the
         # model's estimator_reference) under the distinct estimator role.
-        context.outputs.publish_bytes(
-            role="estimator",
-            kind=EvidenceKind.MODEL_ARTIFACT,
-            data=estimator_bytes,
-            media_type="application/octet-stream",
-            logical_hash=estimator_hash,
-            metadata=estimator_metadata,
-        )
+        stage_estimator_bytes(context.outputs, estimator_ref)
 
         # 10. Build metrics
         metrics: dict[str, Any] = {

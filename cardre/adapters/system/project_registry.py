@@ -6,7 +6,7 @@ import json
 import tempfile
 from pathlib import Path
 
-from cardre.domain.errors import CardreError
+from cardre.domain.errors import CardreError, ErrorCode
 
 
 class JsonProjectRegistry:
@@ -38,14 +38,14 @@ class JsonProjectRegistry:
         except (json.JSONDecodeError, ValueError) as exc:
             raise CardreError(
                 f"Project registry at {self.path} is corrupted: {exc}",
-                code="REGISTRY_CORRUPTED",
+                code=ErrorCode.REGISTRY_CORRUPTED,
                 context={"path": str(self.path)},
             ) from exc
         if not isinstance(payload, dict):
             raise CardreError(
                 f"Project registry at {self.path} contains non-dict payload "
                 f"(got {type(payload).__name__})",
-                code="REGISTRY_CORRUPTED",
+                code=ErrorCode.REGISTRY_CORRUPTED,
                 context={"path": str(self.path), "type": type(payload).__name__},
             )
         return {str(key): str(value) for key, value in payload.items()}

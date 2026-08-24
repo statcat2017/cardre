@@ -16,6 +16,7 @@ from cardre.domain.evidence.schemas import (
     SCHEMA_FAIRNESS_REPORT,
     SCHEMA_PROXY_RISK_REPORT,
 )
+from cardre.nodes._samples import sample_bundle
 from cardre.nodes.contracts import (
     ArtifactContract,
     ArtifactRoleSpec,
@@ -99,11 +100,7 @@ class FairnessReportNode(NodeType):
             target_col = ""
             bad = set()
 
-        data_arts = (
-            context.inputs.by_role("train")
-            + context.inputs.by_role("test")
-            + context.inputs.by_role("oot")
-        )
+        data_arts = sample_bundle(context.inputs)
         report: dict[str, Any] = {
             "sensitive_columns": sensitive_columns,
             "min_group_size": min_group_size,

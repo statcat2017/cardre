@@ -1,9 +1,7 @@
 from __future__ import annotations
 
-import io
 from typing import Any
 
-import joblib
 import numpy as np
 import polars as pl
 
@@ -14,6 +12,8 @@ from cardre.domain.evidence.schemas import (
     SCHEMA_APPLY_MODEL_EVIDENCE,
     SCHEMA_APPLY_WOE_EVIDENCE,
 )
+from cardre.nodes._model_artifacts import load_estimator
+from cardre.nodes._samples import sample_bundle
 from cardre.nodes.contracts import (
     ArtifactContract,
     ArtifactRoleSpec,
@@ -34,6 +34,36 @@ class ApplyWoeMappingNode(NodeType):
     node_type = "cardre.apply_woe_mapping"
     version = "1"
     category = "apply"
+
+    __definition__ = NodeDefinition(
+        node_type="cardre.apply_woe_mapping",
+        version="1",
+        category="apply",
+        description="Apply WOE mapping to transform raw features into WOE values",
+        input_contract=ArtifactContract(
+            roles=(
+                # Bin definition and WOE table are hard-required (looked up by
+                # kind); data roles and the scorecard role are optional — the node
+                # transforms whichever datasets are supplied.
+                ArtifactRoleSpec("definition", required=True),
+                ArtifactRoleSpec("report", required=True),
+                ArtifactRoleSpec("train", required=False),
+                ArtifactRoleSpec("test", required=False),
+                ArtifactRoleSpec("oot", required=False),
+                ArtifactRoleSpec("scorecard", required=False),
+            ),
+        ),
+        output_contract=ArtifactContract(
+            roles=(
+                # A partial apply (e.g. only test) emits only that data role plus
+                # the evidence report; the data output roles must be optional.
+                ArtifactRoleSpec("train", required=False),
+                ArtifactRoleSpec("test", required=False),
+                ArtifactRoleSpec("oot", required=False),
+                ArtifactRoleSpec("report", required=True, kinds=(EvidenceKind.APPLY_WOE_EVIDENCE,), media_types=("application/json",), schema_versions=(SCHEMA_APPLY_WOE_EVIDENCE,)),
+            ),
+        ),
+    )
 
     VALID_UNMATCHED_POLICIES = {"fill_zero", "warn", "fail"}
 
@@ -79,10 +109,7 @@ class ApplyWoeMappingNode(NodeType):
         if bundle_art is not None and "woe_unmatched_policy" not in params:
             woe_unmatched_policy = "fail"
 
-        train_arts = context.inputs.by_role("train")
-        test_arts = context.inputs.by_role("test")
-        oot_arts = context.inputs.by_role("oot")
-        data_arts = train_arts + test_arts + oot_arts
+        data_arts = sample_bundle(context.inputs)
 
         bin_def_arts = context.inputs.by_kind(EvidenceKind.BIN_DEFINITION)
         if not bin_def_arts:
@@ -221,6 +248,36 @@ class ApplyModelNode(NodeType):
     version = "2"
     category = "apply"
 
+    __definition__ = NodeDefinition(
+        node_type="cardre.apply_model",
+        version="2",
+        category="apply",
+        description="Apply a fitted model to score datasets across train/test/oot roles",
+        input_contract=ArtifactContract(
+            roles=(
+                # Only the model is hard-required. Scorecard is optional (the node
+                # scores without it) and each of the three data roles is processed
+                # for whichever datasets the plan supplies. The estimator role is
+                # the binary twin of the JSON model (resolved by estimator_reference
+                # artifact_id); it must remain in the input set.
+                ArtifactRoleSpec("model", required=True),
+                ArtifactRoleSpec("estimator", required=False),
+                ArtifactRoleSpec("train", required=False),
+                ArtifactRoleSpec("test", required=False),
+                ArtifactRoleSpec("oot", required=False),
+                ArtifactRoleSpec("scorecard", required=False),
+            ),
+        ),
+        output_contract=ArtifactContract(
+            roles=(
+                ArtifactRoleSpec("train", required=False),
+                ArtifactRoleSpec("test", required=False),
+                ArtifactRoleSpec("oot", required=False),
+                ArtifactRoleSpec("report", required=True, kinds=(EvidenceKind.APPLY_MODEL_EVIDENCE,), media_types=("application/json",), schema_versions=(SCHEMA_APPLY_MODEL_EVIDENCE,)),
+            ),
+        ),
+    )
+
     _DATA_ROLES = ("train", "test", "oot")
 
     @classmethod
@@ -329,16 +386,19 @@ class ApplyModelNode(NodeType):
                         raise ValueError(
                             "Model has calibration block but no calibrator_artifact_id"
                         )
-                    cal_ref = context.inputs.artifact_ref(
-                        calibrator_id,
-                        physical_hash=calibration.get("calibrator_physical_hash"),
+                    calibrator = load_estimator(
+                        context.inputs,
+                        {
+                            "artifact_id": calibrator_id,
+                            "physical_hash": calibration.get("calibrator_physical_hash", ""),
+                            "logical_hash": calibration.get("calibrator_logical_hash", ""),
+                        },
+                        node_type="apply_model",
                     )
-                    if cal_ref is None:
+                    if calibrator is None:
                         raise ValueError(
                             f"Calibrator artifact {calibrator_id!r} not among step inputs"
                         )
-                    calibrator_bytes = context.inputs.read_bytes(cal_ref)
-                    calibrator = joblib.load(io.BytesIO(calibrator_bytes))
                     raw_probs = df["predicted_bad_probability"].to_numpy()
                     x_cal = np.column_stack([1.0 - raw_probs, raw_probs])
                     if hasattr(calibrator, "predict_proba"):
@@ -485,13 +545,13 @@ _ENSEMBLE_FAMILIES = {"voting_ensemble", "stacking_ensemble", "blending_ensemble
 
 
 def _load_estimator(context: NodeContext, model: dict[str, Any]) -> Any:
-    """Load a serialized estimator binary through the current InputCollection.
+    """Load a serialized estimator binary through the shared deep module.
 
     The classifier node publishes the JSON model first and the joblib
     estimator binary second (same descriptor family). The JSON model carries
-    ``estimator_reference.artifact_id`` pointing at the binary; resolve it via
-    ``InputCollection.artifact_ref`` + ``read_bytes`` rather than a legacy
-    store-backed reader.
+    ``estimator_reference.artifact_id`` pointing at the binary; resolution,
+    hash verification and ``creating_run_id`` enforcement are centralized in
+    ``load_estimator`` (see ADR-0016).
     """
     estimator_ref = model.get("estimator_reference") or {}
     estimator_artifact_id = estimator_ref.get("artifact_id", "")
@@ -500,19 +560,12 @@ def _load_estimator(context: NodeContext, model: dict[str, Any]) -> Any:
             f"apply_model: non-logistic model_family "
             f"{model.get('model_family')!r} requires estimator_reference.artifact_id"
         )
-    # Resolve by embedded ID first, falling back to the physical hash. Persistence
-    # deduplicates a freshly staged content-addressed artifact to an older
-    # canonical ID (e.g. a legacy UUID) when the bytes match, so the embedded
-    # provisional ID may no longer be the canonical artifact_id.
-    ref = context.inputs.artifact_ref(
-        estimator_artifact_id,
-        physical_hash=estimator_ref.get("physical_hash"),
-    )
-    if ref is None:
+    estimator = load_estimator(context.inputs, estimator_ref, node_type="apply_model")
+    if estimator is None:
         raise ValueError(
             f"apply_model: estimator artifact {estimator_artifact_id!r} not among step inputs"
         )
-    return joblib.load(io.BytesIO(context.inputs.read_bytes(ref)))
+    return estimator
 
 
 def _apply_runtime_calibration(
@@ -525,18 +578,20 @@ def _apply_runtime_calibration(
     Mirrors the logistic-regression branch: a non-folded calibrator (isotonic,
     CV-Platt, non-linear Platt) transforms probabilities before scoring.
     Folded-linear calibration is baked into coefficients and needs no runtime
-    step.
+    step. The calibrator binary is loaded through the shared verified loader
+    (ADR-0016), which raises on hash mismatch or missing provenance.
     """
     calibrator_id = calibration.get("calibrator_artifact_id", "")
     if not calibrator_id:
         raise ValueError("Model has calibration block but no calibrator_artifact_id")
-    cal_ref = context.inputs.artifact_ref(
-        calibrator_id,
-        physical_hash=calibration.get("calibrator_physical_hash"),
-    )
-    if cal_ref is None:
+    calibrator_ref = {
+        "artifact_id": calibrator_id,
+        "physical_hash": calibration.get("calibrator_physical_hash", ""),
+        "logical_hash": calibration.get("calibrator_logical_hash", ""),
+    }
+    calibrator = load_estimator(context.inputs, calibrator_ref, node_type="apply_model")
+    if calibrator is None:
         raise ValueError(f"Calibrator artifact {calibrator_id!r} not among step inputs")
-    calibrator = joblib.load(io.BytesIO(context.inputs.read_bytes(cal_ref)))
     x_cal = np.column_stack([1.0 - raw_probs, raw_probs])
     if hasattr(calibrator, "predict_proba"):
         cal_probs = calibrator.predict_proba(x_cal)
@@ -575,69 +630,3 @@ def _role_entry_from_df(
         entry["score_mean"] = round(float(score_series.mean()), 2)
     return entry
 
-
-__definition__ = NodeDefinition(
-    node_type=ApplyWoeMappingNode.node_type,
-    version=ApplyWoeMappingNode.version,
-    category=ApplyWoeMappingNode.category,
-    description="Apply WOE mapping to transform raw features into WOE values",
-    input_contract=ArtifactContract(
-        roles=(
-            # Bin definition and WOE table are hard-required (looked up by
-            # kind); data roles and the scorecard role are optional — the node
-            # transforms whichever datasets are supplied.
-            ArtifactRoleSpec("definition", required=True),
-            ArtifactRoleSpec("report", required=True),
-            ArtifactRoleSpec("train", required=False),
-            ArtifactRoleSpec("test", required=False),
-            ArtifactRoleSpec("oot", required=False),
-            ArtifactRoleSpec("scorecard", required=False),
-        ),
-    ),
-    output_contract=ArtifactContract(
-        roles=(
-            # A partial apply (e.g. only test) emits only that data role plus
-            # the evidence report; the data output roles must be optional.
-            ArtifactRoleSpec("train", required=False),
-            ArtifactRoleSpec("test", required=False),
-            ArtifactRoleSpec("oot", required=False),
-            ArtifactRoleSpec("report", required=True, kinds=(EvidenceKind.APPLY_WOE_EVIDENCE,), media_types=("application/json",), schema_versions=(SCHEMA_APPLY_WOE_EVIDENCE,)),
-        ),
-    ),
-)
-
-__definition_apply_model = NodeDefinition(
-    node_type=ApplyModelNode.node_type,
-    version=ApplyModelNode.version,
-    category=ApplyModelNode.category,
-    description="Apply a fitted model to score datasets across train/test/oot roles",
-    input_contract=ArtifactContract(
-        roles=(
-            # Only the model is hard-required. Scorecard is optional (the node
-            # scores without it) and each of the three data roles is processed
-            # for whichever datasets the plan supplies. The estimator role is
-            # the binary twin of the JSON model (resolved by estimator_reference
-            # artifact_id); it must remain in the input set.
-            ArtifactRoleSpec("model", required=True),
-            ArtifactRoleSpec("estimator", required=False),
-            ArtifactRoleSpec("train", required=False),
-            ArtifactRoleSpec("test", required=False),
-            ArtifactRoleSpec("oot", required=False),
-            ArtifactRoleSpec("scorecard", required=False),
-        ),
-    ),
-    output_contract=ArtifactContract(
-        roles=(
-            ArtifactRoleSpec("train", required=False),
-            ArtifactRoleSpec("test", required=False),
-            ArtifactRoleSpec("oot", required=False),
-            ArtifactRoleSpec("report", required=True, kinds=(EvidenceKind.APPLY_MODEL_EVIDENCE,), media_types=("application/json",), schema_versions=(SCHEMA_APPLY_MODEL_EVIDENCE,)),
-        ),
-    ),
-)
-
-# Bind the typed contracts to their classes so StepRunner (which reads
-# ``node.__definition__``) enforces them instead of falling back to the legacy
-# role lists. The definitions are module-level to keep this file readable.
-ApplyWoeMappingNode.__definition__ = __definition__
-ApplyModelNode.__definition__ = __definition_apply_model

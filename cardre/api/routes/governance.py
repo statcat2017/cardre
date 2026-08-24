@@ -13,7 +13,6 @@ from cardre.api.errors import (
     CardreApiError,
     ErrorCode,
     GovernanceNotEnabled,
-    translate_domain_error,
 )
 from cardre.api.mappers import (
     branch_to_response,
@@ -225,20 +224,16 @@ def apply_manual_binning_edit(project_id: str, body: ManualBinningEditRequest, c
         ApplyManualBinningEdit,
         ApplyManualBinningEditCommand,
     )
-    from cardre.domain.errors import CardreError
 
     def factory():
         return container.uow_factory.for_project(project_id)
 
     uc = ApplyManualBinningEdit(factory)
-    try:
-        result = uc(ApplyManualBinningEditCommand(
-            plan_version_id=body.plan_version_id, step_id=body.step_id,
-            overrides=body.overrides, reviewer_notes=body.reviewer_notes,
-            status=body.status, affected_downstream_step_ids=body.affected_downstream_step_ids,
-        ))
-    except CardreError as exc:
-        raise translate_domain_error(exc) from exc
+    result = uc(ApplyManualBinningEditCommand(
+        plan_version_id=body.plan_version_id, step_id=body.step_id,
+        overrides=body.overrides, reviewer_notes=body.reviewer_notes,
+        status=body.status, affected_downstream_step_ids=body.affected_downstream_step_ids,
+    ))
     return ManualBinningEditResponse(
         new_plan_version_id=result.new_plan_version_id,
         review_id=result.review_id,

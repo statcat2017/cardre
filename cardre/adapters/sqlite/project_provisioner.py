@@ -10,7 +10,7 @@ from cardre.adapters.sqlite.schema import (
     V3_STORE_SCHEMA_FAMILY,
     V3_STORE_SCHEMA_VERSION,
 )
-from cardre.domain.errors import CardreError
+from cardre.domain.errors import CardreError, ErrorCode
 
 
 class SqliteProjectProvisioner:
@@ -28,14 +28,14 @@ class SqliteProjectProvisioner:
             raise CardreError(
                 f"Target directory {root} already exists. "
                 "Choose a path that does not exist, or remove it first.",
-                code="STORE_ALREADY_EXISTS",
+                code=ErrorCode.STORE_ALREADY_EXISTS,
                 context={"path": str(root)},
             )
 
         if db_path.exists():
             raise CardreError(
                 f"Store already exists at {db_path}. Use open() to connect.",
-                code="STORE_ALREADY_EXISTS",
+                code=ErrorCode.STORE_ALREADY_EXISTS,
                 context={"path": str(db_path)},
             )
 
