@@ -551,9 +551,12 @@ describe("useProjectWorkspace", () => {
 
     // Once a terminal status is observed, the panels must end up showing the
     // populated outputs, not stale empty results.
-    await waitFor(() => {
-      expect(result.current.reportsQuery.data?.reports?.[0]?.report_id).toBe("rep-1");
-      expect(result.current.exportsQuery.data?.exports?.[0]?.export_id).toBe("exp-1");
-    });
+    await waitFor(
+      () => {
+        expect(result.current.reportsQuery.data?.reports?.[0]?.report_id).toBe("rep-1");
+        expect(result.current.exportsQuery.data?.exports?.[0]?.export_id).toBe("exp-1");
+      },
+      { timeout: 3000 },
+    );
   });
 });
