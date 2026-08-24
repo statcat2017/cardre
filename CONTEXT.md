@@ -97,6 +97,14 @@ The boundary: once score scaling produces the finalized scorecard, the validate 
 
 Governance features (branching, comparison, champion assignment) are gated behind `CARDRE_GOVERNANCE=1`. The API uses `Depends(require_governance)` to return 403 when governance is not enabled.
 
+## Error Codes
+
+`ErrorCode` (`cardre/domain/errors.py`) is the single closed error-code vocabulary. Every `CardreError` code — whether passed as a `code=` kwarg or set as a class-level default — must be an `ErrorCode` member; the constructor rejects unknown codes at construction time. `_DOMAIN_ERROR_MAP` in `cardre/api/errors.py` is the sole source of HTTP status (and any API code translation) for every mapped code: per-call `status_code=` on a mapped `CardreError` is ignored, so one code maps to exactly one status. The global `cardre_error_handler` applies `translate_domain_error` so unwrapped routes get the same behaviour as wrapped ones. Two guards enforce closure in CI: `tests/test_error_code_closure.py` (AST scan) and `tests/test_error_code_sync.py` (TS mirror).
+
+The TypeScript union `frontend/src/api/errorCodes.ts` is generated from the Python enum by `scripts/generate-error-codes.py`; a `make preflight` drift check fails the gate if it goes stale. Internal-only `ErrorCode` members (the `INTERNAL_ERROR_CODES` set in `cardre/domain/errors.py`) — such as `MANIFEST_STEP_MISSING` and `MANIFEST_PLAN_MISSING`, which are raised during run finalization and surface via run diagnostics rather than the HTTP envelope — are excluded from the public TypeScript union. The 8 client-only transport codes (SIDECAR_UNREACHABLE, REQUEST_TIMEOUT, etc.) are hand-maintained and have no Python counterpart.
+
+Run *diagnostics* (gate codes, manifest diagnostics, `MAXIMUM_PSI_*`, `RUN_VALIDATION_FAILED`, `RUN_EXECUTION_FAILED`) are deliberately open strings — node-generated and unbounded — and are out of scope for the closed `ErrorCode` vocabulary. They are distinct from the closed internal codes above, which are real `ErrorCode` members even though they never cross the HTTP boundary.
+
 ## Licensing
 
 Apache 2.0. Chosen over MIT for its patent grant clause, which is important for adoption in regulated financial institutions. Downstream users get explicit protection from patent claims related to the code.
@@ -125,3 +133,11 @@ These are two different node types: `impute_missing` (data transform) and the `m
 - For tabular artifacts: sort columns by name, serialize to canonical binary format (fixed schema, no compression, deterministic float representation), hash the result.
 - For definition artifacts (bin maps, model coefficients): JSON-sorted-keys canonical serialization, then hash.
 - The artifact store deduplicates by `physical_hash`. Audit/reproducibility compares by `logical_hash`.
+
+## Estimator Reference
+
+A fitted model is published as **two** Artifacts sharing one descriptor family: a parseable JSON `model` artifact and a joblib-serialized `estimator` binary. The JSON model carries an **estimator reference** — the binary's `provisional_artifact_id` (a descriptor id computed *before* the binary is staged) plus its `physical_hash` and `logical_hash`. This lets the model JSON cite the binary before the binary exists on disk.
+
+The **publish ordering invariant** is load-bearing: the JSON model is published **first**, the estimator bytes **second**, both under the same descriptor id. Downstream `require("model")` / `first("model")` consumers select by role and must receive the parseable JSON, not the joblib blob (which the MODEL_ARTIFACT evidence profile rejects on media type). A node that reverses the order silently breaks every downstream model consumer.
+
+Loading the binary is the inverse: resolve the reference via `InputCollection.artifact_ref`, `read_bytes`, **verify the hash** (the published `logical_hash` against the bytes' SHA-256) and **require `creating_run_id` metadata** before deserialising. Refusing to load untrusted binaries is the trust policy; there is no "unverified" load path.

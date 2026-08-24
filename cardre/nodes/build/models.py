@@ -44,6 +44,22 @@ class LogisticRegressionNode(NodeType):
     version = "1"
     category = "fit"
 
+    __definition__ = NodeDefinition(
+        node_type="cardre.logistic_regression",
+        version="1",
+        category="fit",
+        description="Logistic regression classifier producing a cardre.model_artifact.v1 artifact",
+        input_contract=ArtifactContract(
+            roles=(
+                ArtifactRoleSpec("train", required=True),
+                ArtifactRoleSpec("definition", required=True),
+            ),
+        ),
+        output_contract=ArtifactContract(
+            roles=(ArtifactRoleSpec("model", required=True),),
+        ),
+    )
+
     VALID_PENALTIES = {"l1", "l2", "elasticnet", None}
     VALID_SOLVERS = {"lbfgs", "liblinear", "newton-cg", "newton-cholesky", "sag", "saga"}
 
@@ -690,21 +706,3 @@ class NoopNode(NodeType):
     def run(self, context: NodeContext) -> NodeResult:
         return context.outputs.build_result()
 
-
-__definition_logistic = NodeDefinition(
-    node_type=LogisticRegressionNode.node_type,
-    version=LogisticRegressionNode.version,
-    category=LogisticRegressionNode.category,
-    description="Logistic regression classifier producing a cardre.model_artifact.v1 artifact",
-    input_contract=ArtifactContract(
-        roles=(
-            ArtifactRoleSpec("train", required=True),
-            ArtifactRoleSpec("definition", required=True),
-        ),
-    ),
-    output_contract=ArtifactContract(
-        roles=(ArtifactRoleSpec("model", required=True),),
-    ),
-)
-
-LogisticRegressionNode.__definition__ = __definition_logistic

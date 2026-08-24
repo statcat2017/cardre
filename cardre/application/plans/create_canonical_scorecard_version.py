@@ -54,7 +54,6 @@ class CreateCanonicalScorecardVersion:
                     f"Plan {command.plan_id!r} not found.",
                     code=ErrorCode.PLAN_NOT_FOUND,
                     context={"plan_id": command.plan_id},
-                    status_code=404,
                 )
 
             # 2. Build the canonical step set. build_canonical_scorecard_steps

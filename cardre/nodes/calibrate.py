@@ -13,11 +13,8 @@ Score-scaling-compatible modes:
 
 from __future__ import annotations
 
-import hashlib
-import io
 from typing import Any, cast
 
-import joblib
 import numpy as np
 import polars as pl
 from sklearn.isotonic import IsotonicRegression
@@ -28,6 +25,7 @@ from cardre.domain.artifacts import ArtifactRef
 from cardre.domain.diagnostics import JsonDict
 from cardre.domain.evidence.kinds import EvidenceKind, RoleKind
 from cardre.domain.evidence.schemas import SCHEMA_CALIBRATION_REPORT, SCHEMA_MODEL_ARTIFACT
+from cardre.nodes._model_artifacts import publish_estimator, stage_estimator_bytes
 from cardre.nodes.contracts import (
     ArtifactContract,
     ArtifactRoleSpec,
@@ -519,28 +517,22 @@ class CalibrateProbabilitiesNode(NodeType):
         # consumers select the first model artifact by role, and it must be the
         # parseable JSON model, not the joblib calibrator blob.
         calibrator_ref: dict[str, Any] | None = None
+        calibrator_parts = None
         if calibrator is not None:
-            calibrator_buf = io.BytesIO()
-            joblib.dump(calibrator, calibrator_buf)
-            serialized_calibrator = calibrator_buf.getvalue()
-            calibrator_logical_hash = hashlib.sha256(serialized_calibrator).hexdigest()
-            calibrator_metadata = {
-                "schema_version": SCHEMA_MODEL_ARTIFACT,
-                "artifact_subtype": "probability_calibrator",
-                "method": method,
-                "estimator_format": "joblib",
-                "byte_count": len(serialized_calibrator),
-                "creating_run_id": context.run_id,
-                "creating_run_step_id": context.runtime.step_id,
-            }
-            from cardre.nodes._training_utils import _model_binary_descriptor_id
-
+            calibrator_parts = publish_estimator(
+                calibrator,
+                step_id=context.runtime.step_id,
+                run_id=context.run_id,
+                metadata={
+                    "schema_version": SCHEMA_MODEL_ARTIFACT,
+                    "artifact_subtype": "probability_calibrator",
+                    "method": method,
+                },
+            )
             calibrator_ref = {
-                "provisional_artifact_id": _model_binary_descriptor_id(
-                    serialized_calibrator, calibrator_logical_hash, calibrator_metadata,
-                ),
-                "physical_hash": calibrator_logical_hash,
-                "logical_hash": calibrator_logical_hash,
+                "provisional_artifact_id": calibrator_parts.provisional_artifact_id,
+                "physical_hash": calibrator_parts.physical_hash,
+                "logical_hash": calibrator_parts.logical_hash,
             }
 
             if application_mode == "folded_linear_log_odds":
@@ -630,14 +622,8 @@ class CalibrateProbabilitiesNode(NodeType):
         )
 
         if calibrator_ref is not None:
-            context.outputs.publish_bytes(
-                role="estimator",
-                kind=EvidenceKind.MODEL_ARTIFACT,
-                data=serialized_calibrator,
-                media_type="application/octet-stream",
-                logical_hash=calibrator_logical_hash,
-                metadata=calibrator_metadata,
-            )
+            assert calibrator_parts is not None
+            stage_estimator_bytes(context.outputs, calibrator_parts)
 
         context.outputs.add_metric("method", method)
         context.outputs.add_metric("calibration_sample", calibration_sample)

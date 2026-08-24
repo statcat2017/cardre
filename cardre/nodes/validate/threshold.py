@@ -8,6 +8,7 @@ import polars as pl
 from cardre.domain.diagnostics import JsonDict
 from cardre.domain.evidence.kinds import EvidenceKind
 from cardre.domain.evidence.schemas import SCHEMA_THRESHOLD_OPTIMIZATION
+from cardre.nodes._samples import sample_bundle
 from cardre.nodes.contracts import (
     ArtifactContract,
     ArtifactRoleSpec,
@@ -121,10 +122,7 @@ class ThresholdOptimizationNode(NodeType):
         bad = meta.bad_values if meta is not None else frozenset()
         bad_list = list(bad)
 
-        train_arts = context.inputs.by_role("train")
-        test_arts = context.inputs.by_role("test")
-        oot_arts = context.inputs.by_role("oot")
-        data_arts = train_arts + test_arts + oot_arts
+        data_arts = sample_bundle(context.inputs)
 
         report: JsonDict = {"objective": objective, "cost_fp": cost_fp, "cost_fn": cost_fn, "roles": {}}
 

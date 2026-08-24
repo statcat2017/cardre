@@ -7,7 +7,7 @@ from pathlib import Path
 from cardre.application.ports.project_provisioner import ProjectProvisionerPort
 from cardre.application.ports.project_registry import ProjectRegistryPort
 from cardre.application.ports.unit_of_work import UnitOfWorkFactory
-from cardre.domain.errors import CardreError
+from cardre.domain.errors import CardreError, ErrorCode
 from cardre.domain.project import Project
 
 
@@ -39,13 +39,13 @@ class CreateProject:
         if not root.is_absolute():
             raise CardreError(
                 f"Project path must be absolute, got {path!r}.",
-                code="INVALID_PROJECT_PATH",
+                code=ErrorCode.INVALID_PROJECT_PATH,
                 context={"path": path},
             )
         if ".." in root.parts:
             raise CardreError(
                 f"Project path must not contain '..' traversal, got {path!r}.",
-                code="INVALID_PROJECT_PATH",
+                code=ErrorCode.INVALID_PROJECT_PATH,
                 context={"path": path},
             )
 

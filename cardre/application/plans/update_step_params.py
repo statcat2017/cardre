@@ -49,14 +49,12 @@ class UpdateStepParams:
                     f"Plan version {command.plan_version_id!r} not found.",
                     code=ErrorCode.PLAN_VERSION_NOT_FOUND,
                     context={"plan_version_id": command.plan_version_id},
-                    status_code=404,
                 )
             if existing.is_committed:
                 raise CardreError(
                     f"Plan version {command.plan_version_id!r} is already committed.",
                     code=ErrorCode.PLAN_VERSION_ALREADY_COMMITTED,
                     context={"plan_version_id": command.plan_version_id},
-                    status_code=409,
                 )
 
             steps = uow.plans.get_version_steps(command.plan_version_id)
@@ -67,7 +65,6 @@ class UpdateStepParams:
                     f"{command.plan_version_id!r}.",
                     code=ErrorCode.STEP_NOT_FOUND,
                     context={"plan_version_id": command.plan_version_id, "step_id": command.step_id},
-                    status_code=404,
                 )
 
             node_cls = self._node_catalogue.resolve(step.node_type)

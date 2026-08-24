@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import time
+from types import SimpleNamespace
 from typing import Any
 
 import numpy as np
@@ -15,11 +16,8 @@ from sklearn.tree import DecisionTreeClassifier
 from cardre.domain.evidence.kinds import EvidenceKind
 from cardre.domain.evidence.schemas import SCHEMA_MODEL_ARTIFACT
 from cardre.modeling.builders import build_model_artifact
-from cardre.nodes._training_utils import (
-    _estimator_parts,
-    _model_binary_descriptor_id,
-    prepare_supervised_training_data,
-)
+from cardre.nodes._model_artifacts import publish_estimator, stage_estimator_bytes
+from cardre.nodes._training_utils import prepare_supervised_training_data
 from cardre.nodes.contracts import (
     ArtifactContract,
     ArtifactRoleSpec,
@@ -61,6 +59,25 @@ class HyperparameterTuningNode(NodeType):
     node_type = "cardre.hyperparameter_tuning"
     version = "1"
     category = "fit"
+
+    __definition__ = NodeDefinition(
+        node_type="cardre.hyperparameter_tuning",
+        version="1",
+        category="fit",
+        description="Hyperparameter tuning node using sklearn GridSearchCV / RandomizedSearchCV",
+        input_contract=ArtifactContract(
+            roles=(
+                ArtifactRoleSpec("train", required=True),
+                ArtifactRoleSpec("definition", required=True),
+            ),
+        ),
+        output_contract=ArtifactContract(
+            roles=(
+                ArtifactRoleSpec("model", required=True, kinds=(EvidenceKind.MODEL_ARTIFACT,), media_types=("application/json",), schema_versions=(SCHEMA_MODEL_ARTIFACT,)),
+                ArtifactRoleSpec("estimator", required=True, media_types=("application/octet-stream",)),
+            ),
+        ),
+    )
 
     @classmethod
     def parameter_schema(cls) -> NodeParameterSchema:
@@ -288,18 +305,17 @@ class HyperparameterTuningNode(NodeType):
         })
 
         model_family = ESTIMATOR_TO_FAMILY[estimator_type]
-        estimator_bytes, estimator_hash, estimator_metadata = _estimator_parts(
-            best_estimator, step_id, context.run_id, model_family,
+        estimator_ref = publish_estimator(
+            best_estimator,
+            step_id=step_id,
+            run_id=context.run_id,
+            model_family=model_family,
         )
-        from types import SimpleNamespace
-
         estimator_art = SimpleNamespace(
             artifact_id=None,
-            provisional_artifact_id=_model_binary_descriptor_id(
-                estimator_bytes, estimator_hash, estimator_metadata,
-            ),
-            logical_hash=estimator_hash,
-            physical_hash=estimator_hash,
+            provisional_artifact_id=estimator_ref.provisional_artifact_id,
+            logical_hash=estimator_ref.logical_hash,
+            physical_hash=estimator_ref.physical_hash,
         )
 
         model = build_model_artifact(
@@ -376,14 +392,7 @@ class HyperparameterTuningNode(NodeType):
 
         # Stage the binary estimator AFTER the JSON model so role consumers
         # (`require("model")` / `first("model")`) select the parseable model.
-        context.outputs.publish_bytes(
-            role="estimator",
-            kind=EvidenceKind.MODEL_ARTIFACT,
-            data=estimator_bytes,
-            media_type="application/octet-stream",
-            logical_hash=estimator_hash,
-            metadata=estimator_metadata,
-        )
+        stage_estimator_bytes(context.outputs, estimator_ref)
 
         metrics: dict[str, Any] = {
             "feature_count": len(features),
@@ -394,24 +403,3 @@ class HyperparameterTuningNode(NodeType):
             context.outputs.add_metric(name, value)
         return context.outputs.build_result()
 
-
-__definition__ = NodeDefinition(
-    node_type=HyperparameterTuningNode.node_type,
-    version=HyperparameterTuningNode.version,
-    category=HyperparameterTuningNode.category,
-    description="Hyperparameter tuning node using sklearn GridSearchCV / RandomizedSearchCV",
-    input_contract=ArtifactContract(
-        roles=(
-            ArtifactRoleSpec("train", required=True),
-            ArtifactRoleSpec("definition", required=True),
-        ),
-    ),
-    output_contract=ArtifactContract(
-        roles=(
-            ArtifactRoleSpec("model", required=True, kinds=(EvidenceKind.MODEL_ARTIFACT,), media_types=("application/json",), schema_versions=(SCHEMA_MODEL_ARTIFACT,)),
-            ArtifactRoleSpec("estimator", required=True, media_types=("application/octet-stream",)),
-        ),
-    ),
-)
-
-HyperparameterTuningNode.__definition__ = __definition__

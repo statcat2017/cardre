@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from cardre.application.ports.project_registry import ProjectRegistryPort
 from cardre.application.ports.unit_of_work import UnitOfWorkFactory
-from cardre.domain.errors import CardreError
+from cardre.domain.errors import CardreError, ErrorCode
 from cardre.domain.project import Project
 
 
@@ -25,7 +25,7 @@ class GetProject:
             if project is None:
                 raise CardreError(
                     f"Project {project_id!r} not found.",
-                    code="PROJECT_NOT_FOUND",
+                    code=ErrorCode.PROJECT_NOT_FOUND,
                     context={"project_id": project_id},
                 )
             return project

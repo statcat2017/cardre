@@ -228,7 +228,7 @@ def test_gbdt_family_is_supported_for_apply(tmp_path: Path):
     est_staged = pub.publish_bytes(
         role="model", kind=EvidenceKind.MODEL_ARTIFACT, data=est_bytes,
         media_type="application/octet-stream", logical_hash=est_hash,
-        metadata={},
+        metadata={"creating_run_id": "run-1", "creating_run_step_id": "fit-1"},
     )
     model_staged = pub.publish_json(
         role="model", kind=EvidenceKind.MODEL_ARTIFACT,
@@ -244,6 +244,7 @@ def test_gbdt_family_is_supported_for_apply(tmp_path: Path):
             "training": {"row_count": 6},
             "estimator_reference": {
                 "artifact_id": est_staged.provisional_artifact_id,
+                "logical_hash": est_hash,
                 "physical_hash": est_hash,
             },
         },
@@ -295,7 +296,8 @@ def test_load_estimator_falls_back_to_physical_hash(tmp_path: Path):
 
     est_staged = pub.publish_bytes(
         role="model", kind=EvidenceKind.MODEL_ARTIFACT, data=est_bytes,
-        media_type="application/octet-stream", logical_hash=est_hash, metadata={},
+        media_type="application/octet-stream", logical_hash=est_hash,
+        metadata={"creating_run_id": "run-1", "creating_run_step_id": "fit-1"},
     )
     store.finalize(est_staged)
     est_ref = _staged_to_ref(est_staged)
@@ -303,7 +305,13 @@ def test_load_estimator_falls_back_to_physical_hash(tmp_path: Path):
     # The model JSON embeds a *provisional* content-addressed ID that does NOT
     # match the canonical ref (deduped to a legacy UUID); only the physical hash
     # matches.
-    model = {"estimator_reference": {"artifact_id": "legacy-uuid", "physical_hash": est_hash}}
+    model = {
+        "estimator_reference": {
+            "artifact_id": "legacy-uuid",
+            "logical_hash": est_hash,
+            "physical_hash": est_hash,
+        },
+    }
 
     class _FallbackInputs:
         def artifact_ref(self, artifact_id, *, physical_hash=None):
@@ -343,7 +351,8 @@ def test_apply_runtime_calibration_falls_back_to_physical_hash(tmp_path: Path):
     cal_hash = hashlib.sha256(cal_bytes).hexdigest()
     cal_staged = pub.publish_bytes(
         role="model", kind=EvidenceKind.MODEL_ARTIFACT, data=cal_bytes,
-        media_type="application/octet-stream", logical_hash=cal_hash, metadata={},
+        media_type="application/octet-stream", logical_hash=cal_hash,
+        metadata={"creating_run_id": "run-1", "creating_run_step_id": "fit-1"},
     )
     store.finalize(cal_staged)
     cal_ref = _staged_to_ref(cal_staged)
@@ -353,6 +362,7 @@ def test_apply_runtime_calibration_falls_back_to_physical_hash(tmp_path: Path):
     calibration = {
         "calibrator_artifact_id": "legacy-cal-uuid",
         "calibrator_physical_hash": cal_hash,
+        "calibrator_logical_hash": cal_hash,
     }
 
     class _CalInputs:
