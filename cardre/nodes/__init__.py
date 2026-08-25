@@ -1,59 +1,31 @@
 """Built-in node implementations for the Cardre scorecard engine.
 
 This module re-exports all node classes from subpackages as a convenience
-for the registry and tests.  Nodes are registered in
-``cardre.registry.NodeRegistry`` and divided into two tiers:
-
-- **Launch tier**: executable at launch (logistic regression, binning,
-  WOE/IV, score scaling, validation, cutoff, decision tree challenger).
-- **Deferred tier**: registered as schemas for UI display but not
-  executable unless ``CARDRE_LAUNCH_MODE=0`` (boosting, ensembles,
-  fairness, explainability, reject inference, feature selection, tuning).
-
-See ``docs/launch-mode.md`` and ``docs/reference/node-catalogue.md``.
+for the registry and tests. Nodes are registered in
+``cardre.bootstrap.node_catalogue`` as one flat production catalogue.
 """
 
-from cardre.nodes.boosting import (
-    CatBoostClassifierNode,
-    LightGBMClassifierNode,
-    XGBoostClassifierNode,
-)
 from cardre.nodes.build import (
     AutomaticBinningNode,
     BuildSummaryReportNode,
     CalculateWoeIvNode,
-    DummyFitNode,
+    CalibrationDiagnosticsNode,
+    CoefficientSignCheckNode,
     FrozenScorecardBundleNode,
     LogisticRegressionNode,
     ManualBinningNode,
-    NoopNode,
     PythonScoringExportNode,
     ScorecardTableExportNode,
     ScoreScalingNode,
+    SeparationDiagnosticsNode,
     SqlScoringExportNode,
     TechnicalManifestExportNode,
     VariableClusteringNode,
     VariableSelectionNode,
+    VifDiagnosticsNode,
     WoeTransformTrainNode,
     apply_manual_binning_overrides,
     validate_manual_binning_overrides,
-)
-from cardre.nodes.calibrate import (
-    CalibrateProbabilitiesNode,
-)
-from cardre.nodes.explainability import (
-    ModelExplainabilityNode,
-    ModelLimitationsNode,
-)
-from cardre.nodes.fairness import (
-    AlternativeDataManifestNode,
-    FairnessReportNode,
-    ProxyRiskReportNode,
-)
-from cardre.nodes.ml_models import (
-    DecisionTreeNode,
-    GradientBoostingClassifierNode,
-    RandomForestClassifierNode,
 )
 from cardre.nodes.prep import (
     ApplyExclusionsNode,
@@ -65,78 +37,44 @@ from cardre.nodes.prep import (
     SplitTrainTestOotNode,
     ValidateBinaryTargetNode,
 )
-from cardre.nodes.reject_inference import (
-    DefineRejectPopulationNode,
-    RejectInferenceAugmentationNode,
-    RejectInferenceNoneNode,
-)
-from cardre.nodes.selection import (
-    FeatureSelectionEmbeddedNode,
-    FeatureSelectionFilterNode,
-    ResampleTrainingDataNode,
-    SmoteTrainingDataNode,
-)
-from cardre.nodes.tuning import (
-    HyperparameterTuningNode,
-)
 from cardre.nodes.validate import (
     ApplyModelNode,
     ApplyWoeMappingNode,
     CutoffAnalysisNode,
-    ThresholdOptimizationNode,
     ValidationMetricsNode,
 )
 
 __all__ = [
-    "AlternativeDataManifestNode",
     "ApplyExclusionsNode",
     "ApplyModelNode",
     "ApplyWoeMappingNode",
+    "AutomaticBinningNode",
     "BuildSummaryReportNode",
     "CalculateWoeIvNode",
-    "CalibrateProbabilitiesNode",
-    "CatBoostClassifierNode",
+    "CalibrationDiagnosticsNode",
+    "CoefficientSignCheckNode",
     "CutoffAnalysisNode",
-    "DecisionTreeNode",
     "DefineModellingMetadataNode",
-    "DefineRejectPopulationNode",
     "DevelopmentSampleDefinitionNode",
-    "DummyFitNode",
     "ExplicitMissingOutlierTreatmentNode",
-    "FairnessReportNode",
-    "FeatureSelectionEmbeddedNode",
-    "FeatureSelectionFilterNode",
-    "AutomaticBinningNode",
     "FrozenScorecardBundleNode",
-    "GradientBoostingClassifierNode",
-    "HyperparameterTuningNode",
     "ImportTabularDatasetNode",
-    "LightGBMClassifierNode",
     "LogisticRegressionNode",
     "ManualBinningNode",
-    "ModelExplainabilityNode",
-    "ModelLimitationsNode",
-    "NoopNode",
     "ProfileDatasetNode",
-    "ProxyRiskReportNode",
     "PythonScoringExportNode",
-    "RandomForestClassifierNode",
-    "RejectInferenceAugmentationNode",
-    "RejectInferenceNoneNode",
-    "ResampleTrainingDataNode",
     "ScoreScalingNode",
     "ScorecardTableExportNode",
-    "SmoteTrainingDataNode",
+    "SeparationDiagnosticsNode",
     "SplitTrainTestOotNode",
     "SqlScoringExportNode",
     "TechnicalManifestExportNode",
-    "ThresholdOptimizationNode",
     "ValidateBinaryTargetNode",
     "ValidationMetricsNode",
     "VariableClusteringNode",
     "VariableSelectionNode",
+    "VifDiagnosticsNode",
     "WoeTransformTrainNode",
-    "XGBoostClassifierNode",
     "apply_manual_binning_overrides",
     "validate_manual_binning_overrides",
 ]

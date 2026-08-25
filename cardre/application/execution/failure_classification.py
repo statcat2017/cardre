@@ -13,23 +13,19 @@ from cardre.domain.errors import (
     ArtifactWriteError,
     CardreError,
     GraphValidationError,
-    NodeNotAvailableForLaunch,
     NodeRoleAccessViolation,
     NodeVersionMismatchError,
     OptionalDependencyNotInstalled,
     ParameterValidationError,
-    PlanContainsUnavailableNodesError,
 )
 
 # Order matters: more specific subclasses first.
 _CATEGORY_MAP: tuple[tuple[type[CardreError], str], ...] = (
     (GraphValidationError, "GraphValidationError"),
-    (PlanContainsUnavailableNodesError, "PlanContainsUnavailableNodesError"),
     (ParameterValidationError, "ParameterValidationError"),
     (ArtifactReadError, "ArtifactReadError"),
     (ArtifactWriteError, "ArtifactWriteError"),
     (NodeRoleAccessViolation, "NodeRoleAccessViolation"),
-    (NodeNotAvailableForLaunch, "NodeNotAvailableForLaunch"),
     (NodeVersionMismatchError, "NodeVersionMismatchError"),
     (OptionalDependencyNotInstalled, "OptionalDependencyNotInstalled"),
     (CardreError, "CardreError"),
@@ -37,12 +33,10 @@ _CATEGORY_MAP: tuple[tuple[type[CardreError], str], ...] = (
 
 _CODE_MAP: dict[str, str] = {
     "GraphValidationError": "GRAPH_VALIDATION_ERROR",
-    "PlanContainsUnavailableNodesError": "PLAN_CONTAINS_UNAVAILABLE_NODES",
     "ParameterValidationError": "PARAMETER_VALIDATION_ERROR",
     "ArtifactReadError": "ARTIFACT_READ_ERROR",
     "ArtifactWriteError": "ARTIFACT_WRITE_ERROR",
     "NodeRoleAccessViolation": "NODE_ROLE_ACCESS_VIOLATION",
-    "NodeNotAvailableForLaunch": "NODE_NOT_AVAILABLE_FOR_LAUNCH",
     "NodeVersionMismatchError": "NODE_VERSION_MISMATCH",
     "OptionalDependencyNotInstalled": "OPTIONAL_DEPENDENCY_NOT_INSTALLED",
     "CardreError": "CARDRE_ERROR",

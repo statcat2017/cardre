@@ -185,19 +185,6 @@ class ExecuteRun:
     # -- orchestration helpers ------------------------------------------------
 
     def _assert_nodes_available(self, steps: list[Any]) -> None:
-        unavailable = []
-        for step in steps:
-            av = self._node_catalogue.availability(step.node_type)
-            if not av.available:
-                unavailable.append(step.step_id)
-        if unavailable:
-            from cardre.domain.errors import PlanContainsUnavailableNodesError
-
-            raise PlanContainsUnavailableNodesError(
-                [{"step_id": sid, "node_type": "", "node_version": "", "reason": "Node is unavailable."}
-                 for sid in unavailable]
-            )
-
         mismatches: list[dict[str, str]] = []
         for step in steps:
             current = self._node_catalogue.resolve(step.node_type).node_definition().version

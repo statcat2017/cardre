@@ -18,7 +18,7 @@ REQUIRED_STEPS_CHAMPION = [
 REQUIRED_STEPS_COLLECTOR = [
     *REQUIRED_STEPS_CHAMPION, "manual-binning", "variable-clustering", "coefficient-sign-check",
     "separation-diagnostics", "vif-diagnostics", "calibration-diagnostics", "apply-exclusions",
-    "sample-definition", "explicit-missing-outlier-treatment", "initial-woe-iv", "model-limitations",
+    "sample-definition", "explicit-missing-outlier-treatment", "initial-woe-iv",
     "apply-woe",
 ]
 REQUIRED_STEPS_COMPARISON = [

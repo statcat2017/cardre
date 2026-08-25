@@ -25,14 +25,14 @@ def _spec(step_id: str, node_type: str, version: str) -> StepSpec:
 
 
 class TestNodeVersionEnforcement:
-    def test_noop_node_is_version_1(self):
-        cat = build_default_catalogue(Settings(launch_mode=True))
-        assert cat.resolve("cardre.noop").node_definition().version == "1"
+    def test_import_dataset_node_is_version_1(self):
+        cat = build_default_catalogue(Settings())
+        assert cat.resolve("cardre.import_dataset").node_definition().version == "1"
 
     def test_mismatched_version_fails_step_before_execution(self):
-        cat = build_default_catalogue(Settings(launch_mode=True))
+        cat = build_default_catalogue(Settings())
         runner = StepRunner(cat, lambda: None, lambda: (None, None))
-        bad_spec = _spec("s1", "cardre.noop", "99")
+        bad_spec = _spec("s1", "cardre.import_dataset", "99")
         result = runner.run_step("pv-1", "run-1", bad_spec, {}, {})
 
         assert result.status == RunStepStatus.FAILED, "mismatched version must fail the step"
@@ -43,7 +43,7 @@ class TestNodeVersionEnforcement:
 
     def test_mismatch_error_class_surfaces_version_context(self):
         err = NodeVersionMismatchError(
-            step_id="s1", node_type="cardre.noop", persisted="99", current="1",
+            step_id="s1", node_type="cardre.import_dataset", persisted="99", current="1",
         )
         assert err.code == "NODE_VERSION_MISMATCH"
         assert err.persisted_version == "99"
@@ -54,7 +54,7 @@ class TestNodeVersionEnforcement:
 
     def test_from_mismatches_builds_error(self):
         err = NodeVersionMismatchError.from_mismatches([
-            {"step_id": "s1", "node_type": "cardre.noop",
+            {"step_id": "s1", "node_type": "cardre.import_dataset",
              "persisted_version": "99", "current_version": "1"},
             {"step_id": "s2", "node_type": "cardre.import_dataset",
              "persisted_version": "2", "current_version": "1"},

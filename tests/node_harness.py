@@ -81,15 +81,6 @@ class FakeOutputPublisher:
             metadata=metadata or {}, media_type=media_type,
             data=data, logical_hash=logical_hash,
         )
-        # Mirror the store's descriptor-id assignment so the staged artifact's
-        # provisional id is truthful for estimator bytes — the invariant that
-        # lets a model JSON cite the binary before it is staged.
-        if role == "estimator":
-            from cardre.nodes._model_artifacts import estimator_descriptor_id
-
-            staged.provisional_artifact_id = estimator_descriptor_id(
-                data, logical_hash, metadata or {},
-            )
         self.staged.append(staged)
         return staged
 
@@ -196,19 +187,11 @@ class FakeInputCollection:
     def find_frozen_bundle(self):
         return None
 
-    def artifact_ref(self, artifact_id, *, physical_hash=None):
-        # Mirror production StepInputCollection.artifact_ref: resolve by ID
-        # first, then fall back to the physical hash (deduplicated artifacts
-        # may carry a different canonical ID than the embedded provisional one).
+    def artifact_ref(self, artifact_id):
         for arts in self._roles.values():
             for a in arts:
                 if getattr(a, "artifact_id", None) == artifact_id:
                     return a
-        if physical_hash:
-            for arts in self._roles.values():
-                for a in arts:
-                    if getattr(a, "physical_hash", None) == physical_hash:
-                        return a
         return None
 
 

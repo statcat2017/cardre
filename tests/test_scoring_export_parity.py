@@ -53,7 +53,7 @@ def test_scoring_export_parity(api_client, tmp_path):
     plan_id = resp.json()["plan_id"]
 
     container = api_client.app.state.container
-    cat = build_default_catalogue(Settings(launch_mode=True))
+    cat = build_default_catalogue(Settings())
     steps = build_acceptance_fixture_steps(csv_path, cat)
 
     with container.uow_factory.for_project(project_id) as uow:

@@ -65,7 +65,6 @@ def acceptance_env(tmp_path):
     """
     registry_path = tmp_path / "registry.json"
     settings = Settings(
-        launch_mode=True,
         governance_enabled=False,
         registry_path=registry_path,
     )

@@ -79,15 +79,6 @@ cd frontend && npm install
 
 **Fix**: Delete the project directory and recreate the project. The project directory contains the SQLite database and all artifacts.
 
-## Node Not Available
-
-**Symptom**: `NodeNotAvailableForLaunch` error.
-
-**Fix**: Set `CARDRE_LAUNCH_MODE=0` to enable deferred nodes:
-```bash
-CARDRE_LAUNCH_MODE=0 cardre-api
-```
-
 ## Governance Features Not Available
 
 **Symptom**: Branch endpoints return 403.

@@ -97,14 +97,10 @@ class StepInputCollection:
             None,
         )
 
-    def artifact_ref(self, artifact_id: str, *, physical_hash: str | None = None) -> Any | None:
+    def artifact_ref(self, artifact_id: str) -> Any | None:
         for a in self._input_artifacts:
             if a.artifact_id == artifact_id:
                 return a
-        if physical_hash:
-            for a in self._input_artifacts:
-                if getattr(a, "physical_hash", None) == physical_hash:
-                    return a
         return None
 
 

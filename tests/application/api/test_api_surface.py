@@ -175,7 +175,7 @@ def test_node_types_project_scoped(app_env, tmp_path):
     assert resp.status_code == 200
     data = resp.json()
     assert "node_types" in data
-    assert any(nt["node_type"] == "cardre.noop" for nt in data["node_types"])
+    assert any(nt["node_type"] == "cardre.import_dataset" for nt in data["node_types"])
 
 
 # ---------------------------------------------------------------------------
@@ -283,7 +283,7 @@ def test_patch_draft_plan_version_succeeds(app_env, tmp_path):
         pv_id = uow.plans.create_version(
             plan_id,
             [StepSpec(
-                step_id="s1", node_type="cardre.noop", node_version="1",
+                step_id="s1", node_type="cardre.variable_selection", node_version="1",
                 category="transform", params={}, params_hash=json_logical_hash({}),
                 parent_step_ids=[], branch_label="", position=0, canonical_step_id="s1",
             )],
@@ -309,7 +309,7 @@ def test_patch_draft_step_params_succeeds(app_env, tmp_path):
         pv_id = uow.plans.create_version(
             plan_id,
             [StepSpec(
-                step_id="s1", node_type="cardre.noop", node_version="1",
+                step_id="s1", node_type="cardre.variable_selection", node_version="1",
                 category="transform", params={}, params_hash=json_logical_hash({}),
                 parent_step_ids=[], branch_label="", position=0, canonical_step_id="s1",
             )],
@@ -322,8 +322,8 @@ def test_patch_draft_step_params_succeeds(app_env, tmp_path):
     )
     assert resp.status_code == 200
     steps = client.get(f"/projects/{pid}/plan-versions/{pv_id}/steps").json()
-    assert steps[0]["params"] == {"min_iv": 0.05}
-    assert steps[0]["params_hash"] == json_logical_hash({"min_iv": 0.05})
+    assert steps[0]["params"]["min_iv"] == 0.05
+    assert steps[0]["params_hash"] == json_logical_hash(steps[0]["params"])
 
 
 def test_patch_committed_step_params_returns_409(app_env, tmp_path):
@@ -349,7 +349,7 @@ def test_patch_unknown_step_returns_404(app_env, tmp_path):
         pv_id = uow.plans.create_version(
             plan_id,
             [StepSpec(
-                step_id="s1", node_type="cardre.noop", node_version="1",
+                step_id="s1", node_type="cardre.variable_selection", node_version="1",
                 category="transform", params={}, params_hash=json_logical_hash({}),
                 parent_step_ids=[], branch_label="", position=0, canonical_step_id="s1",
             )],

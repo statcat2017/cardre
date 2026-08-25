@@ -2,18 +2,9 @@
 
 The `NodeCatalogue` (`cardre/bootstrap/node_catalogue.py`) is the central registry of available node types. Nodes are registered by their `node_type` string identifier (e.g. `"cardre.import_dataset"`) and resolved at plan-execution time.
 
-## Node Tiers
-
-Nodes are divided into two tiers controlled by `CARDRE_LAUNCH_MODE`:
-
-| Tier | Behaviour | Examples |
-|------|-----------|---------|
-| **launch** | Executable at plan-run time | Logistic regression, binning, WOE, import, split, cutoff, validation metrics |
-| **deferred** | Registered for schema display but raise `NodeNotAvailableForLaunch` on instantiation | Decision tree, gradient boosting, XGBoost, LightGBM, CatBoost, random forest, ensembles, feature selection, hyperparameter tuning, SMOTE, reject inference, fairness, explainability, proxy risk |
-
 ## Registration
 
-The catalogue is built from `Settings` plus a list of node classes:
+The catalogue is built from the current production node classes:
 
 ```python
 from cardre.bootstrap.node_catalogue import build_default_catalogue
@@ -21,10 +12,8 @@ from cardre.bootstrap.settings import Settings
 
 cat = build_default_catalogue(Settings())
 cat.list_types()          # returns all registered node type strings
-cat.availability("cardre.logistic_regression")  # NodeAvailability
+cat.resolve("cardre.logistic_regression")  # node class
 ```
-
-Deferred nodes are included in the catalogue's deferred-node list and marked with `_deferred` during catalogue construction.
 
 ## Node Interface
 

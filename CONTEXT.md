@@ -44,11 +44,6 @@ JSON relationship arrays from v1 have been replaced by relational join tables:
 - **Step**: one occurrence of a node type within a plan. Has a `step_id`, params, parent step IDs (via `plan_step_edges`), status, and run records. A plan is a graph of steps.
 - Plan endpoints model `plan_steps` (intended configuration). Run endpoints model `run_steps` (execution evidence).
 
-## Node Tiers
-
-- **Launch**: Nodes executable in the default scorecard journey. Instantiation of a deferred node raises `NodeNotAvailableForLaunch`.
-- **Deferred**: Nodes registered as schemas for UI display but not executable in launch mode (boosting, ensembles, fairness, reject inference, etc.).
-
 ## Plan Version vs Run
 
 - A **plan version** is created when the user explicitly saves/modifies the plan (adds/removes/reconfigures steps). It is a user-triggered snapshot of *intent*.

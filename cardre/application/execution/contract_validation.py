@@ -161,8 +161,8 @@ def validate_input_contract(
     not carry the staging-kind token (only the versioned schema in metadata).
 
     Nodes that self-enforce via ``InputCollection.require()`` continue to work;
-    this is the framework-level guarantee so nodes that never call ``require()``
-    (e.g. NoopNode) cannot silently run with missing required inputs.
+    this is the framework-level guarantee so nodes cannot silently run with
+    missing required inputs.
     """
     specs_by_role = {spec.role: spec for spec in contract.roles}
 

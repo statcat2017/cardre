@@ -31,17 +31,7 @@ from cardre.domain.evidence.models.diagnostics import (
     SeparationDiagnostics,
     VifDiagnostics,
 )
-from cardre.domain.evidence.models.governance import (
-    ExplainabilityReport,
-    FairnessReport,
-    FeatureSelectionEvidence,
-    HyperparameterTuningEvidence,
-    ProxyRiskReport,
-    RejectInferenceResult,
-    RejectPopulationConfig,
-    ResamplingEvidence,
-    VariableClusteringEvidence,
-)
+from cardre.domain.evidence.models.governance import VariableClusteringEvidence
 from cardre.domain.evidence.models.manifest import (
     ComparisonArtifact,
     ReportBundleEvidence,
@@ -55,7 +45,6 @@ from cardre.domain.evidence.models.sample import (
     SampleDefinition,
     SplitSummary,
 )
-from cardre.domain.evidence.models.threshold import ThresholdOptimization
 from cardre.domain.evidence.models.validation import CutoffAnalysis, ValidationMetrics
 from cardre.domain.evidence.models.woe import IvTable, WoeIvEvidence, WoeTable, WoeTransformEvidence
 from cardre.modeling.schema import ModelArtifactV1
@@ -72,10 +61,6 @@ EVIDENCE_ADAPTERS: dict[EvidenceKind, AdapterSpec] = {
         profile=EVIDENCE_PROFILES[EvidenceKind.BIN_DEFINITION],
         parse=lambda path, art, reader: BinDefinition.from_json(read_json_payload(path), artifact_id=art.artifact_id),
     ),
-    EvidenceKind.CALIBRATION_REPORT: AdapterSpec(
-        profile=EVIDENCE_PROFILES[EvidenceKind.CALIBRATION_REPORT],
-        parse=lambda path, art, reader: read_json_payload(path),
-    ),
     EvidenceKind.COMPARISON_ARTIFACT: AdapterSpec(
         profile=EVIDENCE_PROFILES[EvidenceKind.COMPARISON_ARTIFACT],
         parse=lambda path, art, reader: ComparisonArtifact.from_json(read_json_payload(path), artifact_id=art.artifact_id),
@@ -88,25 +73,9 @@ EVIDENCE_ADAPTERS: dict[EvidenceKind, AdapterSpec] = {
         profile=EVIDENCE_PROFILES[EvidenceKind.EXCLUSION_SUMMARY],
         parse=lambda path, art, reader: ExclusionSummary.from_json(read_json_payload(path), artifact_id=art.artifact_id),
     ),
-    EvidenceKind.EXPLAINABILITY_REPORT: AdapterSpec(
-        profile=EVIDENCE_PROFILES[EvidenceKind.EXPLAINABILITY_REPORT],
-        parse=lambda path, art, reader: ExplainabilityReport.from_json(read_json_payload(path), artifact_id=art.artifact_id),
-    ),
-    EvidenceKind.FAIRNESS_REPORT: AdapterSpec(
-        profile=EVIDENCE_PROFILES[EvidenceKind.FAIRNESS_REPORT],
-        parse=lambda path, art, reader: FairnessReport.from_json(read_json_payload(path), artifact_id=art.artifact_id),
-    ),
-    EvidenceKind.FEATURE_SELECTION_EVIDENCE: AdapterSpec(
-        profile=EVIDENCE_PROFILES[EvidenceKind.FEATURE_SELECTION_EVIDENCE],
-        parse=lambda path, art, reader: FeatureSelectionEvidence.from_json(read_json_payload(path), artifact_id=art.artifact_id),
-    ),
     EvidenceKind.FROZEN_SCORECARD_BUNDLE: AdapterSpec(
         profile=EVIDENCE_PROFILES[EvidenceKind.FROZEN_SCORECARD_BUNDLE],
         parse=lambda path, art, reader: read_json_payload(path),
-    ),
-    EvidenceKind.HYPERPARAMETER_TUNING_EVIDENCE: AdapterSpec(
-        profile=EVIDENCE_PROFILES[EvidenceKind.HYPERPARAMETER_TUNING_EVIDENCE],
-        parse=lambda path, art, reader: HyperparameterTuningEvidence.from_json(read_json_payload(path), artifact_id=art.artifact_id),
     ),
     EvidenceKind.IV_TABLE: AdapterSpec(
         profile=EVIDENCE_PROFILES[EvidenceKind.IV_TABLE],
@@ -132,25 +101,9 @@ EVIDENCE_ADAPTERS: dict[EvidenceKind, AdapterSpec] = {
         profile=EVIDENCE_PROFILES[EvidenceKind.PROFILE_SUMMARY],
         parse=lambda path, art, reader: ProfileSummary.from_json(read_json_payload(path), artifact_id=art.artifact_id),
     ),
-    EvidenceKind.PROXY_RISK_REPORT: AdapterSpec(
-        profile=EVIDENCE_PROFILES[EvidenceKind.PROXY_RISK_REPORT],
-        parse=lambda path, art, reader: ProxyRiskReport.from_json(read_json_payload(path), artifact_id=art.artifact_id),
-    ),
-    EvidenceKind.REJECT_INFERENCE_RESULT: AdapterSpec(
-        profile=EVIDENCE_PROFILES[EvidenceKind.REJECT_INFERENCE_RESULT],
-        parse=lambda path, art, reader: RejectInferenceResult.from_json(read_json_payload(path)),
-    ),
-    EvidenceKind.REJECT_POPULATION_CONFIG: AdapterSpec(
-        profile=EVIDENCE_PROFILES[EvidenceKind.REJECT_POPULATION_CONFIG],
-        parse=lambda path, art, reader: RejectPopulationConfig.from_json(read_json_payload(path)),
-    ),
     EvidenceKind.REPORT_BUNDLE: AdapterSpec(
         profile=EVIDENCE_PROFILES[EvidenceKind.REPORT_BUNDLE],
         parse=lambda path, art, reader: ReportBundleEvidence.from_json(read_json_payload(path), artifact_id=art.artifact_id),
-    ),
-    EvidenceKind.RESAMPLING_EVIDENCE: AdapterSpec(
-        profile=EVIDENCE_PROFILES[EvidenceKind.RESAMPLING_EVIDENCE],
-        parse=lambda path, art, reader: ResamplingEvidence.from_json(read_json_payload(path), artifact_id=art.artifact_id),
     ),
     EvidenceKind.SAMPLE_DEFINITION: AdapterSpec(
         profile=EVIDENCE_PROFILES[EvidenceKind.SAMPLE_DEFINITION],
@@ -179,10 +132,6 @@ EVIDENCE_ADAPTERS: dict[EvidenceKind, AdapterSpec] = {
     EvidenceKind.TECHNICAL_MANIFEST_INDEX: AdapterSpec(
         profile=EVIDENCE_PROFILES[EvidenceKind.TECHNICAL_MANIFEST_INDEX],
         parse=lambda path, art, reader: TechnicalManifestIndex.from_json(read_json_payload(path), artifact_id=art.artifact_id),
-    ),
-    EvidenceKind.THRESHOLD_OPTIMIZATION: AdapterSpec(
-        profile=EVIDENCE_PROFILES[EvidenceKind.THRESHOLD_OPTIMIZATION],
-        parse=lambda path, art, reader: ThresholdOptimization.from_json(read_json_payload(path), artifact_id=art.artifact_id),
     ),
     EvidenceKind.VALIDATION_METRICS: AdapterSpec(
         profile=EVIDENCE_PROFILES[EvidenceKind.VALIDATION_METRICS],

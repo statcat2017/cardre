@@ -2828,16 +2828,6 @@
             "title": "Version",
             "default": "0.2.0"
           },
-          "launch_node_count": {
-            "type": "integer",
-            "title": "Launch Node Count",
-            "default": 0
-          },
-          "deferred_node_count": {
-            "type": "integer",
-            "title": "Deferred Node Count",
-            "default": 0
-          },
           "governance_enabled": {
             "type": "boolean",
             "title": "Governance Enabled",
@@ -3074,11 +3064,6 @@
             "type": "string",
             "title": "Category",
             "default": ""
-          },
-          "tier": {
-            "type": "string",
-            "title": "Tier",
-            "default": "launch"
           },
           "has_params": {
             "type": "boolean",

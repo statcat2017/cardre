@@ -889,16 +889,6 @@ export interface components {
              */
             version: string;
             /**
-             * Launch Node Count
-             * @default 0
-             */
-            launch_node_count: number;
-            /**
-             * Deferred Node Count
-             * @default 0
-             */
-            deferred_node_count: number;
-            /**
              * Governance Enabled
              * @default false
              */
@@ -1015,11 +1005,6 @@ export interface components {
              * @default
              */
             category: string;
-            /**
-             * Tier
-             * @default launch
-             */
-            tier: string;
             /**
              * Has Params
              * @default false

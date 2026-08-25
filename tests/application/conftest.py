@@ -21,7 +21,7 @@ def make_branchable_steps() -> list[StepSpec]:
     """sample-definition -> variable-selection -> manual-binning -> logistic-regression."""
     return [
         StepSpec(
-            step_id="step-sample-def", node_type="cardre.noop",
+            step_id="step-sample-def", node_type="cardre.development_sample_definition",
             node_version="1", category="transform",
             params={}, params_hash=json_logical_hash({}),
             parent_step_ids=[], branch_label="", position=0,

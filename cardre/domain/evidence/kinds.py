@@ -14,8 +14,6 @@ class EvidenceKind(Enum):
     SPLIT_SUMMARY = "split_summary"
     PROFILE_SUMMARY = "profile_summary"
     EXCLUSION_SUMMARY = "exclusion_summary"
-    REJECT_POPULATION_CONFIG = "reject_population_config"
-    REJECT_INFERENCE_RESULT = "reject_inference_result"
     SELECTION_DEFINITION = "selection_definition"
     WOE_TRANSFORM_EVIDENCE = "woe_transform_evidence"
     WOE_TABLE = "woe_table"
@@ -31,18 +29,10 @@ class EvidenceKind(Enum):
     FROZEN_SCORECARD_BUNDLE = "frozen_scorecard_bundle"
     APPLY_WOE_EVIDENCE = "apply_woe_evidence"
     APPLY_MODEL_EVIDENCE = "apply_model_evidence"
-    THRESHOLD_OPTIMIZATION = "threshold_optimization"
     REPORT_BUNDLE = "report_bundle"
     RUN_SUMMARY = "run_summary"
     TECHNICAL_MANIFEST_INDEX = "technical_manifest_index"
     COMPARISON_ARTIFACT = "comparison_artifact"
-    FEATURE_SELECTION_EVIDENCE = "feature_selection_evidence"
-    RESAMPLING_EVIDENCE = "resampling_evidence"
-    HYPERPARAMETER_TUNING_EVIDENCE = "hyperparameter_tuning_evidence"
-    EXPLAINABILITY_REPORT = "explainability_report"
-    FAIRNESS_REPORT = "fairness_report"
-    PROXY_RISK_REPORT = "proxy_risk_report"
-    CALIBRATION_REPORT = "calibration_report"
     SCORE_TABLE = "scorecard_table"
     COEFFICIENT_SIGN_DIAGNOSTICS = "coefficient_sign_diagnostics"
     SEPARATION_DIAGNOSTICS = "separation_diagnostics"
@@ -70,21 +60,18 @@ class RoleKind(Enum):
         EvidenceKind.WOE_TABLE,
         EvidenceKind.WOE_TRANSFORM_EVIDENCE,
         EvidenceKind.SCORED_DATASET,
-        EvidenceKind.RESAMPLING_EVIDENCE,
     ))
     DEFINITION = ("definition", (
         EvidenceKind.MODELLING_METADATA,
         EvidenceKind.SAMPLE_DEFINITION,
         EvidenceKind.BIN_DEFINITION,
         EvidenceKind.SELECTION_DEFINITION,
-        EvidenceKind.REJECT_POPULATION_CONFIG,
     ))
     REPORT = ("report", (
         EvidenceKind.MODELLING_METADATA,
         EvidenceKind.SPLIT_SUMMARY,
         EvidenceKind.PROFILE_SUMMARY,
         EvidenceKind.EXCLUSION_SUMMARY,
-        EvidenceKind.REJECT_INFERENCE_RESULT,
         EvidenceKind.WOE_TABLE,
         EvidenceKind.WOE_IV_EVIDENCE,
         EvidenceKind.WOE_TRANSFORM_EVIDENCE,
@@ -93,19 +80,12 @@ class RoleKind(Enum):
         EvidenceKind.MODEL_ARTIFACT,
         EvidenceKind.SCORE_SCALING,
         EvidenceKind.VALIDATION_METRICS,
-        EvidenceKind.THRESHOLD_OPTIMIZATION,
         EvidenceKind.CUTOFF_ANALYSIS,
         EvidenceKind.SCORED_DATASET,
         EvidenceKind.FROZEN_SCORECARD_BUNDLE,
         EvidenceKind.APPLY_WOE_EVIDENCE,
         EvidenceKind.APPLY_MODEL_EVIDENCE,
         EvidenceKind.REPORT_BUNDLE,
-        EvidenceKind.FEATURE_SELECTION_EVIDENCE,
-        EvidenceKind.RESAMPLING_EVIDENCE,
-        EvidenceKind.EXPLAINABILITY_REPORT,
-        EvidenceKind.FAIRNESS_REPORT,
-        EvidenceKind.PROXY_RISK_REPORT,
-        EvidenceKind.CALIBRATION_REPORT,
         EvidenceKind.SCORE_TABLE,
         EvidenceKind.COEFFICIENT_SIGN_DIAGNOSTICS,
         EvidenceKind.SEPARATION_DIAGNOSTICS,

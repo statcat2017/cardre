@@ -115,14 +115,14 @@ def _run_pathway(tmp_path: Path) -> dict:
     registry.register(project_id, root)
 
     csv_path = _write_input_csv(tmp_path / "input.csv")
-    cat = build_default_catalogue(Settings(launch_mode=True))
+    cat = build_default_catalogue(Settings())
     steps = build_acceptance_fixture_steps(csv_path, cat)
 
     with uow_factory.for_project(project_id) as uow:
         pv_id = uow.plans.create_version(plan_id, steps, is_committed=True)
         uow.commit()
 
-    settings = Settings(launch_mode=True, registry_path=str(tmp_path / "registry.json"))
+    settings = Settings(registry_path=str(tmp_path / "registry.json"))
     container = build_container(settings)
     result = container.submit_run_factory(project_id)(
         SubmitRunCommand(plan_version_id=pv_id, sync=True),

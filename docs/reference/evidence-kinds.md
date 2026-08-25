@@ -24,7 +24,7 @@ The canonical required-step lists are defined in
 |------|---------------|
 | Branch report | `final-woe-iv`, `model-fit`, `score-scaling`, `validation-metrics`, `cutoff-analysis` |
 | Champion report | `final-woe-iv`, `model-fit`, `score-scaling`, `freeze-scorecard-bundle`, `apply-model`, `validation-metrics`, `cutoff-analysis`, `scorecard-table-export`, `scoring-export-python`, `scoring-export-sql` |
-| Full collector | everything in Champion plus `manual-binning`, `variable-clustering`, `coefficient-sign-check`, `separation-diagnostics`, `vif-diagnostics`, `calibration-diagnostics`, `apply-exclusions`, `sample-definition`, `explicit-missing-outlier-treatment`, `initial-woe-iv`, `model-limitations`, `apply-woe` |
+| Full collector | everything in the current scorecard report plus `manual-binning`, `variable-clustering`, `coefficient-sign-check`, `separation-diagnostics`, `vif-diagnostics`, `calibration-diagnostics`, `apply-exclusions`, `sample-definition`, `explicit-missing-outlier-treatment`, `initial-woe-iv`, `apply-woe` |
 | Comparison | `final-woe-iv`, `model-fit`, `score-scaling`, `validation-metrics`, `cutoff-analysis`, `technical-manifest` |
 
 ## Evidence Kinds
@@ -45,8 +45,6 @@ the most commonly used kinds; the full enum covers all artifact types in the eng
 | `SELECTION_DEFINITION` | `cardre.selection_definition.v1` | `SelectionDefinition` |
 | `EXCLUSION_SUMMARY` | `cardre.exclusion_summary.v1` | `ExclusionSummary` |
 | `SCORED_DATASET` | `cardre.scored_dataset.v1` | `ScoredDataset` |
-| `EXPLAINABILITY_REPORT` | `cardre.explainability_report.v1` | `ExplainabilityReport` |
-| `CALIBRATION_REPORT` | `cardre.calibration_report.v1` | (raw dict) |
 | `VARIABLE_CLUSTERING` | `cardre.variable_clustering_evidence.v1` | `VariableClusteringEvidence` |
 | `FROZEN_SCORECARD_BUNDLE` | `cardre.frozen_scorecard_bundle.v1` | (raw dict) |
 | `MANUAL_BINNING_OVERRIDES` | `cardre.manual_binning_overrides.v1` | `ManualBinningOverrides` |
@@ -54,7 +52,6 @@ the most commonly used kinds; the full enum covers all artifact types in the eng
 | `SEPARATION_DIAGNOSTICS` | `cardre.separation_diagnostics.v1` | `SeparationDiagnostics` |
 | `VIF_DIAGNOSTICS` | `cardre.vif_diagnostics.v1` | `VifDiagnostics` |
 | `CALIBRATION_DIAGNOSTICS` | `cardre.calibration_diagnostics.v1` | `CalibrationDiagnostics` |
-| `FEATURE_SELECTION_EVIDENCE` | `cardre.feature_selection_evidence.v1` | `FeatureSelectionEvidence` |
 | `CUTOFF_ANALYSIS` | `cardre.cutoff_analysis.v1` | `CutoffAnalysis` |
 | `VALIDATION_METRICS` | `cardre.validation_metrics.v1` | `ValidationMetrics` |
 | `SCORE_TABLE` | `cardre.scorecard_table.v1` | (raw dict) |

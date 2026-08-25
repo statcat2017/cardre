@@ -34,14 +34,12 @@ class ErrorCode(StrEnum):
     PLAN_VERSION_NOT_COMMITTED = "PLAN_VERSION_NOT_COMMITTED"
     GOVERNANCE_NOT_ENABLED = "GOVERNANCE_NOT_ENABLED"
     GRAPH_VALIDATION_ERROR = "GRAPH_VALIDATION_ERROR"
-    PLAN_CONTAINS_UNAVAILABLE_NODES = "PLAN_CONTAINS_UNAVAILABLE_NODES"
     RUN_NOT_RUNNING = "RUN_NOT_RUNNING"
     RUN_PLAN_VERSION_MISMATCH = "RUN_PLAN_VERSION_MISMATCH"
     MISSING_INPUT_ARTIFACT = "MISSING_INPUT_ARTIFACT"
     PARAMETER_VALIDATION_ERROR = "PARAMETER_VALIDATION_ERROR"
     ARTIFACT_READ_ERROR = "ARTIFACT_READ_ERROR"
     ARTIFACT_WRITE_ERROR = "ARTIFACT_WRITE_ERROR"
-    NODE_NOT_AVAILABLE_FOR_LAUNCH = "NODE_NOT_AVAILABLE_FOR_LAUNCH"
     NODE_VERSION_MISMATCH = "NODE_VERSION_MISMATCH"
     RUN_SCOPE_NOT_AVAILABLE_FOR_LAUNCH = "RUN_SCOPE_NOT_AVAILABLE_FOR_LAUNCH"
     BRANCH_VALIDATION_ERROR = "BRANCH_VALIDATION_ERROR"
@@ -206,21 +204,6 @@ class GraphValidationError(CardreError):
     status_code = 500
 
 
-class PlanContainsUnavailableNodesError(CardreError):
-    """Raised before a run starts when a plan contains unavailable nodes."""
-    code = ErrorCode.PLAN_CONTAINS_UNAVAILABLE_NODES
-    status_code = 400
-
-    def __init__(self, issues: list[dict[str, Any]]) -> None:
-        self.issues = issues
-        step_ids = ", ".join(i["step_id"] for i in issues)
-        message = (
-            f"Plan contains {len(issues)} unavailable node(s): {step_ids}. "
-            "See context for details."
-        )
-        super().__init__(message, context={"issues": issues})
-
-
 class PlanVersionNotCommittedError(CardreError):
     """Raised when a draft plan version is submitted for execution."""
     code = ErrorCode.PLAN_VERSION_NOT_COMMITTED
@@ -306,12 +289,6 @@ class ArtifactWriteError(CardreError):
     """Raised when an artifact file cannot be written."""
     code = ErrorCode.ARTIFACT_WRITE_ERROR
     status_code = 500
-
-
-class NodeNotAvailableForLaunch(CardreError):
-    """Raised when a deferred node is instantiated in launch mode."""
-    code = ErrorCode.NODE_NOT_AVAILABLE_FOR_LAUNCH
-    status_code = 400
 
 
 class NodeVersionMismatchError(CardreError):
@@ -403,11 +380,9 @@ __all__ = [
     "INTERNAL_ERROR_CODES",
     "MissingInputArtifactError",
     "NodeRoleAccessViolation",
-    "NodeNotAvailableForLaunch",
     "NodeVersionMismatchError",
     "OptionalDependencyNotInstalled",
     "ParameterValidationError",
-    "PlanContainsUnavailableNodesError",
     "PlanVersionNotCommittedError",
     "RunLifecycleError",
     "RunNotFoundError",

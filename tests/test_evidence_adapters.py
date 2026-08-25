@@ -253,33 +253,6 @@ def test_modelling_metadata_matches_kind_specific_artifact_type(artifacts: _Proj
     assert matched == [art]
 
 
-def test_feature_selection_evidence_round_trips_through_reader(artifacts: _ProjectArtifacts) -> None:
-    """The embedded feature-selection report (with selected/rejected) must be
-    retrievable through the EvidenceReader as FEATURE_SELECTION_EVIDENCE."""
-    from cardre.domain.evidence.schemas import SCHEMA_FEATURE_SELECTION_EVIDENCE
-
-    payload = {
-        "method": "embedded",
-        "estimator": "decision_tree",
-        "feature_importance": {"age": 0.6, "income": 0.4},
-        "selected": [
-            {"variable": "age", "reason": "Importance 0.6 >= threshold 0.0", "method": "embedded", "score": 0.6},
-        ],
-        "rejected": [
-            {"variable": "income", "reason": "Importance 0.4 < threshold 0.5", "method": "embedded", "score": 0.4},
-        ],
-        "selected_count": 1,
-        "rejected_count": 1,
-        "importance_threshold": 0.0,
-    }
-    art = artifacts.write_json(
-        "feature_selection_evidence", "report", SCHEMA_FEATURE_SELECTION_EVIDENCE, payload,
-    )
-    matched = _assert_match_parity(artifacts, EvidenceKind.FEATURE_SELECTION_EVIDENCE, [art])
-    assert matched == [art]
-    _assert_parse_parity(artifacts, EvidenceKind.FEATURE_SELECTION_EVIDENCE, art)
-
-
 @pytest.mark.parametrize("kind,artifact_type,role,schema_version,payload", _JSON_KIND_FIXTURES)
 def test_json_adapter_match_parse_parity(
     artifacts: _ProjectArtifacts, kind, artifact_type, role, schema_version, payload,

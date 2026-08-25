@@ -238,7 +238,6 @@ def node_type_to_response(
     *,
     category: str = "",
     description: str = "",
-    tier: str = "launch",
     has_params: bool = True,
 ) -> NodeTypeResponse:
     return NodeTypeResponse(
@@ -246,7 +245,6 @@ def node_type_to_response(
         display_name=node_type.split(".")[-1] if "." in node_type else node_type,
         description=description,
         category=category,
-        tier=tier,
         has_params=has_params,
     )
 

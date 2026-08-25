@@ -19,7 +19,6 @@ from cardre.api.schemas import (
     EvidenceArtifactResponse,
     EvidenceEdgeResponse,
     ManualBinningReviewResponse,
-    NodeTypeResponse,
     PlanResponse,
     PlanVersionResponse,
     ProjectResponse,
@@ -187,24 +186,6 @@ def manual_binning_review_to_response(review: ManualBinningReview) -> ManualBinn
         affected_downstream_step_ids=list(review.affected_downstream_step_ids),
         created_at=review.created_at,
         updated_at=review.updated_at,
-    )
-
-
-def node_type_to_response(
-    node_type: str,
-    *,
-    category: str = "",
-    description: str = "",
-    tier: str = "launch",
-    has_params: bool = True,
-) -> NodeTypeResponse:
-    return NodeTypeResponse(
-        node_type=node_type,
-        display_name=node_type.split(".")[-1] if "." in node_type else node_type,
-        description=description,
-        category=category,
-        tier=tier,
-        has_params=has_params,
     )
 
 

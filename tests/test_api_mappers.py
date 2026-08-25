@@ -1,10 +1,10 @@
 from __future__ import annotations
 
+from cardre.api.mappers import node_type_to_response
 from cardre.api.routes._run_mappings import (
     branch_to_response,
     comparison_to_response,
     evidence_edge_to_response,
-    node_type_to_response,
     plan_to_response,
     plan_version_to_response,
     project_to_response,
@@ -81,7 +81,6 @@ def test_branch_comparison_project_and_node_type_mappers() -> None:
         "display_name": "demo",
         "description": "",
         "category": "fit",
-        "tier": "launch",
         "has_params": True,
     }
 

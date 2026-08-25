@@ -19,7 +19,5 @@ def health(container: object = Depends(get_container)) -> HealthResponse:
     return HealthResponse(
         status="ok",
         version=__version__,
-        launch_node_count=0,
-        deferred_node_count=0,
         governance_enabled=governance_enabled,
     )
