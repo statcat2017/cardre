@@ -90,8 +90,8 @@ class PlanRepo:
                 node_version=row["node_version"], category=row["category"],
                 params=json.loads(row["params_json"]), params_hash=row["params_hash"],
                 parent_step_ids=[r["parent_step_id"] for r in parent_rows],
-                branch_label=row["branch_label"], position=row["position"],
-                canonical_step_id=row["canonical_step_id"], branch_id=row["branch_id"],
+                position=row["position"],
+                canonical_step_id=row["canonical_step_id"],
             ))
         return steps
 

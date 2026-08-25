@@ -1,6 +1,5 @@
 """Evidence Resolver — the 4-stage fallback chain for run-step evidence.
 
-Port of EvidenceLocator.resolve from cardre/evidence_locator.py.
 Uses UnitOfWork ports instead of direct store access.
 """
 
@@ -65,29 +64,23 @@ def resolve_evidence(
     plan_version_id: str,
     step_id: str,
     *,
-    branch_id: str | None = None,
     plan_id: str | None = None,
     fingerprint_match: StepSpec | None = None,
 ) -> list[tuple[EvidenceEdge, list[EvidenceArtifact]]]:
-    """Resolve evidence for a step through the 4-stage fallback chain.
+    """Resolve evidence for a step through the fallback chain.
 
-    Stage 1: Branch-specific evidence via get_edges_for_plan_step_branch
-    Stage 2: Full-plan evidence (fallback when branch_id is provided)
-    Stage 3: Latest successful run for this plan_version_id
-    Stage 4: Latest successful run across any version of the plan
+    Stage 1: Latest successful run for this plan_version_id
+    Stage 2: Latest successful run across any version of the plan
 
     Stale edges (``is_stale = 1``) and edges sourced from unsuccessful runs or
     run steps are rejected at each stage; the resolver continues to the next
     eligible candidate.  Edges are returned newest-first by the repository
-    query (``ORDER BY r.finished_at DESC, e.created_at DESC``), so the first
-    matching candidate is the most recent current evidence.
+    query, so the first matching candidate is the most recent current evidence.
 
     Returns a list of (EvidenceEdge, list[EvidenceArtifact]) tuples.
     Returns an empty list if no evidence is found.
     """
-    edges = uow.evidence.get_edges_for_plan_step_branch(
-        plan_version_id, step_id, branch_id,
-    )
+    edges = uow.evidence.get_edges_for_plan_step(plan_version_id, step_id)
     for edge in edges:
         if edge.is_stale:
             continue
@@ -97,20 +90,7 @@ def resolve_evidence(
         if rs is not None and _matches_fingerprint(rs, fingerprint_match):
             return _build_evidence_pairs(uow, rs)
 
-    if branch_id is not None:
-        edges = uow.evidence.get_edges_for_plan_step_branch(
-            plan_version_id, step_id, None,
-        )
-        for edge in edges:
-            if edge.is_stale:
-                continue
-            if not _source_is_valid(uow, edge):
-                continue
-            rs = uow.run_steps.get(edge.run_step_id)
-            if rs is not None and _matches_fingerprint(rs, fingerprint_match):
-                return _build_evidence_pairs(uow, rs)
-
-    run_id = uow.runs.get_latest_successful_id(plan_version_id, branch_id=None)
+    run_id = uow.runs.get_latest_successful_id(plan_version_id)
     if run_id is not None:
         for rs in uow.run_steps.get_for_run(run_id):
             if rs.step_id == step_id and rs.status == RunStepStatus.SUCCEEDED:
@@ -140,7 +120,6 @@ def resolve_run_step_evidence(
     plan_version_id: str,
     step_id: str,
     *,
-    branch_id: str | None = None,
     plan_id: str | None = None,
     fingerprint_match: StepSpec | None = None,
 ) -> ResolvedEvidence | None:
@@ -151,20 +130,15 @@ def resolve_run_step_evidence(
     this companion preserves that information without making callers infer it
     from the returned edges.
 
-    Within each source bucket (branch, full-plan, across-plan) the resolver
-    iterates successful run steps newest-first.  If the newest step's edges
-    are all stale, sourced from unsuccessful runs, or its fingerprint doesn't
-    match, the resolver continues to the next-oldest successful step in the
-    same bucket before falling back to the next bucket.
+    Within each source bucket the resolver iterates successful run steps
+    newest-first.  If the newest step's edges are all stale, sourced from
+    unsuccessful runs, or its fingerprint doesn't match, the resolver
+    continues to the next-oldest successful step in the same bucket before
+    falling back to the next bucket.
     """
     buckets: list[tuple[list[RunStep], str]] = [
-        (uow.run_steps.list_successful_steps_ordered(plan_version_id, step_id, branch_id), "branch"),
+        (uow.run_steps.list_successful_steps_ordered(plan_version_id, step_id), "full_plan"),
     ]
-    if branch_id is not None:
-        buckets.append((
-            uow.run_steps.list_successful_steps_ordered(plan_version_id, step_id, None),
-            "full_plan",
-        ))
     resolved_plan_id = plan_id or uow.plans.get_plan_id_for_version(plan_version_id)
     if resolved_plan_id is not None:
         buckets.append((

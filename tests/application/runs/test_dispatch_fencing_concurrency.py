@@ -137,7 +137,7 @@ def test_sync_false_returns_promptly_and_worker_runs_independently(provisioned_p
             [StepSpec(
                 step_id="s1", node_type="cardre.noop", node_version="1",
                 category="transform", params={}, params_hash=json_logical_hash({}),
-                parent_step_ids=[], branch_label="", position=0, canonical_step_id="s1",
+                parent_step_ids=[], position=0, canonical_step_id="s1",
             )],
             is_committed=True,
         )
@@ -150,7 +150,7 @@ def test_sync_false_returns_promptly_and_worker_runs_independently(provisioned_p
         dispatcher,
         lambda cmd: harness.execute(RunRequest(cmd.run_id, pv_id, project_id)),
         None,
-        governance_enabled=True,
+
         project_id=project_id,
     )
 
@@ -180,7 +180,7 @@ def test_sync_true_blocks_until_terminal(provisioned_project):
             [StepSpec(
                 step_id="s1", node_type="cardre.noop", node_version="1",
                 category="transform", params={}, params_hash=json_logical_hash({}),
-                parent_step_ids=[], branch_label="", position=0, canonical_step_id="s1",
+                parent_step_ids=[], position=0, canonical_step_id="s1",
             )],
             is_committed=True,
         )
@@ -199,7 +199,7 @@ def test_sync_true_blocks_until_terminal(provisioned_project):
         dispatcher,
         blocking_execute,
         None,
-        governance_enabled=True,
+
         project_id=project_id,
     )
 
@@ -274,7 +274,7 @@ def test_cancellation_during_final_node_ends_cancelled(provisioned_project):
             [StepSpec(
                 step_id="s1", node_type="cardre.noop", node_version="1",
                 category="transform", params={}, params_hash=json_logical_hash({}),
-                parent_step_ids=[], branch_label="", position=0, canonical_step_id="s1",
+                parent_step_ids=[], position=0, canonical_step_id="s1",
             )],
             is_committed=True,
         )
@@ -345,7 +345,7 @@ def test_lost_lease_blocks_output_persistence(provisioned_project):
             [StepSpec(
                 step_id="s1", node_type="cardre.noop", node_version="1",
                 category="transform", params={}, params_hash=json_logical_hash({}),
-                parent_step_ids=[], branch_label="", position=0, canonical_step_id="s1",
+                parent_step_ids=[], position=0, canonical_step_id="s1",
             )],
             is_committed=True,
         )
@@ -460,12 +460,12 @@ def test_run_summary_not_published_after_stale_recovery(provisioned_project):
                 StepSpec(
                     step_id="s1", node_type="cardre.noop", node_version="1",
                     category="transform", params={}, params_hash=json_logical_hash({}),
-                    parent_step_ids=[], branch_label="", position=0, canonical_step_id="s1",
+                    parent_step_ids=[], position=0, canonical_step_id="s1",
                 ),
                 StepSpec(
                     step_id="s2", node_type="cardre.technical_manifest_export", node_version="1",
                     category="export", params={}, params_hash=json_logical_hash({}),
-                    parent_step_ids=["s1"], branch_label="", position=1, canonical_step_id="manifest",
+                    parent_step_ids=["s1"], position=1, canonical_step_id="manifest",
                 ),
             ],
             is_committed=True,
@@ -606,12 +606,12 @@ def test_run_summary_not_published_after_cancellation(provisioned_project):
                 StepSpec(
                     step_id="s1", node_type="cardre.noop", node_version="1",
                     category="transform", params={}, params_hash=json_logical_hash({}),
-                    parent_step_ids=[], branch_label="", position=0, canonical_step_id="s1",
+                    parent_step_ids=[], position=0, canonical_step_id="s1",
                 ),
                 StepSpec(
                     step_id="s2", node_type="cardre.technical_manifest_export", node_version="1",
                     category="export", params={}, params_hash=json_logical_hash({}),
-                    parent_step_ids=["s1"], branch_label="", position=1, canonical_step_id="manifest",
+                    parent_step_ids=["s1"], position=1, canonical_step_id="manifest",
                 ),
             ],
             is_committed=True,
@@ -696,7 +696,7 @@ def test_cancelled_created_run_stays_cancelled_through_execute(provisioned_proje
             [StepSpec(
                 step_id="s1", node_type="cardre.noop", node_version="1",
                 category="transform", params={}, params_hash=json_logical_hash({}),
-                parent_step_ids=[], branch_label="", position=0, canonical_step_id="s1",
+                parent_step_ids=[], position=0, canonical_step_id="s1",
             )],
             is_committed=True,
         )
@@ -751,7 +751,7 @@ def test_concurrent_guard_two_threads_exactly_one_run(provisioned_project):
         submit = SubmitRun(
             lambda: uow_factory.for_project(project_id),
             _noop_dispatcher(), lambda cmd: None, None,
-            governance_enabled=True, project_id=project_id,
+             project_id=project_id,
         )
         barrier.wait()
         try:
@@ -792,7 +792,7 @@ def test_concurrent_guard_force_remains_allowed(provisioned_project):
     submit = SubmitRun(
         lambda: uow_factory.for_project(project_id),
         _noop_dispatcher(), lambda cmd: None, None,
-        governance_enabled=True, project_id=project_id,
+         project_id=project_id,
     )
     r1 = submit(_cmd(pv_id, sync=False))
     with pytest.raises(CardreError) as exc:

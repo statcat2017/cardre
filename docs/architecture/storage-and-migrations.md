@@ -10,7 +10,6 @@ All metadata is stored in a single SQLite database per project. The schema is de
 | `PlanRepo` | `plan_repo.py` | Plans, plan versions, steps |
 | `StepRepo` | `step_repo.py` | Plan steps and edges |
 | `RunRepo` | `run_repo.py` | Runs, run steps, status |
-| `BranchRepo` | `branch_repo.py` | Branches, branch step maps |
 | `ArtifactRepo` | `artifact_repo.py` | Artifact records, hashes, paths |
 
 ## Storage Model
@@ -27,25 +26,15 @@ The database schema is defined in `cardre/adapters/sqlite/schema.py` and include
 - Projects, plans, plan versions, plan steps
 - Runs, run steps
 - Artifacts, artifact references
-- Branches, branch step maps
-- Comparisons, comparison snapshots
-- Champions, champion assignments
 - Evidence edges and artifacts, reviews, publications, dispatch
 
 Every project store is created by `SqliteProjectProvisioner.initialize()` running
-the full `ALL_TABLES_SQL` script, which always includes the branch, evidence and
-review tables. Governance is a capability gated at the application/API layer
-(e.g. `CARDRE_GOVERNANCE`), not by omitting tables.
+the full `ALL_TABLES_SQL` script.
 
 ## Migrations
 
 Cardre has not launched, so there is **no migration chain** before the first real
 deployment. Each project store is created from the current `ALL_TABLES_SQL` with a
-recorded `schema_family` / `schema_version` in `store_meta`.
-
-Those values are currently **recorded but not yet enforced on open**:
-`SqliteUnitOfWorkFactory` verifies only that the project root and
-`project.sqlite` file exist before connecting. A future release will add a
-schema-identity check that rejects stores whose recorded family/version differ
-from the application, replacing in-place migration until a real compatibility
-policy exists (see ADR 0015).
+recorded `schema_family` / `schema_version` in `store_meta`. The store retains one
+schema identifier (`STORE_SCHEMA_FAMILY` / `STORE_SCHEMA_VERSION`) and rejects
+incompatible project stores.

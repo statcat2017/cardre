@@ -15,7 +15,6 @@ from cardre.domain.diagnostics import JsonDict, utc_now_iso
 from cardre.domain.errors import (
     CardreError,
     Diagnostic,
-    GovernanceNotEnabled,
     GraphValidationError,
     OptionalDependencyNotInstalled,
     PlanVersionNotCommittedError,
@@ -38,7 +37,6 @@ __all__ = [
     "Diagnostic",
     "EvidenceArtifact",
     "EvidenceEdge",
-    "GovernanceNotEnabled",
     "GraphValidationError",
     "JsonDict",
     "ManualBinningReview",

@@ -27,8 +27,8 @@ class _Factory:
 
 
 class _Collector:
-    def collect(self, uow, project_id, run_id, target_branch_id, report_mode):
-        return ReportBundle(project_id=project_id, run_id=run_id, target_branch_id=target_branch_id, report_mode=report_mode)
+    def collect(self, uow, project_id, run_id):
+        return ReportBundle(project_id=project_id, run_id=run_id)
 
 
 class _Renderer:
@@ -54,7 +54,7 @@ def test_generate_report_collects_and_renders_through_ports(tmp_path: Path, monk
     )
     monkeypatch.setattr("cardre.application.reporting.generate_report.check_report_readiness", lambda *args: type("Ready", (), {"ready": True, "blockers": [], "warnings": []})())
 
-    result = use_case(GenerateReportCommand("project", "run", "branch", output_dir=tmp_path))
+    result = use_case(GenerateReportCommand("project", "run", output_dir=tmp_path))
 
     assert result.html_path == str(tmp_path / "report.html")
     assert renderer.bundle is result.bundle
@@ -75,7 +75,7 @@ def test_generate_report_rejects_readiness_blockers(tmp_path: Path, monkeypatch)
     )
 
     with pytest.raises(CardreError) as exc_info:
-        use_case(GenerateReportCommand("project", "run", "branch", output_dir=tmp_path))
+        use_case(GenerateReportCommand("project", "run", output_dir=tmp_path))
 
     assert exc_info.value.code == "REPORT_BLOCKED"
     assert renderer.bundle is None

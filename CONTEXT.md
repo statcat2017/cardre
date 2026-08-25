@@ -35,8 +35,6 @@ JSON relationship arrays from v1 have been replaced by relational join tables:
 | v1 (JSON array) | v2 (relational table) |
 |---|---|
 | `plan_steps.parent_step_ids_json` | `plan_step_edges` |
-| `branch_comparisons.challenger_branch_ids_json` | `comparison_challenger_branches` |
-| `branch_comparison_snapshots.source_plan_version_ids_json` | `comparison_snapshot_plan_versions` |
 
 ## Node Type vs Step
 
@@ -47,7 +45,7 @@ JSON relationship arrays from v1 have been replaced by relational join tables:
 ## Plan Version vs Run
 
 - A **plan version** is created when the user explicitly saves/modifies the plan (adds/removes/reconfigures steps). It is a user-triggered snapshot of *intent*.
-- A **run** is one execution of a given plan version. The same plan version may be run multiple times (e.g. different seeds, comparison runs).
+- A **run** is one execution of a given plan version. The same plan version may be run multiple times (e.g. with different seeds).
 - A plan version exists independently of any run. Every run references exactly one plan version.
 
 ## Build Stream vs Validate Stream
@@ -81,16 +79,6 @@ The boundary: once score scaling produces the finalized scorecard, the validate 
 - **Refinement nodes** (build stream only): consume a definition artifact and produce a refined definition. Manual bin editing is the canonical example — it takes auto bin definitions and produces overridden bin definitions for selected variables only.
 - **Selection nodes** (build stream only): consume metrics/rankings and filter which variables proceed downstream. Variable clustering/correlation grouping and variable selection are canonical examples.
 - **Apply nodes** (validate stream only): consume definitions from build stream + test/oot data, produce predictions and metrics. Examples: apply WOE mapping, apply model, calculate validation metrics.
-
-## Branch / Comparison / Champion
-
-- **Branch**: A diverged copy of a plan starting from a permitted branch point. Each challenger branch creates a new plan version with duplicated downstream steps and shared upstream steps.
-- **Comparison**: An intent to compare a baseline branch against one or more challenger branches. Produces immutable comparison snapshots containing WOE/IV, model coefficients, validation metrics, and cutoff analysis.
-- **Champion**: The designated best-performing branch for a given scope. Supersedes previous champions. Assignments require a ready comparison snapshot.
-
-## Governance
-
-Governance features (branching, comparison, champion assignment) are gated behind `CARDRE_GOVERNANCE=1`. The API uses `Depends(require_governance)` to return 403 when governance is not enabled.
 
 ## Error Codes
 

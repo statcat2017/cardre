@@ -12,7 +12,6 @@ def test_relationship_tables_do_not_store_id_arrays(provisioned_project) -> None
         "artifact_lineage",
         "evidence_edges",
         "evidence_artifacts",
-        "branch_step_map",
     )
 
     with uow_factory.for_project(project_id) as uow:

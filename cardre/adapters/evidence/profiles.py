@@ -11,7 +11,6 @@ from cardre.domain.evidence.schemas import (
     SCHEMA_APPLY_WOE_EVIDENCE,
     SCHEMA_CALIBRATION_DIAGNOSTICS,
     SCHEMA_COEFFICIENT_SIGN_DIAGNOSTICS,
-    SCHEMA_COMPARISON_ARTIFACT,
     SCHEMA_CUTOFF_ANALYSIS,
     SCHEMA_EXCLUSION_SUMMARY,
     SCHEMA_FROZEN_SCORECARD_BUNDLE,
@@ -197,12 +196,6 @@ EVIDENCE_PROFILES: dict[EvidenceKind, _Profile] = {
         expected_artifact_types={"technical_manifest_index"},
         schema_version=SCHEMA_TECHNICAL_MANIFEST_INDEX,
         required_keys={"manifests"},
-    ),
-    EvidenceKind.COMPARISON_ARTIFACT: _Profile(
-        expected_roles={"comparison"},
-        expected_artifact_types={"comparison_artifact"},
-        schema_version=SCHEMA_COMPARISON_ARTIFACT,
-        required_keys={"comparison_type", "baseline_branch_id", "challenger_branch_id"},
     ),
     EvidenceKind.COEFFICIENT_SIGN_DIAGNOSTICS: _Profile(
         expected_roles={"report"},

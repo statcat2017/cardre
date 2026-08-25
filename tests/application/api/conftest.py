@@ -28,16 +28,6 @@ def app_env(monkeypatch, tmp_path):
     return TestClient(app), container
 
 
-@pytest.fixture
-def gov_env(monkeypatch, tmp_path):
-    monkeypatch.setenv("CARDRE_GOVERNANCE", "1")
-    monkeypatch.setenv("CARDRE_REGISTRY_PATH", str(tmp_path / "registry.json"))
-    settings = Settings.from_env()
-    container = build_container(settings)
-    app = create_app(container)
-    return TestClient(app), container
-
-
 def provision(container, tmp_path, name="Proj"):
     provisioner = SqliteProjectProvisioner()
     root = tmp_path / f"{name}.cardre"
@@ -54,7 +44,7 @@ def seed_committed_plan(container, project_id, steps=None):
         steps = [StepSpec(
             step_id="s1", node_type="cardre.noop", node_version="1",
             category="transform", params={}, params_hash=json_logical_hash({}),
-            parent_step_ids=[], branch_label="", position=0, canonical_step_id="s1",
+            parent_step_ids=[], position=0, canonical_step_id="s1",
         )]
     with container.uow_factory.for_project(project_id) as uow:
         plan_id = uow.plans.create_plan(project_id, "Plan")

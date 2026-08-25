@@ -68,7 +68,7 @@ def provisioned_project(tmp_path):
         step = StepSpec(
             step_id="step-1", node_type="cardre.noop", node_version="1",
             category="transform", params={}, params_hash=json_logical_hash({}),
-            parent_step_ids=[], branch_label="", position=0, canonical_step_id="noop",
+            parent_step_ids=[], position=0, canonical_step_id="noop",
         )
         pv_id = uow.plans.create_version(plan_id, [step], is_committed=True)
         run_id = uow.runs.create(pv_id)

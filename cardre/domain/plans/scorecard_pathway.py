@@ -265,8 +265,8 @@ def _rebuild_step(step: StepSpec, params: dict[str, Any]) -> StepSpec:
         node_version=step.node_version, category=step.category,
         params=params, params_hash=json_logical_hash(params),
         parent_step_ids=step.parent_step_ids,
-        branch_label=step.branch_label, position=step.position,
-        canonical_step_id=step.canonical_step_id, branch_id=step.branch_id,
+        position=step.position,
+        canonical_step_id=step.canonical_step_id,
     )
 
 

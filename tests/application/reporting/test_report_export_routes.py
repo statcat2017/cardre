@@ -50,7 +50,7 @@ def _seed_run(container, project_id, root):
             plan_id,
             [StepSpec(step_id="s1", node_type="cardre.noop", node_version="1",
                       category="transform", params={}, params_hash=json_logical_hash({}),
-                      parent_step_ids=[], branch_label="", position=0,
+                      parent_step_ids=[], position=0,
                       canonical_step_id="s1")],
             is_committed=True,
         )
@@ -163,20 +163,9 @@ def test_generated_audit_pack_is_discoverable_through_exports_route(env, tmp_pat
     client, container = env
     pid, root = _provision(container, tmp_path)
     plan_id, pv_id, run_id = _seed_run(container, pid, root)
-    with container.uow_factory.for_project(pid) as uow:
-        branch_id = uow.branches.create_branch(
-            project_id=pid,
-            plan_id=plan_id,
-            name="audit branch",
-            branch_type="challenger",
-            base_plan_version_id=pv_id,
-            head_plan_version_id=pv_id,
-            created_reason="test",
-        )
-        uow.commit()
 
     result = container.export_audit_pack(ExportAuditPackCommand(
-        project_id=pid, plan_id=plan_id, branch_id=branch_id,
+        project_id=pid, plan_id=plan_id, run_id=run_id,
     ))
 
     response = client.get(f"/projects/{pid}/exports")

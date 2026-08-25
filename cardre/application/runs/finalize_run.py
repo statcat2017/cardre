@@ -205,7 +205,6 @@ class FinalizeRun:
             result.append({
                 "step_id": rs.step_id,
                 "canonical_step_id": spec.canonical_step_id,
-                "branch_id": None,
                 "node_type": rs.execution_fingerprint.get("node_type", spec.node_type),
                 "node_version": rs.execution_fingerprint.get("node_version", spec.node_version),
                 "category": spec.category,
@@ -235,7 +234,6 @@ class FinalizeRun:
         uow: Any,
     ) -> JsonDict:
         plan_version_id = getattr(run_record, "plan_version_id", "") or ""
-        branch_id = getattr(run_record, "branch_id", None)
         started_at = getattr(run_record, "started_at", "") or ""
 
         plan_id = ""
@@ -286,11 +284,10 @@ class FinalizeRun:
             plan_version_id=plan_version_id,
             plan_id=plan_id,
             project_id=project_id,
-            branch_id=branch_id,
             started_at=started_at,
             finished_at=self._clock.now_iso(),
             status=status,
-            execution_mode="full_plan" if branch_id is None else "branch",
+            execution_mode="full_plan",
             cardre_version=__version__,
             in_scope_step_ids=step_ids,
             steps=[RunManifestStep(**s) for s in steps],

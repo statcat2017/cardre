@@ -128,22 +128,6 @@ def _run_pathway(tmp_path: Path) -> dict:
         SubmitRunCommand(plan_version_id=pv_id, sync=True),
     )
 
-    # Create a baseline branch and step map
-    with uow_factory.for_project(project_id) as uow:
-        branch_id = uow.branches.create_branch(
-            project_id=project_id, plan_id=plan_id,
-            name="main", branch_type="baseline",
-            base_plan_version_id=pv_id, head_plan_version_id=pv_id,
-            created_reason="golden test",
-        )
-        for s in steps:
-            uow.branches.create_step_map(
-                branch_id=branch_id, plan_version_id=pv_id,
-                canonical_step_id=s.canonical_step_id,
-                step_id=s.step_id, is_branch_owned=True,
-            )
-        uow.commit()
-
     from cardre.adapters.evidence.reader import EvidenceReader
     from cardre.adapters.filesystem.artifact_store import FsArtifactStore
     reader = FsArtifactStore(root)
@@ -153,7 +137,7 @@ def _run_pathway(tmp_path: Path) -> dict:
             reader,
         )
         bundle = collector.collect(
-            uow, project_id, result.run_id, branch_id, "branch",
+            uow, project_id, result.run_id,
         )
     return bundle.model_dump(mode="json")
 

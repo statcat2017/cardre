@@ -12,20 +12,15 @@ from cardre.application.evidence.explain_staleness import step_is_stale
 from cardre.application.ports.artifact_store import ArtifactReader
 from cardre.application.ports.evidence_reader import EvidenceReaderPort
 from cardre.application.ports.unit_of_work import UnitOfWork
-from cardre.application.reporting.contracts import (
-    EVIDENCE_KIND_BY_STEP,
-    REQUIRED_STEPS_COLLECTOR,
-    ReportMode,
-    resolve_required_steps,
-)
+from cardre.application.reporting.contracts import EVIDENCE_KIND_BY_STEP, REQUIRED_STEPS_COLLECTOR
 from cardre.application.reporting.schema import (
     AffectedBinDetail,
     ArtifactEntry,
-    BranchInfo,
     CutoffInfo,
     CutoffRow,
     CutoffTable,
     DiagnosticEntry,
+    ImplementationArtifactInfo,
     Limitation,
     MetricsByRole,
     ModelFeature,
@@ -39,9 +34,6 @@ from cardre.application.reporting.schema import (
     VariableInfo,
     WoeSmoothingInfo,
 )
-from cardre.application.reporting.schema import (
-    ResolvedStepRef as ReportStepRef,
-)
 from cardre.domain.manifest import compute_manifest_hash
 
 
@@ -49,12 +41,10 @@ from cardre.domain.manifest import compute_manifest_hash
 class CollectReportCommand:
     project_id: str
     run_id: str
-    target_branch_id: str
-    report_mode: ReportMode = "branch"
 
 
 class ReportCollector:
-    """Assemble immutable run evidence into a governance report bundle."""
+    """Assemble immutable run evidence into a report bundle."""
 
     def __init__(self, evidence_reader: EvidenceReaderPort, artifact_reader: ArtifactReader) -> None:
         self._evidence_reader = evidence_reader
@@ -65,30 +55,20 @@ class ReportCollector:
         uow: UnitOfWork,
         project_id: str,
         run_id: str,
-        target_branch_id: str,
-        report_mode: ReportMode,
     ) -> ReportBundle:
-        command = CollectReportCommand(project_id, run_id, target_branch_id, report_mode)
         bundle = ReportBundle(
-            project_id=command.project_id,
-            run_id=command.run_id,
-            target_branch_id=command.target_branch_id,
-            report_mode=command.report_mode,
+            project_id=project_id,
+            run_id=run_id,
             generated_at=datetime.now(UTC).isoformat(),
         )
-        project = uow.projects.get(command.project_id)
-        run = uow.runs.get(command.run_id)
-        branch = uow.branches.get_branch(command.target_branch_id)
+        project = uow.projects.get(project_id)
+        run = uow.runs.get(run_id)
         if project is not None:
             bundle.summary.model_name = project.name
         if run is None:
             bundle.limitations = [Limitation(code="MISSING_RUN_MANIFEST", severity="blocker", message="Run not found.")]
             return bundle
-        if branch is None:
-            bundle.limitations = [Limitation(code="TARGET_BRANCH_NOT_FOUND", severity="blocker", message="Target branch not found.")]
-            return bundle
 
-        bundle.summary.target_branch_id = command.target_branch_id
         bundle.run_status.run_id = run.run_id
         bundle.run_status.status = str(run.status)
         bundle.run_status.started_at = run.started_at
@@ -104,31 +84,31 @@ class ReportCollector:
             for diagnostic in uow.runs.get_diagnostics(run.run_id)
         ]
 
-        step_map = uow.branches.get_step_map(command.target_branch_id, run.plan_version_id)
-        if not step_map and branch.get("head_plan_version_id"):
-            step_map = uow.branches.get_step_map(command.target_branch_id, branch["head_plan_version_id"])
-        resolved = resolve_required_steps(command.target_branch_id, REQUIRED_STEPS_COLLECTOR, step_map)
         plan_id = uow.plans.get_plan_id_for_version(run.plan_version_id)
         plan_steps = {step.step_id: step for step in uow.plans.get_version_steps(run.plan_version_id)}
         limitations: list[Limitation] = []
         requested_steps = {step.step_id: step for step in uow.run_steps.get_for_run(run.run_id)}
         report_steps = dict(requested_steps)
-        for canonical_step_id, ref in resolved.items():
-            run_step = requested_steps.get(ref.step_id)
-            evidence = None
+        canonical_by_run_step_id: dict[str, str] = {}
+        required_ids = set(REQUIRED_STEPS_COLLECTOR)
+        for step in plan_steps.values():
+            canonical_step_id = step.canonical_step_id
+            if canonical_step_id not in required_ids:
+                continue
+            run_step = requested_steps.get(step.step_id)
             if run_step is None:
                 evidence = resolve_run_step_evidence(
-                    uow, run.plan_version_id, ref.step_id,
-                    branch_id=ref.resolved_branch_id, plan_id=plan_id,
-                    fingerprint_match=plan_steps.get(ref.step_id),
+                    uow, run.plan_version_id, step.step_id,
+                    plan_id=plan_id,
+                    fingerprint_match=plan_steps.get(step.step_id),
                 )
-                spec = plan_steps.get(ref.step_id)
-                run_step = evidence.run_step if evidence is not None and spec is not None and not step_is_stale(
-                    uow, spec, list(plan_steps.values()), run.plan_version_id,
-                    ref.resolved_branch_id, plan_id, evidence.run_step,
+                run_step = evidence.run_step if evidence is not None and not step_is_stale(
+                    uow, step, list(plan_steps.values()), run.plan_version_id,
+                    plan_id, evidence.run_step,
                 ) else None
             if run_step is not None:
                 report_steps[run_step.run_step_id] = run_step
+                canonical_by_run_step_id[run_step.run_step_id] = canonical_step_id
                 evidence_kind = EVIDENCE_KIND_BY_STEP.get(canonical_step_id)
                 if evidence_kind is not None:
                     typed_evidence = self._evidence_reader.read_step_output_optional(
@@ -136,40 +116,14 @@ class ReportCollector:
                     )
                     if typed_evidence is not None:
                         bundle.modelling_metadata[canonical_step_id] = self._to_json(typed_evidence)
-                        self._apply_typed_evidence(bundle, canonical_step_id, ref, typed_evidence)
-            step = plan_steps.get(ref.step_id)
+                        self._apply_typed_evidence(bundle, canonical_step_id, typed_evidence)
             bundle.pathway.steps.append(PathwayStep(
                 canonical_step_id=canonical_step_id,
-                step_id=ref.step_id,
-                branch_id=ref.resolved_branch_id,
-                step_type=step.node_type if step is not None else "",
-                config_hash=step.params_hash if step is not None else "",
+                step_id=step.step_id,
+                step_type=step.node_type,
+                config_hash=step.params_hash,
                 status=run_step.status.value if run_step is not None else "missing",
-                resolution=ref.resolution,
             ))
-            if ref.resolution == "ancestor":
-                limitations.append(Limitation(
-                    code="INHERITED_BRANCH_EVIDENCE",
-                    message=f"Step {canonical_step_id} is inherited from branch {ref.resolved_branch_id}.",
-                ))
-
-        bundle.branches.target_branch_id = command.target_branch_id
-        bundle.branches.branches = [
-            BranchInfo(
-                branch_id=row["branch_id"],
-                name=row.get("name", ""),
-                parent_branch_id=row.get("base_branch_id"),
-                is_target_branch=row["branch_id"] == command.target_branch_id,
-                status=row.get("status", ""),
-            )
-            for row in uow.branches.list_branches(command.project_id, plan_id)
-        ]
-        champion = uow.champion.get_champion_assignment(plan_id) if plan_id else None
-        if champion is not None:
-            bundle.champion.assignment_id = champion.get("champion_assignment_id")
-            bundle.champion.champion_branch_id = champion.get("champion_branch_id")
-            bundle.champion.target_branch_is_champion = champion.get("champion_branch_id") == command.target_branch_id
-            bundle.champion.champion_status = "assigned"
 
         seen_artifacts: set[str] = set()
         for run_step in report_steps.values():
@@ -185,6 +139,27 @@ class ReportCollector:
                     physical_hash=artifact.physical_hash,
                     path=artifact.path,
                 ))
+                canonical_step_id = canonical_by_run_step_id.get(run_step.run_step_id)
+                implementation_field = {
+                    "scorecard-table-export": "scorecard_table",
+                    "scoring-export-python": "scoring_export_python",
+                    "scoring-export-sql": "scoring_export_sql",
+                }.get(canonical_step_id or "")
+                if implementation_field and getattr(bundle.implementation_artifacts, implementation_field) is None:
+                    setattr(
+                        bundle.implementation_artifacts,
+                        implementation_field,
+                        ImplementationArtifactInfo(
+                            artifact_type=artifact.artifact_type,
+                            schema_version=getattr(
+                                artifact,
+                                "schema_version",
+                                artifact.metadata.get("schema_version", ""),
+                            ),
+                            artifact_id=artifact.artifact_id,
+                            description=f"Output from {canonical_step_id}",
+                        ),
+                    )
                 if not self._artifact_reader.resolve_path(artifact).exists():
                     limitations.append(Limitation(
                         code="ARTIFACT_NOT_FOUND",
@@ -199,16 +174,12 @@ class ReportCollector:
             try:
                 manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
                 recorded_hash = manifest.get("manifest_hash", "")
-                # The canonical verifier is the single source of truth for the
-                # manifest self-hash (domain/manifest.py). Reimplementing it
-                # here would let publishing and verification drift apart.
                 if not recorded_hash or recorded_hash != compute_manifest_hash(manifest):
                     limitations.append(Limitation(severity="blocker", code="ARTIFACT_HASH_UNRESOLVED", message="Canonical run manifest hash does not verify."))
                 else:
                     if (
                         manifest.get("run_id") != run.run_id
                         or manifest.get("plan_version_id") != run.plan_version_id
-                        or manifest.get("branch_id") != run.branch_id
                         or manifest.get("status") != str(run.status)
                     ):
                         limitations.append(Limitation(severity="blocker", code="CANONICAL_MANIFEST_MISMATCH", message="Canonical run manifest does not match the requested run."))
@@ -227,24 +198,12 @@ class ReportCollector:
             return value.to_dict()
         return value
 
-    @staticmethod
-    def _report_ref(ref: Any) -> ReportStepRef:
-        return ReportStepRef(
-            requested_branch_id=ref.requested_branch_id,
-            resolved_branch_id=ref.resolved_branch_id,
-            canonical_step_id=ref.canonical_step_id,
-            step_id=ref.step_id,
-            resolution=ref.resolution,
-        )
-
     def _apply_typed_evidence(
         self,
         bundle: ReportBundle,
         canonical_step_id: str,
-        ref: Any,
         evidence: Any,
     ) -> None:
-        source_refs = [self._report_ref(ref)]
         if canonical_step_id == "final-woe-iv":
             smoothing = evidence.smoothing
             for variable in evidence.variables:
@@ -259,7 +218,6 @@ class ReportCollector:
                 bundle.variables.append(VariableInfo(
                     variable_name=variable.variable_name,
                     role=variable.status,
-                    branch_id=ref.resolved_branch_id,
                     final_bin_count=len(bins),
                     iv=variable.iv,
                     woe_smoothing=WoeSmoothingInfo(
@@ -269,7 +227,6 @@ class ReportCollector:
                         zero_cell_encountered=variable.zero_cell_encountered,
                         affected_bin_count=len(variable.affected_bins),
                     ),
-                    source_step_refs=source_refs,
                     bins=bins,
                     affected_bins=[AffectedBinDetail(**item.detail) for item in variable.affected_bins],
                 ))
@@ -277,7 +234,6 @@ class ReportCollector:
             target = evidence.target_column or bundle.summary.target_column
             bundle.summary.target_column = target
             bundle.model = ModelInfo(
-                branch_id=ref.resolved_branch_id,
                 target=target,
                 features=[
                     ModelFeature(
@@ -289,7 +245,6 @@ class ReportCollector:
                     for item in evidence.coefficients
                 ],
                 intercept=evidence.intercept,
-                source_step_refs=source_refs,
             )
         elif canonical_step_id == "score-scaling":
             bundle.score_scaling = ScoreScalingInfo(
@@ -302,10 +257,9 @@ class ReportCollector:
                 rounding=evidence.rounding,
                 min_score=evidence.min_score,
                 max_score=evidence.max_score,
-                source_step_refs=source_refs,
             )
         elif canonical_step_id == "validation-metrics":
-            validation = ValidationInfo(source_step_refs=source_refs)
+            validation = ValidationInfo()
             for role, metrics in evidence.metrics_by_role.items():
                 validation.metrics_by_role.append(MetricsByRole(
                     role=role, row_count=metrics.row_count, auc=metrics.auc, gini=metrics.gini,
@@ -333,7 +287,6 @@ class ReportCollector:
                     )
                     for role, rows in evidence.cutoff_tables.items()
                 ],
-                source_step_refs=source_refs,
             )
 
 

@@ -243,9 +243,6 @@ _JSON_KIND_FIXTURES = [
      "cardre.validation_metrics.v1", {"roles": {"train": {"auc": 0.75}}, "metrics": {"train": {"auc": 0.75}}, "stability": {}}),
     (EvidenceKind.CUTOFF_ANALYSIS, "cutoff_analysis", "report",
      "cardre.cutoff_analysis.v1", {"cutoff_tables": {"train": [{"score_cutoff": 100}]}}),
-    (EvidenceKind.COMPARISON_ARTIFACT, "comparison_artifact", "comparison",
-     "cardre.comparison_artifact.v1",
-     {"comparison_type": "woe_iv", "baseline_branch_id": "b1", "challenger_branch_id": "b2"}),
 ]
 
 

@@ -68,15 +68,6 @@ SEAM_WATCHLIST: dict[str, dict[str, Any]] = {
             "shared evidence lookup moves to evidence seam",
         ],
     },
-    "cardre/application/governance/refresh_comparison.py": {
-        "threshold": 1200,
-        "owner": "comparison materialisation",
-        "split_only_on": [
-            "branch readiness policy extraction",
-            "typed evidence lookup extraction",
-            "comparison snapshot builder extraction",
-        ],
-    },
 }
 
 # ── Temporary line-count debt ────────────────────────────────────────

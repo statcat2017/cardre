@@ -1,7 +1,7 @@
 # Audit Pack Structure
 
 The audit pack is an export format that bundles all evidence required for model
-governance review. It is produced by the `ExportAuditPack` use case
+review. It is produced by the `ExportAuditPack` use case
 (`cardre/application/reporting/export_audit_pack.py`) and written under the
 project's `exports/` directory.
 

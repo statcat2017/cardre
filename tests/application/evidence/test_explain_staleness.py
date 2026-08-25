@@ -38,8 +38,8 @@ def _seed_run_with_evidence(uow, project_id):
     for step_id, nt, cat, params, ph, parents, pos, canon in steps_data:
         uow._conn.execute(
             "INSERT INTO plan_steps (step_id, plan_version_id, node_type, node_version, category, "
-            "params_json, params_hash, branch_label, position, canonical_step_id) "
-            "VALUES (?, ?, ?, '1', ?, ?, ?, '', ?, ?)",
+            "params_json, params_hash, position, canonical_step_id) "
+            "VALUES (?, ?, ?, '1', ?, ?, ?, ?, ?)",
             (step_id, pv_id, nt, cat, params, ph, pos, canon),
         )
         for order, pid in enumerate(parents):
@@ -135,8 +135,8 @@ class TestExplainStaleness:
             new_pv = uow.plans.create_version(plan_id, [], description="v2", is_committed=True)
             uow._conn.execute(
                 "INSERT INTO plan_steps (step_id, plan_version_id, node_type, node_version, category, "
-                "params_json, params_hash, branch_label, position, canonical_step_id) "
-                "VALUES (?, ?, 'cardre.custom_node', '1', 'custom', ?, ?, '', 0, ?)",
+                "params_json, params_hash, position, canonical_step_id) "
+                "VALUES (?, ?, 'cardre.custom_node', '1', 'custom', ?, ?, 0, ?)",
                 ("never-run-step", new_pv, json.dumps({"x": 1}), "hash-new", "never-run-step"),
             )
             uow.commit()

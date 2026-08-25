@@ -347,7 +347,7 @@ def test_initial_reads_and_cancellation_use_read_only_uow(tmp_path):
             [StepSpec(
                 step_id="s1", node_type="cardre.noop", node_version="1",
                 category="transform", params={}, params_hash="h",
-                parent_step_ids=[], branch_label="", position=0, canonical_step_id="s1",
+                parent_step_ids=[], position=0, canonical_step_id="s1",
             )],
             is_committed=True,
         )

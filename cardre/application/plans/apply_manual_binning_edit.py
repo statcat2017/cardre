@@ -91,10 +91,8 @@ class ApplyManualBinningEdit:
                         params=updated_params,
                         params_hash=updated_params_hash,
                         parent_step_ids=list(step.parent_step_ids),
-                        branch_label=step.branch_label,
                         position=step.position,
                         canonical_step_id=step.canonical_step_id,
-                        branch_id=step.branch_id,
                     ))
                 else:
                     new_steps.append(step)

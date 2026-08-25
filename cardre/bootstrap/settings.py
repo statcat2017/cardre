@@ -9,7 +9,6 @@ from pathlib import Path
 
 @dataclass(frozen=True)
 class Settings:
-    governance_enabled: bool = False
     stale_heartbeat_seconds: int = 300
     heartbeat_watchdog_interval_seconds: int = 75
     api_host: str = "127.0.0.1"
@@ -60,7 +59,6 @@ class Settings:
             )
 
         return cls(
-            governance_enabled=_env_bool("CARDRE_GOVERNANCE", False),
             stale_heartbeat_seconds=stale,
             heartbeat_watchdog_interval_seconds=watchdog,
             api_host=os.environ.get("CARDRE_API_HOST", "127.0.0.1"),

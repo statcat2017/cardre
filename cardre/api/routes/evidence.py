@@ -16,7 +16,6 @@ def get_step_evidence_staleness(
     project_id: str,
     step_id: str,
     plan_version_id: str,
-    branch_id: str | None = None,
     container=Depends(get_container),
 ):
     from cardre.application.evidence.explain_staleness import (
@@ -31,7 +30,6 @@ def get_step_evidence_staleness(
     result = uc(ExplainStalenessCommand(
         plan_version_id=plan_version_id,
         step_id=step_id,
-        branch_id=branch_id,
         plan_id=None,
     ))
     return staleness_explanation_to_response(result)

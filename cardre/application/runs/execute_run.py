@@ -106,7 +106,6 @@ class _RunSummaryHook:
                 step_id=run_step.step_id,
                 artifact_id=sr.artifact_id,
                 direction="input",
-                branch_id=run.branch_id if hasattr(run, "branch_id") else None,
             )
 
 
@@ -382,7 +381,6 @@ class ExecuteRun:
                     step_id=step.step_id,
                     artifact_id=art_ref.artifact_id,
                     direction="output",
-                    branch_id=run.branch_id if hasattr(run, "branch_id") else None,
                 )
                 staged = staged_by_artifact.get(art_ref.artifact_id)
                 if staged is not None:
@@ -408,7 +406,6 @@ class ExecuteRun:
                             step_id=step.step_id,
                             artifact_id=parent_art.artifact_id,
                             direction="input",
-                            branch_id=run.branch_id if hasattr(run, "branch_id") else None,
                         )
 
             self._write_evidence_edges(

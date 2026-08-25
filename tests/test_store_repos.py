@@ -5,7 +5,6 @@ import uuid
 import pytest
 
 from cardre.adapters.system.project_registry import JsonProjectRegistry
-from cardre.domain.artifacts import ArtifactRef
 from cardre.domain.diagnostics import utc_now_iso
 from cardre.domain.run import RunStatus
 
@@ -99,8 +98,8 @@ class TestRunRepo:
         with uow_factory.for_project(project_id) as uow:
             uow._conn.execute(
                 "INSERT INTO plan_steps (step_id, plan_version_id, node_type, node_version, category, "
-                " params_json, params_hash, branch_label, position, canonical_step_id) "
-                "VALUES (?, ?, 'test', '1', 'fit', '{}', 'abc', '', 0, ?)",
+                " params_json, params_hash, position, canonical_step_id) "
+                "VALUES (?, ?, 'test', '1', 'fit', '{}', 'abc', 0, ?)",
                 ("step-a", pv_id, "step-a"),
             )
             run_id = uow.runs.create(pv_id)
@@ -155,8 +154,8 @@ class TestRunRepo:
         with uow_factory.for_project(project_id) as uow:
             uow._conn.execute(
                 "INSERT INTO plan_steps (step_id, plan_version_id, node_type, node_version, category, "
-                " params_json, params_hash, branch_label, position, canonical_step_id) "
-                "VALUES (?, ?, 'cardre.noop', '1', 'transform', '{}', 'h', '', 0, ?)",
+                " params_json, params_hash, position, canonical_step_id) "
+                "VALUES (?, ?, 'cardre.noop', '1', 'transform', '{}', 'h', 0, ?)",
                 ("step-x", pv_id, "step-x"),
             )
             run_id = uow.runs.create(pv_id)
@@ -208,8 +207,8 @@ class TestStepRepo:
             for sid in ("parent-a", "child-b", "child-c"):
                 uow._conn.execute(
                     "INSERT OR IGNORE INTO plan_steps (step_id, plan_version_id, node_type, node_version, category, "
-                    " params_json, params_hash, branch_label, position, canonical_step_id) "
-                    "VALUES (?, ?, 'test', '1', 'fit', '{}', 'h', '', 0, ?)",
+                    " params_json, params_hash, position, canonical_step_id) "
+                    "VALUES (?, ?, 'test', '1', 'fit', '{}', 'h', 0, ?)",
                     (sid, pv_id, sid),
                 )
             uow._conn.execute(
@@ -234,8 +233,8 @@ class TestStepRepo:
         with uow_factory.for_project(project_id) as uow:
             uow._conn.execute(
                 "INSERT INTO plan_steps (step_id, plan_version_id, node_type, node_version, category, "
-                " params_json, params_hash, branch_label, position, canonical_step_id) "
-                "VALUES (?, ?, 'cardre.noop', '1', 'transform', '{}', 'h', '', 0, ?)",
+                " params_json, params_hash, position, canonical_step_id) "
+                "VALUES (?, ?, 'cardre.noop', '1', 'transform', '{}', 'h', 0, ?)",
                 ("s1", pv_id, "s1"),
             )
             types = uow.steps.get_distinct_node_types(project_id)
@@ -247,8 +246,8 @@ class TestStepRepo:
             for sid in ("a", "b"):
                 uow._conn.execute(
                     "INSERT OR IGNORE INTO plan_steps (step_id, plan_version_id, node_type, node_version, category, "
-                    " params_json, params_hash, branch_label, position, canonical_step_id) "
-                    "VALUES (?, ?, 'test', '1', 'fit', '{}', 'h', '', 0, ?)",
+                    " params_json, params_hash, position, canonical_step_id) "
+                    "VALUES (?, ?, 'test', '1', 'fit', '{}', 'h', 0, ?)",
                     (sid, pv_id, sid),
                 )
             uow._conn.execute(
@@ -260,153 +259,6 @@ class TestStepRepo:
             assert len(all_edges) == 1
             assert all_edges[0]["parent_step_id"] == "a"
             assert all_edges[0]["child_step_id"] == "b"
-
-
-@pytest.mark.governance
-class TestBranchRepo:
-    def test_get_nonexistent_branch(self, provisioned_project):
-        project_id, uow_factory, _, _ = provisioned_project
-        with uow_factory.for_project(project_id) as uow:
-            branch = uow.branches.get_branch("nonexistent")
-        assert branch is None
-
-    def test_get_plan_version_ids(self, provisioned_project):
-        project_id, uow_factory, _, _ = provisioned_project
-        with uow_factory.for_project(project_id) as uow:
-            ids = uow.branches.get_plan_version_ids("nonexistent-branch")
-        assert ids == []
-
-    def test_get_step_map_empty(self, provisioned_project):
-        project_id, uow_factory, _, _ = provisioned_project
-        with uow_factory.for_project(project_id) as uow:
-            step_map = uow.branches.get_step_map("nonexistent-branch", "nonexistent-pv")
-        assert step_map == []
-
-    def test_create_and_list_branches(self, committed_plan_version):
-        project_id, plan_id, pv_id, uow_factory, _ = committed_plan_version
-        with uow_factory.for_project(project_id) as uow:
-            branch_id = uow.branches.create_branch(
-                project_id, plan_id, "test-branch", "challenger",
-                base_plan_version_id=pv_id, head_plan_version_id=pv_id,
-                created_reason="test",
-                branch_point_step_id="step-a",
-            )
-            branch = uow.branches.get_branch(branch_id)
-            assert branch is not None
-            assert branch["name"] == "test-branch"
-            assert branch["branch_type"] == "challenger"
-
-            branches = uow.branches.list_branches(project_id=project_id)
-            assert len(branches) >= 1
-
-            branches_by_plan = uow.branches.list_branches(project_id=project_id, plan_id=plan_id)
-            assert len(branches_by_plan) >= 1
-
-            branches_by_type = uow.branches.list_branches(project_id=project_id, branch_type="challenger")
-            assert len(branches_by_type) >= 1
-            branches_by_wrong_type = uow.branches.list_branches(project_id=project_id, branch_type="baseline")
-            assert len(branches_by_wrong_type) == 0
-
-    def test_create_step_map_and_get(self, committed_plan_version):
-        project_id, plan_id, pv_id, uow_factory, _ = committed_plan_version
-        with uow_factory.for_project(project_id) as uow:
-            branch_id = uow.branches.create_branch(
-                project_id, plan_id, "step-map-test", "challenger",
-                base_plan_version_id=pv_id, head_plan_version_id=pv_id,
-                created_reason="test",
-            )
-            uow.branches.create_step_map(branch_id, pv_id, "canon-a", "step-a",
-                                         is_shared_upstream=True, is_branch_owned=False)
-            step_map = uow.branches.get_step_map(branch_id, pv_id)
-            assert len(step_map) == 1
-            assert step_map[0]["canonical_step_id"] == "canon-a"
-            assert step_map[0]["step_id"] == "step-a"
-            assert step_map[0]["is_shared_upstream"] == 1
-            assert step_map[0]["is_branch_owned"] == 0
-
-    def test_comparison_repo_edge_cases(self, provisioned_project):
-        project_id, uow_factory, _, _ = provisioned_project
-        with uow_factory.for_project(project_id) as uow:
-            assert uow.comparisons.get_comparison("nonexistent") is None
-            assert uow.comparisons.get_challenger_branches("nonexistent") == []
-            assert uow.comparisons.get_snapshot_plan_versions("nonexistent") == []
-            assert uow.comparisons.list_for_project("nonexistent") == []
-
-    def test_branch_repo_list_with_status(self, committed_plan_version):
-        project_id, plan_id, pv_id, uow_factory, _ = committed_plan_version
-        with uow_factory.for_project(project_id) as uow:
-            uow.branches.create_branch(project_id, plan_id, "test", "challenger",
-                                       base_plan_version_id=pv_id, head_plan_version_id=pv_id,
-                                       created_reason="test")
-            branches = uow.branches.list_branches(project_id=project_id, status="active")
-            assert len(branches) >= 1
-
-    def test_branch_repo_update_head(self, committed_plan_version):
-        project_id, plan_id, pv_id, uow_factory, _ = committed_plan_version
-        with uow_factory.for_project(project_id) as uow:
-            branch_id = uow.branches.create_branch(
-                project_id, plan_id, "head-test", "challenger",
-                base_plan_version_id=pv_id, head_plan_version_id=pv_id, created_reason="test",
-            )
-            new_pv_id = uow.plans.create_version(plan_id, [], is_committed=False)
-            uow.branches.update_head(branch_id, new_pv_id)
-            branch = uow.branches.get_branch(branch_id)
-            assert branch["head_plan_version_id"] == new_pv_id
-
-    def test_branch_repo_champion_and_comparison_methods(self, provisioned_project):
-        project_id, uow_factory, _, _ = provisioned_project
-        with uow_factory.for_project(project_id) as uow:
-            assert uow.champion.get_champion_assignment_for_project("nonexistent") is None
-            assert uow.champion.get_champion_assignment("nonexistent-plan") is None
-            assert uow.champion.get_champion_assignment("nonexistent-plan", champion_branch_id="b1") is None
-            assert uow.champion.get_champion_assignment_by_branch("nonexistent-branch") is None
-            assert uow.comparisons.get_comparison("nonexistent") is None
-            assert uow.comparisons.get_comparison_snapshot("nonexistent") is None
-            assert uow.comparisons.get_comparison_snapshots("nonexistent") == []
-
-    def test_comparison_repo_full_lifecycle(self, committed_plan_version):
-        project_id, plan_id, pv_id, uow_factory, _ = committed_plan_version
-        now = utc_now_iso()
-        with uow_factory.for_project(project_id) as uow:
-            baseline_id = uow.branches.create_branch(
-                project_id, plan_id, "baseline", "baseline",
-                base_plan_version_id=pv_id, head_plan_version_id=pv_id, created_reason="test",
-            )
-            challenger_id = uow.branches.create_branch(
-                project_id, plan_id, "challenger", "challenger",
-                base_plan_version_id=pv_id, head_plan_version_id=pv_id, created_reason="test",
-            )
-
-            comp_id = uow.comparisons.create_comparison(
-                project_id=project_id, plan_id=plan_id, baseline_branch_id=baseline_id,
-                comparison_spec_json="{}",
-            )
-            uow.comparisons.add_challenger_branch(comp_id, challenger_id, position=0)
-
-            challengers = uow.comparisons.get_challenger_branches(comp_id)
-            assert len(challengers) == 1
-            assert challengers[0]["branch_id"] == challenger_id
-
-            uow.artifacts.register(ArtifactRef(
-                artifact_id="comp-art-1", artifact_type="comparison", role="comparison",
-                path="/tmp/comp.json", physical_hash="ph", logical_hash="lh",
-                media_type="application/json", created_at=now,
-            ))
-            snapshot_id = uow.comparisons.create_snapshot(
-                comp_id, project_id=project_id, plan_id=plan_id,
-                comparison_artifact_id="comp-art-1", readiness_json="{}",
-            )
-            assert snapshot_id is not None
-
-            snapshots = uow.comparisons.get_comparison_snapshots(comp_id)
-            assert len(snapshots) == 1
-
-            snapshot = uow.comparisons.get_comparison_snapshot(snapshot_id)
-            assert snapshot is not None
-
-            uow.comparisons.add_snapshot_plan_version(snapshot_id, pv_id, branch_id=challenger_id)
-            versions = uow.comparisons.get_snapshot_plan_versions(snapshot_id)
-            assert len(versions) == 1
 
 
 class TestRepoEdgeCases:

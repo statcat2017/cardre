@@ -20,7 +20,6 @@ MANIFEST_VERSION = "cardre.run_manifest.v1"
 class RunManifestStep:
     step_id: str
     canonical_step_id: str = ""
-    branch_id: str | None = None
     node_type: str = ""
     node_version: str = ""
     category: str = ""
@@ -42,7 +41,6 @@ class RunManifestStep:
         return {
             "step_id": self.step_id,
             "canonical_step_id": self.canonical_step_id,
-            "branch_id": self.branch_id,
             "node_type": self.node_type,
             "node_version": self.node_version,
             "category": self.category,
@@ -72,7 +70,6 @@ class RunManifest:
     plan_version_id: str = ""
     plan_id: str = ""
     project_id: str = ""
-    branch_id: str | None = None
     started_at: str = ""
     finished_at: str | None = None
     status: str = ""
@@ -92,7 +89,6 @@ class RunManifest:
             "plan_version_id": self.plan_version_id,
             "plan_id": self.plan_id,
             "project_id": self.project_id,
-            "branch_id": self.branch_id,
             "started_at": self.started_at,
             "finished_at": self.finished_at,
             "status": self.status,

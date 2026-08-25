@@ -16,11 +16,11 @@ distinct node types required by `_CANONICAL_SCORECARD_STEPS`.
 | `cardre.calibration_diagnostics` | fit | Compute calibration diagnostics for scored roles |
 | `cardre.separation_diagnostics` | fit | Detect high-coefficient separation risk |
 | `cardre.vif_diagnostics` | fit | Compute VIF multicollinearity diagnostics |
-| `cardre.import_dataset` | transform | Import tabular data from Parquet |
+| `cardre.import_dataset` | transform | Import tabular data; Parquet-only boundary is introduced in the methodology cleanup |
 | `cardre.profile_dataset` | transform | Profile dataset columns and statistics |
 | `cardre.validate_binary_target` | transform | Validate binary target column |
 | `cardre.split_train_test_oot` | transform | Split data into train/test/OOT |
-| `cardre.automatic_binning` | fit | Automatic initial binning of variables (fine classing) |
+| `cardre.automatic_binning` | fit | Automatic initial binning of variables; fine classing is the canonical method |
 | `cardre.calculate_woe_iv` | selection | Calculate WOE and IV |
 | `cardre.variable_clustering` | selection | Variable clustering/correlation grouping |
 | `cardre.variable_selection` | selection | Variable selection |

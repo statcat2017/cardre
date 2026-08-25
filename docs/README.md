@@ -8,7 +8,7 @@
 ## Current Architecture
 
 - [Domain Model](architecture/domain-model.md) — core concepts, glossary, terminology
-- [Storage & Migrations](architecture/storage-and-migrations.md) — ProjectStore, repository classes, schema
+- [Storage](architecture/storage-and-migrations.md) — ProjectStore, repository classes, schema
 - [Execution & Staleness](architecture/execution-and-staleness.md) — run lifecycle, executor, staleness detection
 - [Node Registry](architecture/node-registry.md) — canonical production node registration and instantiation
 - [Artifact & Evidence Access](architecture/artifact-evidence-access.md) — read paths, forbidden patterns, evidence kinds

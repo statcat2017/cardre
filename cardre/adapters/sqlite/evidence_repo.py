@@ -51,22 +51,6 @@ class EvidenceRepo:
         ).fetchall()
         return [self._row_to_edge(r) for r in rows]
 
-    def get_edges_for_plan_step_branch(self, plan_version_id: str, step_id: str, branch_id: str | None) -> list[EvidenceEdge]:
-        clause = "AND r.branch_id = ?" if branch_id is not None else "AND r.branch_id IS NULL"
-        params: list[str] = [plan_version_id, step_id]
-        if branch_id is not None:
-            params.append(branch_id)
-        rows = self._conn.execute(
-            f"SELECT e.* FROM evidence_edges e "
-            f"JOIN run_steps rs ON e.source_run_step_id = rs.run_step_id "
-            f"JOIN runs r ON e.run_id = r.run_id "
-            f"WHERE e.plan_version_id = ? AND e.step_id = ? AND rs.status = 'succeeded' "
-            f"AND r.status = 'succeeded' AND e.is_stale = 0 {clause} "
-            f"ORDER BY r.finished_at DESC, e.created_at DESC, e.evidence_edge_id DESC",
-            params,
-        ).fetchall()
-        return [self._row_to_edge(r) for r in rows]
-
     def get_edge_for_child_parent(self, run_step_id: str, parent_step_id: str) -> EvidenceEdge | None:
         row = self._conn.execute(
             "SELECT * FROM evidence_edges WHERE run_step_id = ? AND parent_step_id = ?",

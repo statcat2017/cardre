@@ -20,20 +20,18 @@ class StepRepo:
             step_id=r["step_id"], node_type=r["node_type"],
             node_version=r["node_version"], category=r["category"],
             params=json.loads(r["params_json"]), params_hash=r["params_hash"],
-            parent_step_ids=[], branch_label=r["branch_label"],
-            position=r["position"], canonical_step_id=r["canonical_step_id"],
-            branch_id=r["branch_id"],
+            parent_step_ids=[], position=r["position"], canonical_step_id=r["canonical_step_id"],
         ) for r in rows]
 
     def insert_steps_and_edges(self, plan_version_id: str, steps: list[Any]) -> None:
         for step in steps:
             self._conn.execute(
                 "INSERT INTO plan_steps (step_id, plan_version_id, node_type, node_version, category, "
-                "params_json, params_hash, branch_label, position, canonical_step_id, branch_id) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "params_json, params_hash, position, canonical_step_id) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (step.step_id, plan_version_id, step.node_type, step.node_version, step.category,
-                 json.dumps(step.params), step.params_hash, step.branch_label,
-                 step.position, step.canonical_step_id, step.branch_id),
+                 json.dumps(step.params), step.params_hash,
+                 step.position, step.canonical_step_id),
             )
             for idx, pid in enumerate(step.parent_step_ids):
                 self._conn.execute(

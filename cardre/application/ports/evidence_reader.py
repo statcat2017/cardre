@@ -1,8 +1,8 @@
 """Evidence reader ports used by application use cases.
 
 ``EvidenceReaderPort`` is the typed-evidence surface used by reporting and
-governance use cases. ``NodeInputReader`` is the typed-evidence surface used
-by node execution: it binds an ``ArtifactReader`` to the domain ``EvidenceKind``
+report use cases. ``NodeInputReader`` is the typed-evidence surface used by
+node execution: it binds an ``ArtifactReader`` to the domain ``EvidenceKind``
 registry so nodes can read inputs without depending on concrete adapters.
 """
 

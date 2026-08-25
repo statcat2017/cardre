@@ -13,19 +13,22 @@ Evidence is resolved by canonical step IDs defined in `cardre/application/report
 | `cutoff-analysis` | Cutoff analysis evidence |
 | `manual-binning` | Manual binning evidence |
 | `variable-clustering` | Variable clustering evidence |
-| `technical-manifest` | Technical manifest (comparison mode) |
+| `technical-manifest` | Technical manifest |
 
-## Required Steps by Report Mode
+## Required Steps
 
 The canonical required-step lists are defined in
 `cardre/application/reporting/contracts.py`:
 
-| Mode | Required Steps |
-|------|---------------|
-| Branch report | `final-woe-iv`, `model-fit`, `score-scaling`, `validation-metrics`, `cutoff-analysis` |
-| Champion report | `final-woe-iv`, `model-fit`, `score-scaling`, `freeze-scorecard-bundle`, `apply-model`, `validation-metrics`, `cutoff-analysis`, `scorecard-table-export`, `scoring-export-python`, `scoring-export-sql` |
-| Full collector | everything in the current scorecard report plus `manual-binning`, `variable-clustering`, `coefficient-sign-check`, `separation-diagnostics`, `vif-diagnostics`, `calibration-diagnostics`, `apply-exclusions`, `sample-definition`, `explicit-missing-outlier-treatment`, `initial-woe-iv`, `apply-woe` |
-| Comparison | `final-woe-iv`, `model-fit`, `score-scaling`, `validation-metrics`, `cutoff-analysis`, `technical-manifest` |
+The run report collector requires the current scorecard pathway steps:
+
+`final-woe-iv`, `model-fit`, `score-scaling`, `validation-metrics`,
+`cutoff-analysis`, `manual-binning`, `variable-clustering`,
+`coefficient-sign-check`, `separation-diagnostics`, `vif-diagnostics`,
+`calibration-diagnostics`, `apply-exclusions`, `sample-definition`,
+`explicit-missing-outlier-treatment`, `initial-woe-iv`, `apply-woe`,
+`freeze-scorecard-bundle`, `apply-model`, `scorecard-table-export`,
+`scoring-export-python`, and `scoring-export-sql`.
 
 ## Evidence Kinds
 

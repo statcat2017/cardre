@@ -6,9 +6,6 @@ import sqlite3
 from pathlib import Path
 
 from cardre.adapters.sqlite.artifact_repo import ArtifactRepo
-from cardre.adapters.sqlite.branch_repo import BranchRepo
-from cardre.adapters.sqlite.champion_repo import ChampionRepo
-from cardre.adapters.sqlite.comparison_repo import ComparisonRepo
 from cardre.adapters.sqlite.dispatch_repo import DispatchRepo
 from cardre.adapters.sqlite.evidence_repo import EvidenceRepo
 from cardre.adapters.sqlite.export_repo import ExportRepo
@@ -78,18 +75,6 @@ class SqliteUnitOfWork:
     @property
     def dispatches(self) -> DispatchRepo:
         return DispatchRepo(self._conn)
-
-    @property
-    def branches(self) -> BranchRepo:
-        return BranchRepo(self._conn)
-
-    @property
-    def comparisons(self) -> ComparisonRepo:
-        return ComparisonRepo(self._conn)
-
-    @property
-    def champion(self) -> ChampionRepo:
-        return ChampionRepo(self._conn)
 
     @property
     def manual_binning(self) -> ManualBinningRepo:
@@ -180,18 +165,6 @@ class SqliteReadOnlyUnitOfWork:
     @property
     def dispatches(self) -> DispatchRepo:
         return DispatchRepo(self._conn)
-
-    @property
-    def branches(self) -> BranchRepo:
-        return BranchRepo(self._conn)
-
-    @property
-    def comparisons(self) -> ComparisonRepo:
-        return ComparisonRepo(self._conn)
-
-    @property
-    def champion(self) -> ChampionRepo:
-        return ChampionRepo(self._conn)
 
     @property
     def manual_binning(self) -> ManualBinningRepo:

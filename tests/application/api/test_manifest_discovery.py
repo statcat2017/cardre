@@ -51,7 +51,7 @@ def _seed_finalized_run(container, project_id):
             [StepSpec(
                 step_id="s1", node_type="cardre.noop", node_version="1",
                 category="transform", params={}, params_hash=json_logical_hash({}),
-                parent_step_ids=[], branch_label="", position=0, canonical_step_id="s1",
+                parent_step_ids=[], position=0, canonical_step_id="s1",
             )],
             is_committed=True,
         )

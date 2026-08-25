@@ -33,7 +33,6 @@ from cardre.domain.evidence.models.diagnostics import (
 )
 from cardre.domain.evidence.models.governance import VariableClusteringEvidence
 from cardre.domain.evidence.models.manifest import (
-    ComparisonArtifact,
     ReportBundleEvidence,
     TechnicalManifestIndex,
 )
@@ -60,10 +59,6 @@ EVIDENCE_ADAPTERS: dict[EvidenceKind, AdapterSpec] = {
     EvidenceKind.BIN_DEFINITION: AdapterSpec(
         profile=EVIDENCE_PROFILES[EvidenceKind.BIN_DEFINITION],
         parse=lambda path, art, reader: BinDefinition.from_json(read_json_payload(path), artifact_id=art.artifact_id),
-    ),
-    EvidenceKind.COMPARISON_ARTIFACT: AdapterSpec(
-        profile=EVIDENCE_PROFILES[EvidenceKind.COMPARISON_ARTIFACT],
-        parse=lambda path, art, reader: ComparisonArtifact.from_json(read_json_payload(path), artifact_id=art.artifact_id),
     ),
     EvidenceKind.CUTOFF_ANALYSIS: AdapterSpec(
         profile=EVIDENCE_PROFILES[EvidenceKind.CUTOFF_ANALYSIS],

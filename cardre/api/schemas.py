@@ -1,7 +1,6 @@
 """Pydantic models for the Cardre v2 API — full surface.
 
-Every response follows a consistent shape.  Governance-gated routes always
-return ``GOVERNANCE_DISABLED`` (403) when ``CARDRE_GOVERNANCE=0``.
+Every response follows a consistent shape.
 """
 
 from __future__ import annotations
@@ -34,7 +33,6 @@ class ErrorResponse(BaseModel):
 class HealthResponse(BaseModel):
     status: str = "ok"
     version: str = __version__
-    governance_enabled: bool = False
 
 
 # ---------------------------------------------------------------------------
@@ -129,10 +127,8 @@ class PlanStepResponse(BaseModel):
     params: dict[str, Any] = Field(default_factory=dict)
     params_hash: str = ""
     parent_step_ids: list[str] = Field(default_factory=list)
-    branch_label: str = ""
     position: int = 0
     canonical_step_id: str
-    branch_id: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -157,7 +153,6 @@ class RunResponse(BaseModel):
     plan_version_id: str
     status: str
     run_scope: str = "full_plan"
-    branch_id: str | None = None
     force: bool = False
     started_at: str
     finished_at: str | None = None
@@ -177,7 +172,6 @@ class RunListResponse(BaseModel):
 class RunCreateRequest(BaseModel):
     plan_version_id: str
     run_scope: str | None = None
-    branch_id: str | None = None
     force: bool = False
     sync: bool = False
 
@@ -326,97 +320,6 @@ class ManualBinningPreviewResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# Branches (governance-gated)
-# ---------------------------------------------------------------------------
-
-class BranchResponse(BaseModel):
-    branch_id: str
-    project_id: str
-    plan_id: str
-    name: str
-    description: str | None = None
-    branch_type: str
-    status: str = "active"
-    base_branch_id: str | None = None
-    base_plan_version_id: str
-    head_plan_version_id: str
-    branch_point_step_id: str | None = None
-    branch_point_canonical_step_id: str | None = None
-    created_reason: str = ""
-    created_at: str = ""
-    updated_at: str = ""
-
-
-class BranchListResponse(BaseModel):
-    branches: list[BranchResponse]
-
-
-class BranchCreateRequest(BaseModel):
-    plan_id: str
-    name: str
-    # No default: branch_type is coupled to branch_point_step_id via
-    # ALLOWED_BRANCH_POINTS, so a default can never be valid.
-    branch_type: str
-    base_plan_version_id: str
-    head_plan_version_id: str
-    description: str | None = None
-    base_branch_id: str | None = None
-    branch_point_step_id: str | None = None
-    created_reason: str = ""
-    segment_filter_spec: dict[str, Any] | None = None
-
-
-# ---------------------------------------------------------------------------
-# Comparisons (governance-gated)
-# ---------------------------------------------------------------------------
-
-class ComparisonResponse(BaseModel):
-    comparison_id: str
-    project_id: str
-    plan_id: str
-    baseline_branch_id: str
-    created_at: str = ""
-    latest_ready: bool | None = None
-
-class ComparisonListResponse(BaseModel):
-    comparisons: list[ComparisonResponse]
-
-
-class ComparisonCreateRequest(BaseModel):
-    plan_id: str
-    baseline_branch_id: str
-    challenger_branch_ids: list[str] = []
-    created_reason: str | None = None
-
-
-# ---------------------------------------------------------------------------
-# Champion (governance-gated)
-# ---------------------------------------------------------------------------
-
-
-class ChampionAssignmentResponse(BaseModel):
-    champion_assignment_id: str
-    project_id: str
-    plan_id: str
-    champion_branch_id: str
-    selected_plan_version_id: str
-    assigned_at: str = ""
-    superseded_at: str | None = None
-
-
-class ChampionResponse(BaseModel):
-    assignment: ChampionAssignmentResponse | None = None
-
-
-class ChampionAssignmentRequest(BaseModel):
-    plan_id: str
-    branch_id: str
-    comparison_id: str
-    comparison_snapshot_id: str
-    assigned_reason: str = ""
-
-
-# ---------------------------------------------------------------------------
 # Node types
 # ---------------------------------------------------------------------------
 
@@ -468,13 +371,6 @@ class ReportListResponse(BaseModel):
 __all__ = [
     "ArtifactListResponse",
     "ArtifactResponse",
-    "BranchCreateRequest",
-    "BranchListResponse",
-    "BranchResponse",
-    "ChampionAssignmentResponse",
-    "ChampionResponse",
-    "ComparisonListResponse",
-    "ComparisonResponse",
     "ErrorDetail",
     "ErrorResponse",
     "EvidenceArtifactResponse",

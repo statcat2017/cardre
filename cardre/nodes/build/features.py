@@ -372,7 +372,6 @@ class CalculateWoeIvNode(NodeType):
             "schema_version": SCHEMA_WOE_IV_EVIDENCE,
             "project_id": "",
             "run_id": context.runtime.run_id,
-            "branch_id": context.step_spec.branch_id or "",
             "step_id": context.runtime.step_id,
             "canonical_step_id": context.step_spec.canonical_step_id,
             "dataset_role": "train",

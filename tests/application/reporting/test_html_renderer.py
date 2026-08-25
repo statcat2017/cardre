@@ -1,7 +1,6 @@
 """Tests for the full-section HTML report renderer.
 
-Verifies that the renderer emits every section of the ReportBundle,
-preserving the full report structure from the legacy renderer.
+Verifies that the renderer emits every section of the ReportBundle.
 """
 
 from __future__ import annotations
@@ -11,7 +10,6 @@ from cardre.application.reporting.schema import (
     ArtifactEntry,
     CalibrationBin,
     CalibrationRole,
-    ChampionInfo,
     CoefficientSignEntry,
     CutoffInfo,
     CutoffTable,
@@ -48,15 +46,13 @@ from cardre.application.reporting.schema import (
 
 def _full_bundle() -> ReportBundle:
     return ReportBundle(
-        project_id="p1", run_id="r1", target_branch_id="b1",
+        project_id="p1", run_id="r1",
         generated_at="2026-07-24T12:00:00Z",
         summary=ReportSummary(model_name="Test Model", target_column="credit_risk",
-                              final_variable_count=5, excluded_variable_count=3,
-                              target_branch_id="b1", champion_branch_id="b1"),
+                              final_variable_count=5, excluded_variable_count=3),
         dataset_roles=[DatasetRole(role="train", dataset_id="d1", row_count=100, column_count=5,
                                    target=DatasetTargetSummary(good_count=80, bad_count=20, bad_rate=0.2))],
         pathway=PathwaySummary(steps=[PathwayStep(canonical_step_id="sample-definition", step_id="s1", status="succeeded")]),
-        champion=ChampionInfo(champion_status="assigned", champion_branch_id="b1"),
         variables=[VariableInfo(variable_name="income", role="included", iv=0.5, final_bin_count=4)],
         model=ModelInfo(target="risk", features=[ModelFeature(variable_name="income", coefficient=1.5)],
                         intercept=2.0),
@@ -91,7 +87,7 @@ def _full_bundle() -> ReportBundle:
 
 
 EXPECTED_SECTIONS = [
-    "Executive Summary", "Pathway", "Dataset Roles", "Branches", "Champion", "Variables",
+    "Executive Summary", "Pathway", "Dataset Roles", "Variables",
     "Model", "Score Scaling", "Validation", "Cutoffs", "Manual Interventions",
     "Manual Binning Review", "Redundancy Review", "Model Diagnostics",
     "Implementation Artifacts", "Sample Definition", "Variable Selection",
@@ -105,11 +101,6 @@ class TestHtmlRendererFullSections:
         html = HtmlReportRenderer.render_to_html(_full_bundle())
         for section in EXPECTED_SECTIONS:
             assert f"<h2>{section}</h2>" in html, f"Missing section: {section}"
-
-    def test_renders_champion_assignment(self):
-        html = HtmlReportRenderer.render_to_html(_full_bundle())
-        assert "assigned" in html
-        assert "b1" in html
 
     def test_renders_cutoff_table_role(self):
         html = HtmlReportRenderer.render_to_html(_full_bundle())
@@ -136,10 +127,9 @@ class TestHtmlRendererFullSections:
         html = HtmlReportRenderer.render_to_html(ReportBundle(project_id="p", run_id="r"))
         for section in EXPECTED_SECTIONS:
             assert f"<h2>{section}</h2>" in html
-        assert "No data" in html or "None" in html or "No champion" in html
+        assert "No data" in html or "None" in html
 
     def test_renders_blocker_severity_class(self):
-        from cardre.application.reporting.schema import Limitation
         bundle = ReportBundle(project_id="p", run_id="r", limitations=[
             Limitation(severity="blocker", code="B1", message="blocked"),
         ])
@@ -157,12 +147,6 @@ class TestHtmlRendererFullSections:
         assert "5" in html
         assert "Excluded variable count" in html
         assert "3" in html
-
-    def test_executive_summary_shows_champion_and_target_branch(self):
-        html = HtmlReportRenderer.render_to_html(_full_bundle())
-        assert "Champion branch" in html
-        assert "Target branch" in html
-        assert "b1" in html
 
     def test_header_shows_generation_metadata(self):
         html = HtmlReportRenderer.render_to_html(_full_bundle())

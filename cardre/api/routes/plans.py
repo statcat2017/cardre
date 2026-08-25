@@ -6,9 +6,20 @@ from fastapi import APIRouter, Depends
 
 from cardre.api.dependencies import get_container
 from cardre.api.errors import CardreApiError, ErrorCode
-from cardre.api.mappers import plan_to_response, plan_version_to_response, step_spec_to_response
+from cardre.api.mappers import (
+    manual_binning_review_to_response,
+    plan_to_response,
+    plan_version_to_response,
+    step_spec_to_response,
+)
 from cardre.api.schemas import (
     CanonicalScorecardVersionRequest,
+    ManualBinningEditRequest,
+    ManualBinningEditResponse,
+    ManualBinningPreviewRequest,
+    ManualBinningPreviewResponse,
+    ManualBinningReviewResponse,
+    ManualBinningReviewUpdate,
     PlanCreateRequest,
     PlanListResponse,
     PlanResponse,
@@ -190,3 +201,84 @@ def get_plan_version_steps(project_id: str, plan_version_id: str, container=Depe
     with container.uow_factory.read_only(project_id) as uow:
         steps = uow.plans.get_version_steps(plan_version_id)
     return [step_spec_to_response(s, plan_version_id=plan_version_id) for s in steps]
+
+
+# ---------------------------------------------------------------------------
+# Manual-binning review workflow (ungated plans-scoped endpoints)
+# ---------------------------------------------------------------------------
+
+
+_VALID_REVIEW_STATUSES = {"pending", "approved", "rejected"}
+
+
+@router.get("/manual-binning-reviews", response_model=list[ManualBinningReviewResponse])
+def list_manual_binning_reviews(project_id: str, container=Depends(get_container)):
+    with container.uow_factory.read_only(project_id) as uow:
+        reviews = uow.manual_binning.list_for_project(project_id)
+    return [manual_binning_review_to_response(r) for r in reviews]
+
+
+@router.get("/manual-binning-reviews/{review_id}", response_model=ManualBinningReviewResponse)
+def get_manual_binning_review(project_id: str, review_id: str, container=Depends(get_container)):
+    with container.uow_factory.read_only(project_id) as uow:
+        review = uow.manual_binning.get_review(review_id)
+    if review is None:
+        raise CardreApiError(code=ErrorCode.REVIEW_NOT_FOUND, message=f"Review {review_id!r} not found.", status_code=404)
+    return manual_binning_review_to_response(review)
+
+
+@router.patch("/manual-binning-reviews/{review_id}", response_model=ManualBinningReviewResponse)
+def update_manual_binning_review(project_id: str, review_id: str, body: ManualBinningReviewUpdate, container=Depends(get_container)):
+    if body.status is not None and body.status not in _VALID_REVIEW_STATUSES:
+        raise CardreApiError(
+            code=ErrorCode.BAD_REQUEST,
+            message=f"Invalid review status {body.status!r}; expected one of {sorted(_VALID_REVIEW_STATUSES)}.",
+            status_code=400,
+        )
+    with container.uow_factory.for_project(project_id) as uow:
+        updated = uow.manual_binning.update_review(review_id, body.status, body.reviewer_notes)
+        if not updated:
+            uow.rollback()
+            raise CardreApiError(code=ErrorCode.REVIEW_NOT_FOUND, message=f"Review {review_id!r} not found.", status_code=404)
+        uow.commit()
+        review = uow.manual_binning.get_review(review_id)
+    if review is None:
+        raise CardreApiError(code=ErrorCode.REVIEW_NOT_FOUND, message=f"Review {review_id!r} not found.", status_code=404)
+    return manual_binning_review_to_response(review)
+
+
+@router.post("/manual-binning-preview", response_model=ManualBinningPreviewResponse)
+def preview_manual_binning(project_id: str, body: ManualBinningPreviewRequest, container=Depends(get_container)):
+    from cardre.application.plans.manual_binning_preview import (
+        extract_event_rate_by_bin,
+        extract_iv,
+        extract_woe_by_bin,
+    )
+    return ManualBinningPreviewResponse(
+        woe_by_bin=extract_woe_by_bin(body.variable_data),
+        iv=extract_iv(body.variable_data),
+        event_rate_by_bin=extract_event_rate_by_bin(body.variable_data),
+    )
+
+
+@router.post("/apply-manual-binning-edit", response_model=ManualBinningEditResponse)
+def apply_manual_binning_edit(project_id: str, body: ManualBinningEditRequest, container=Depends(get_container)):
+    from cardre.application.plans.apply_manual_binning_edit import (
+        ApplyManualBinningEdit,
+        ApplyManualBinningEditCommand,
+    )
+
+    def factory():
+        return container.uow_factory.for_project(project_id)
+
+    uc = ApplyManualBinningEdit(factory)
+    result = uc(ApplyManualBinningEditCommand(
+        plan_version_id=body.plan_version_id, step_id=body.step_id,
+        overrides=body.overrides, reviewer_notes=body.reviewer_notes,
+        status=body.status, affected_downstream_step_ids=body.affected_downstream_step_ids,
+    ))
+    return ManualBinningEditResponse(
+        new_plan_version_id=result.new_plan_version_id,
+        review_id=result.review_id,
+        affected_step_ids=result.affected_step_ids,
+    )

@@ -1,4 +1,4 @@
-.PHONY: test test-cov test-fail-fast test-evidence test-launch-core test-governance test-python-ci typecheck typecheck-python lint lint-line-counts lint-artifact-reads audit-artifact-reads arch-check preflight v2-phase-check
+.PHONY: test test-cov test-fail-fast test-evidence test-python-ci typecheck typecheck-python lint lint-line-counts lint-artifact-reads audit-artifact-reads arch-check preflight
 
 # Coverage threshold. Restored to 60% after Batch 05 closeout composed
 # execution-path tests landed (SubmitRun → ExecuteRun → FinalizeRun).
@@ -19,12 +19,6 @@ test-fail-fast:
 test-evidence:
 	python3 -m pytest tests/test_evidence_adapters.py tests/test_evidence_repo_bulk.py tests/test_evidence_edges_and_artifacts.py tests/application/evidence -q --tb=short
 
-test-launch-core:
-	python3 -m pytest tests/test_launch_pathway.py tests/test_api_scorecard_launch_pathway.py tests/test_freeze_scorecard_bundle.py -q --tb=short
-
-test-governance:
-	CARDRE_GOVERNANCE=1 python3 -m pytest -m governance -q --tb=short --no-cov
-
 typecheck:
 	cd frontend && npx tsc --noEmit
 
@@ -44,7 +38,6 @@ preflight:
 	python3 scripts/check-sidecar-naming.py
 	$(MAKE) arch-check
 	python3 -m pytest tests/ -q --tb=short --cov-fail-under=$(PYTEST_COV_FAIL_UNDER)
-	$(MAKE) test-governance
 	$(MAKE) lint-artifact-reads
 	# Frontend checks — full gates restored for Batch 07b closeout.
 	cd frontend && npm ci && npm run lint && npm run format:check && npm test
@@ -53,9 +46,6 @@ preflight:
 	git diff --exit-code -- frontend/src/api/openapi.json frontend/src/api/schema.d.ts
 	python3 scripts/generate-error-codes.py
 	git diff --exit-code -- frontend/src/api/errorCodes.ts
-
-v2-phase-check:
-	bash scripts/v2-phase-check.sh "$(PHASE)"
 
 lint-line-counts:
 	python3 scripts/check-line-counts.py

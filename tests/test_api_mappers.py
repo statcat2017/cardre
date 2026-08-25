@@ -1,10 +1,8 @@
 from __future__ import annotations
 
-from cardre.api.mappers import node_type_to_response
-from cardre.api.routes._run_mappings import (
-    branch_to_response,
-    comparison_to_response,
+from cardre.api.mappers import (
     evidence_edge_to_response,
+    node_type_to_response,
     plan_to_response,
     plan_version_to_response,
     project_to_response,
@@ -24,13 +22,13 @@ def test_plan_mappers_return_expected_shapes() -> None:
         description="Base",
     )
 
-    assert plan_to_response(plan.to_dict()).model_dump() == {
+    assert plan_to_response(plan).model_dump() == {
         "plan_id": "plan-1",
         "project_id": "proj-1",
         "name": "Plan",
         "created_at": "now",
     }
-    assert plan_version_to_response(version.to_dict()).model_dump() == {
+    assert plan_version_to_response(version).model_dump() == {
         "plan_version_id": "pv-1",
         "plan_id": "plan-1",
         "version_number": 2,
@@ -40,32 +38,7 @@ def test_plan_mappers_return_expected_shapes() -> None:
     }
 
 
-def test_branch_comparison_project_and_node_type_mappers() -> None:
-    branch = {
-        "branch_id": "branch-1",
-        "project_id": "proj-1",
-        "plan_id": "plan-1",
-        "name": "branch",
-        "description": None,
-        "branch_type": "challenger",
-        "status": "active",
-        "base_branch_id": None,
-        "base_plan_version_id": "pv-base",
-        "head_plan_version_id": "pv-head",
-        "branch_point_step_id": None,
-        "branch_point_canonical_step_id": None,
-        "created_reason": "",
-        "created_at": "now",
-        "updated_at": "later",
-    }
-    comparison = {
-        "comparison_id": "cmp-1",
-        "project_id": "proj-1",
-        "plan_id": "plan-1",
-        "baseline_branch_id": "branch-1",
-        "created_at": "now",
-        "latest_ready": None,
-    }
+def test_project_and_node_type_mappers() -> None:
     project = {
         "project_id": "proj-1",
         "name": "Project",
@@ -73,8 +46,6 @@ def test_branch_comparison_project_and_node_type_mappers() -> None:
         "cardre_version": "0.2.0",
     }
 
-    assert branch_to_response(branch).model_dump() == branch
-    assert comparison_to_response(comparison).model_dump() == comparison
     assert project_to_response(project).model_dump() == project
     assert node_type_to_response("cardre.demo", category="fit").model_dump() == {
         "node_type": "cardre.demo",

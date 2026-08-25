@@ -65,7 +65,6 @@ def acceptance_env(tmp_path):
     """
     registry_path = tmp_path / "registry.json"
     settings = Settings(
-        governance_enabled=False,
         registry_path=registry_path,
     )
     container = build_container(settings)
@@ -349,34 +348,11 @@ class TestLaunchPathway:
         # 16. Audit package generation.
         from cardre.application.reporting.export_audit_pack import ExportAuditPackCommand
 
-        with uow_factory.for_project(project_id) as uow:
-            branch_row = uow._conn.execute(
-                "SELECT branch_id FROM plan_branches LIMIT 1"
-            ).fetchone()
-        if branch_row is None:
-            # Create a baseline branch + step map so the audit pack can resolve
-            # the canonical step identities (mirrors golden report test setup).
-            with uow_factory.for_project(project_id) as uow:
-                branch_id = uow.branches.create_branch(
-                    project_id=project_id, plan_id=plan_id,
-                    name="main", branch_type="baseline",
-                    base_plan_version_id=pv_id, head_plan_version_id=pv_id,
-                    created_reason="acceptance test",
-                )
-                for s in _canonical_steps(pv_id, uow):
-                    uow.branches.create_step_map(
-                        branch_id=branch_id, plan_version_id=pv_id,
-                        canonical_step_id=s["canonical_step_id"],
-                        step_id=s["step_id"], is_branch_owned=True,
-                    )
-                uow.commit()
-        else:
-            branch_id = branch_row["branch_id"]
-        audit_dir = root / "exports" / f"audit-pack-{branch_id}"
+        audit_dir = root / "exports" / f"audit-pack-{run_id}"
         container.export_audit_pack(ExportAuditPackCommand(
             project_id=project_id,
             plan_id=plan_id,
-            branch_id=branch_id,
+            run_id=run_id,
             project_root=str(root),
             export_path=str(audit_dir),
         ))

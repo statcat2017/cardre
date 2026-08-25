@@ -77,7 +77,6 @@ Minimal parser rule: the current versioned schema is the single accepted shape.
 Adapters validate schema first, then role/type/media, and reject anything that
 is not the canonical identity (see ADR 0015). No fallback readers or legacy-shape
 branches may be added.
-
 ## Writing A Node That Consumes Artifacts
 
 Nodes receive typed evidence through `InputCollection`

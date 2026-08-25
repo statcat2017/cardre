@@ -103,7 +103,6 @@ class FrozenScorecardBundleNode(NodeType):
             "plan_version_id": context.runtime.plan_version_id,
             "step_id": context.runtime.step_id,
             "canonical_step_id": context.step_spec.canonical_step_id,
-            "branch_id": context.step_spec.branch_id or "",
         }
 
         target = {

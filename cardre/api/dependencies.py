@@ -97,24 +97,6 @@ def get_explain_staleness(container: Container = Depends(get_container)) -> Any:
 
 
 # ---------------------------------------------------------------------------
-# Governance
-# ---------------------------------------------------------------------------
-
-
-def get_governance_use_cases(container: Container = Depends(get_container)) -> dict[str, Any]:
-    return {
-        "create_branch": lambda pid: container.create_branch_factory(pid),
-        "create_comparison": lambda pid: container.create_comparison_factory(pid),
-        "assign_champion": lambda pid: container.assign_champion_factory(pid),
-        "refresh_comparison": lambda pid: container.refresh_comparison_factory(pid),
-    }
-
-
-def get_governance_enabled(container: Container = Depends(get_container)) -> bool:
-    return getattr(container.settings, "governance_enabled", False)
-
-
-# ---------------------------------------------------------------------------
 # Node catalogue
 # ---------------------------------------------------------------------------
 

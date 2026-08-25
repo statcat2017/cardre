@@ -32,7 +32,6 @@ class EvidenceKind(Enum):
     REPORT_BUNDLE = "report_bundle"
     RUN_SUMMARY = "run_summary"
     TECHNICAL_MANIFEST_INDEX = "technical_manifest_index"
-    COMPARISON_ARTIFACT = "comparison_artifact"
     SCORE_TABLE = "scorecard_table"
     COEFFICIENT_SIGN_DIAGNOSTICS = "coefficient_sign_diagnostics"
     SEPARATION_DIAGNOSTICS = "separation_diagnostics"

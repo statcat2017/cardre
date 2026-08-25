@@ -41,8 +41,7 @@ def _step(step_id, node_type, category, parents, position, params, params_hash):
     from cardre.domain.step import StepSpec
     return StepSpec(
         step_id=step_id, node_type=node_type, node_version="1", category=category,
-        params=params, params_hash=params_hash, parent_step_ids=parents,
-        branch_label="", position=position, canonical_step_id=step_id,
+        params=params, params_hash=params_hash, parent_step_ids=parents, position=position, canonical_step_id=step_id,
     )
 
 

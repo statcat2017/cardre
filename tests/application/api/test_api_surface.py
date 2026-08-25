@@ -285,7 +285,7 @@ def test_patch_draft_plan_version_succeeds(app_env, tmp_path):
             [StepSpec(
                 step_id="s1", node_type="cardre.variable_selection", node_version="1",
                 category="transform", params={}, params_hash=json_logical_hash({}),
-                parent_step_ids=[], branch_label="", position=0, canonical_step_id="s1",
+                parent_step_ids=[], position=0, canonical_step_id="s1",
             )],
             is_committed=False,
         )
@@ -311,7 +311,7 @@ def test_patch_draft_step_params_succeeds(app_env, tmp_path):
             [StepSpec(
                 step_id="s1", node_type="cardre.variable_selection", node_version="1",
                 category="transform", params={}, params_hash=json_logical_hash({}),
-                parent_step_ids=[], branch_label="", position=0, canonical_step_id="s1",
+                parent_step_ids=[], position=0, canonical_step_id="s1",
             )],
             is_committed=False,
         )
@@ -351,7 +351,7 @@ def test_patch_unknown_step_returns_404(app_env, tmp_path):
             [StepSpec(
                 step_id="s1", node_type="cardre.variable_selection", node_version="1",
                 category="transform", params={}, params_hash=json_logical_hash({}),
-                parent_step_ids=[], branch_label="", position=0, canonical_step_id="s1",
+                parent_step_ids=[], position=0, canonical_step_id="s1",
             )],
             is_committed=False,
         )
@@ -419,11 +419,6 @@ def test_branch_scope_without_branch_id_rejected(app_env, tmp_path):
     assert resp.status_code == 400
 
 
-# ---------------------------------------------------------------------------
-# Reports / exports
-# ---------------------------------------------------------------------------
-
-
 def test_reports_empty(app_env, tmp_path):
     client, container = app_env
     pid, _ = provision(container, tmp_path)
@@ -466,24 +461,3 @@ def test_step_evidence_missing_plan_version_422(app_env, tmp_path):
     resp = client.get(f"/projects/{pid}/steps/s1/evidence")
     # plan_version_id is a required query param -> FastAPI validation error.
     assert resp.status_code == 422
-
-
-# ---------------------------------------------------------------------------
-# Governance routes
-# ---------------------------------------------------------------------------
-
-
-def test_governance_disabled_403(app_env, tmp_path):
-    client, container = app_env
-    pid, _ = provision(container, tmp_path)
-    resp = client.get(f"/projects/{pid}/governance/branches")
-    assert resp.status_code == 403
-    assert resp.json()["detail"]["code"] == "GOVERNANCE_DISABLED"
-
-
-def test_governance_list_branches_empty(gov_env, tmp_path):
-    client, container = gov_env
-    pid, _ = provision(container, tmp_path)
-    resp = client.get(f"/projects/{pid}/governance/branches")
-    assert resp.status_code == 200
-    assert "branches" in resp.json()

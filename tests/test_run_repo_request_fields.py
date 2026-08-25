@@ -9,22 +9,20 @@ def _seed_committed_plan_version(uow, project_id):
 
 
 def test_create_run_persists_request_fields(provisioned_project):
-    """RunRepo.create writes run_scope, branch_id, requested_by, request_id."""
+    """RunRepo.create writes run_scope, requested_by, request_id."""
     project_id, uow_factory, _, _ = provisioned_project
 
     with uow_factory.for_project(project_id) as uow:
         pv_id = _seed_committed_plan_version(uow, project_id)
         run_id = uow.runs.create(
             pv_id,
-            run_scope="branch",
-            branch_id="br-1",
+            run_scope="full_plan",
             requested_by="alice",
             request_id="req-1",
         )
         run = uow.runs.get(run_id)
         assert run is not None
-        assert run.run_scope == "branch"
-        assert run.branch_id == "br-1"
+        assert run.run_scope == "full_plan"
         row = uow._conn.execute(
             "SELECT requested_by, request_id, created_at FROM runs WHERE run_id = ?",
             (run_id,),
@@ -45,7 +43,6 @@ def test_create_run_defaults(provisioned_project):
         assert run is not None
         assert run.status == "submitted"
         assert run.run_scope == "full_plan"
-        assert run.branch_id is None
         assert run.force is False
         row = uow._conn.execute(
             "SELECT requested_by, request_id, created_at FROM runs WHERE run_id = ?",

@@ -22,7 +22,7 @@ def test_runs_table_has_request_columns(tmp_path):
         cols = {r[1] for r in uow._conn.execute("PRAGMA table_info(runs)").fetchall()}
     required = {
         "run_id", "plan_version_id", "status",
-        "run_scope", "branch_id", "force",
+        "run_scope", "force",
         "requested_by", "request_id",
         "created_at", "started_at", "finished_at",
         "heartbeat_at", "active_step_id", "cancel_requested",

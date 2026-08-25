@@ -31,7 +31,7 @@ class EvidenceReader:
         # 1) Find evidence within a mixed list (Node input_artifacts):
         reader.find(artifacts, EvidenceKind.BIN_DEFINITION)
 
-        # 2) Read a known artifact by ID (reporting/comparison):
+        # 2) Read a known artifact by ID (reporting):
         reader.read(artifact_id, EvidenceKind.WOE_IV_EVIDENCE)
     """
 
