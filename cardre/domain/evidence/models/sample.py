@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from cardre.domain.diagnostics import JsonDict
+from cardre.domain.evidence.schemas import SCHEMA_MODELLING_METADATA
 
 
 @dataclass(frozen=True)
@@ -17,23 +18,57 @@ class ModellingMetadata:
     extra: JsonDict = field(default_factory=dict)
     _raw: JsonDict = field(default_factory=dict, repr=False)
     source_artifact_id: str = ""
+    schema_version: str = ""
 
     @classmethod
     def from_json(cls, data: JsonDict, artifact_id: str = "") -> ModellingMetadata:
+        if not isinstance(data, dict):
+            raise ValueError("MODELLING_METADATA requires an object payload")
+        if data.get("schema_version") != SCHEMA_MODELLING_METADATA:
+            raise ValueError(
+                f"ModellingMetadata requires schema_version {SCHEMA_MODELLING_METADATA!r}"
+            )
+        # Require the current target fields; no legacy-null fallback.
+        target_column = data.get("target_column", "")
+        if not isinstance(target_column, str) or not target_column:
+            raise ValueError("ModellingMetadata requires a non-empty target_column")
+        good_values = data.get("good_values")
+        bad_values = data.get("bad_values")
+        if not isinstance(good_values, list) or not isinstance(bad_values, list):
+            raise ValueError("ModellingMetadata requires good_values and bad_values lists")
+        if not good_values or not bad_values:
+            raise ValueError("ModellingMetadata requires non-empty good_values and bad_values")
         indeterminate = data.get("indeterminate_values")
+        if not isinstance(indeterminate, list):
+            raise ValueError("ModellingMetadata requires indeterminate_values list")
         return cls(
-            target_column=data.get("target_column", ""),
-            good_values=list(data.get("good_values") or []),
-            bad_values=list(data.get("bad_values") or []),
-            indeterminate_values=list(indeterminate) if indeterminate is not None else [],
+            target_column=target_column,
+            good_values=list(good_values),
+            bad_values=list(bad_values),
+            indeterminate_values=list(indeterminate),
             extra={k: v for k, v in data.items()
                    if k not in ("target_column", "good_values", "bad_values", "indeterminate_values")},
             _raw=data,
             source_artifact_id=artifact_id,
+            schema_version=str(data.get("schema_version", "")),
         )
 
     def to_dict(self) -> JsonDict:
-        return dict(self._raw)
+        """Serialize to the canonical modelling-metadata JSON shape.
+
+        Emits only the typed current fields (plus any explicit ``extra``
+        values), never the raw input passthrough. The ``_raw`` snapshot is
+        retained for debugging but is not emitted.
+        """
+        payload: JsonDict = {
+            "schema_version": self.schema_version,
+            "target_column": self.target_column,
+            "good_values": list(self.good_values),
+            "bad_values": list(self.bad_values),
+            "indeterminate_values": list(self.indeterminate_values),
+        }
+        payload.update(self.extra)
+        return payload
 
 
 @dataclass(frozen=True)
@@ -41,13 +76,6 @@ class SampleDefinition:
     sample_method: str = "full_population"
     sample_domain: str = "ttd"
     total_rows: int = 0
-    financed_rows: int = 0
-    non_financed_rows: int = 0
-    rejection_source: str | None = None
-    rejection_column: str | None = None
-    rejection_values: list[Any] | None = None
-    approval_column: str | None = None
-    approval_values: list[Any] = field(default_factory=list)
     weight_column: str | None = None
     sample_description: str = ""
     extra: JsonDict = field(default_factory=dict)
@@ -60,22 +88,11 @@ class SampleDefinition:
             sample_method=data.get("sample_method", "full_population"),
             sample_domain=data.get("sample_domain", "ttd"),
             total_rows=data.get("total_rows", 0),
-            financed_rows=data.get("financed_rows", 0),
-            non_financed_rows=data.get("non_financed_rows", 0),
-            rejection_source=data.get("rejection_source"),
-            rejection_column=data.get("rejection_column"),
-            rejection_values=data.get("rejection_values"),
-            approval_column=data.get("approval_column"),
-            approval_values=list(data.get("approval_values", [])),
             weight_column=data.get("weight_column"),
             sample_description=data.get("sample_description", ""),
             extra={k: v for k, v in data.items()
                    if k not in ("sample_method", "sample_domain", "total_rows",
-                                "financed_rows", "non_financed_rows",
-                                "rejection_source", "rejection_column",
-                                 "rejection_values", "approval_column",
-                                 "approval_values", "weight_column",
-                                 "sample_description")},
+                                "weight_column", "sample_description")},
             _raw=data,
             source_artifact_id=artifact_id,
         )

@@ -25,12 +25,6 @@ cardre-api = "sidecar.__main__:main"
 sidecar = ["fastapi", "uvicorn"]
 test = ["pytest", "pytest-cov", "pytest-mock", "httpx"]
 dev = ["ruff==0.16.3", "mypy", "import-linter>=2.0"]
-boosting = ["xgboost", "lightgbm", "catboost"]
-imbalance = ["imbalanced-learn"]
-explain = ["shap"]
-deep = ["torch"]
-optimal-binning = ["optbinning==0.21.0"]
-all-methods = ["xgboost", "lightgbm", "catboost", "imbalanced-learn", "shap", "torch", "optbinning==0.21.0"]
 
 [tool.setuptools.packages.find]
 include = ["cardre*", "sidecar*"]
@@ -48,7 +42,6 @@ ignore = ["SIM102", "SIM116", "E501"]
 
 [tool.ruff.lint.per-file-ignores]
 "cardre/api/**" = ["B008"]
-"cardre/_evidence/adapters/__init__.py" = ["E402"]
 "tests/**" = ["ANN001", "ANN101", "ANN201", "ANN202", "S101", "PLR2004", "D100", "D101", "D102", "D103", "D107", "SIM117"]
 
 [tool.mypy]
@@ -76,14 +69,6 @@ module = [
     "pyarrow.*",
     "sklearn.*",
     "scipy.*",
-    "joblib.*",
-    "xgboost.*",
-    "lightgbm.*",
-    "catboost.*",
-    "imblearn.*",
-    "shap.*",
-    "torch.*",
-    "optbinning.*",
     "uvicorn.*",
 ]
 ignore_missing_imports = true
@@ -98,18 +83,12 @@ addopts = [
     "--cov-report=term-missing",
 ]
 markers = [
-    "optional_boosting: tests requiring xgboost/lightgbm/catboost",
-    "optional_imbalance: tests requiring imbalanced-learn",
-    "optional_explain: tests requiring shap",
-    "optional_binning: tests requiring optbinning",
-    "optional_deep: tests requiring torch",
     "slow: tests that take longer to run",
     "api: sidecar API integration tests",
     "e2e: end-to-end acceptance tests",
     "regression: safety-rail / canary tests",
     "unit: unit tests",
     "integration: integration tests",
-    "governance: tests requiring CARDRE_GOVERNANCE=1 (branch/comparison/champion routes and store tables)",
 ]
 
 [tool.importlinter]

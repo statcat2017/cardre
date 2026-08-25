@@ -1,8 +1,10 @@
 # Node Catalogue
 
-Generated from `NodeRegistry.with_defaults()`. Nodes are divided into launch and deferred tiers.
-
-## Launch Nodes (executable at launch)
+Cardre exposes one flat production catalogue of nodes. There is no launch /
+deferred tier and no `CARDRE_LAUNCH_MODE` flag: every registered node is
+executable in the canonical scorecard pathway. The catalogue is the single
+source of truth for production node registration and must contain exactly the
+distinct node types required by `_CANONICAL_SCORECARD_STEPS`.
 
 | Node Type | Category | Description |
 |-----------|----------|-------------|
@@ -14,16 +16,15 @@ Generated from `NodeRegistry.with_defaults()`. Nodes are divided into launch and
 | `cardre.calibration_diagnostics` | fit | Compute calibration diagnostics for scored roles |
 | `cardre.separation_diagnostics` | fit | Detect high-coefficient separation risk |
 | `cardre.vif_diagnostics` | fit | Compute VIF multicollinearity diagnostics |
-| `cardre.import_dataset` | transform | Import tabular data from CSV/TSV/Parquet |
+| `cardre.import_dataset` | transform | Import tabular data from a Parquet file; Parquet is the only import boundary |
 | `cardre.profile_dataset` | transform | Profile dataset columns and statistics |
 | `cardre.validate_binary_target` | transform | Validate binary target column |
-| `cardre.split_train_test_oot` | transform | Split data into train/test/OOT |
-| `cardre.automatic_binning` | fit | Automatic initial binning of variables (supports fine_classing and optbinning methods) |
+| `cardre.split_train_test_oot` | transform | Random-stratified split into train/test/OOT |
+| `cardre.automatic_binning` | fit | Automatic binning of variables; fine classing is the only method |
 | `cardre.calculate_woe_iv` | selection | Calculate WOE and IV |
-| `cardre.variable_clustering` | selection | Variable clustering/correlation grouping |
+| `cardre.variable_clustering` | selection | Correlation-threshold variable clustering |
 | `cardre.variable_selection` | selection | Variable selection |
 | `cardre.manual_binning` | refinement | Manual bin editing/coarse classing |
-| `cardre.noop` | transform | No-op utility node |
 | `cardre.technical_manifest_export` | transform | Technical manifest export |
 | `cardre.woe_transform_train` | fit | WOE transform on train data |
 | `cardre.logistic_regression` | fit | Logistic regression model |
@@ -37,29 +38,3 @@ Generated from `NodeRegistry.with_defaults()`. Nodes are divided into launch and
 | `cardre.apply_model` | apply | Apply model to test/oot |
 | `cardre.validation_metrics` | apply | Calculate validation metrics |
 | `cardre.cutoff_analysis` | apply | Cutoff analysis |
-
-## Deferred Nodes (schema only, not executable at launch)
-
-| Node Type | Category | Description |
-|-----------|----------|-------------|
-| `cardre.random_forest_classifier` | fit | Random forest classifier |
-| `cardre.gradient_boosting_classifier` | fit | Gradient boosting classifier |
-| `cardre.xgboost_classifier` | fit | XGBoost classifier |
-| `cardre.lightgbm_classifier` | fit | LightGBM classifier |
-| `cardre.catboost_classifier` | fit | CatBoost classifier |
-| `cardre.feature_selection_filter` | selection | Filter-based feature selection |
-| `cardre.feature_selection_embedded` | selection | Embedded feature selection |
-| `cardre.hyperparameter_tuning` | fit | Hyperparameter tuning |
-| `cardre.resample_training_data` | transform | Resample training data |
-| `cardre.smote_training_data` | transform | SMOTE training data |
-| `cardre.model_explainability` | report | Model explainability |
-| `cardre.model_limitations` | report | Model limitations |
-| `cardre.fairness_report` | report | Fairness report |
-| `cardre.proxy_risk_report` | report | Proxy risk report |
-| `cardre.alternative_data_manifest` | report | Alternative data manifest |
-| `cardre.reject_inference_none` | transform | Reject inference (none) |
-| `cardre.reject_inference_augmentation` | transform | Reject inference (augmentation) |
-| `cardre.decision_tree_classifier` | fit | Decision tree classifier |
-| `cardre.calibrate_probabilities` | fit | Platt and isotonic probability calibration |
-| `cardre.define_reject_population` | transform | Define reject population for inference |
-| `cardre.threshold_optimization` | apply | Optimize classification threshold |

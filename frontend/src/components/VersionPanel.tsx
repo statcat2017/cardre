@@ -121,8 +121,8 @@ export function VersionPanel({
         <section style={{ ...pageCardStyle, padding: 18, display: "grid", gap: 10 }}>
           <h3 style={{ marginTop: 0, fontSize: 16 }}>Generate launch pathway</h3>
           <p style={{ margin: 0, color: theme.muted, fontSize: 13 }}>
-            Point Cardre at a CSV, and it will generate the full canonical scorecard pathway as a
-            draft version. If your target column differs from the default
+            Point Cardre at a Parquet file, and it will generate the full canonical scorecard
+            pathway as a draft version. If your target column differs from the default
             <code> credit_risk_class</code>, set it here — it is propagated to every step.
           </p>
           <form
@@ -144,7 +144,7 @@ export function VersionPanel({
                 type="text"
                 value={sourcePath ?? ""}
                 onChange={(event) => onSourcePathChange(event.target.value)}
-                placeholder="Absolute path to your CSV"
+                placeholder="Absolute path to your Parquet file"
                 style={{
                   width: "100%",
                   padding: "10px 12px",
@@ -155,17 +155,17 @@ export function VersionPanel({
               />
               <input
                 type="file"
-                accept=".csv,.parquet"
+                accept=".parquet"
                 onChange={(event) => {
                   const file = event.target.files?.[0];
                   const path = (file as unknown as { path?: string } | null)?.path;
                   if (path) onSourcePathChange(path);
                 }}
                 style={{ display: "none" }}
-                id="csv-file-picker"
+                id="parquet-file-picker"
               />
               <label
-                htmlFor="csv-file-picker"
+                htmlFor="parquet-file-picker"
                 style={{
                   padding: "10px 12px",
                   borderRadius: 10,

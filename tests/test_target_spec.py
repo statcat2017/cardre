@@ -13,12 +13,14 @@ def _make_df(values: list[str]) -> pl.DataFrame:
 
 
 class TestTargetSpecFromMetadata:
-    def test_none_meta_returns_none(self):
-        assert TargetSpec.from_metadata(None) is None
+    def test_none_meta_raises(self):
+        with pytest.raises(ValueError, match="Target metadata is required"):
+            TargetSpec.from_metadata(None)
 
-    def test_missing_target_column_returns_none(self):
+    def test_missing_target_column_raises(self):
         meta = object()
-        assert TargetSpec.from_metadata(meta) is None
+        with pytest.raises(ValueError, match="target_column"):
+            TargetSpec.from_metadata(meta)
 
     def test_basic_construction(self):
         class Meta:
@@ -27,7 +29,6 @@ class TestTargetSpecFromMetadata:
             bad_values = ["bad"]
             indeterminate_values = []
         spec = TargetSpec.from_metadata(Meta())
-        assert spec is not None
         assert spec.target_column == "target"
         assert spec.good_values == frozenset({"good"})
         assert spec.bad_values == frozenset({"bad"})

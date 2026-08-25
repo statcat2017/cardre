@@ -7,7 +7,7 @@ import polars as pl
 
 from cardre.domain.binning.diagnostics import MonotonicStatus, check_pure_bins, monotonicity_status
 from cardre.domain.binning.masks import build_bin_condition
-from cardre.domain.binning.woe import MissingWoePolicy, apply_woe_columns
+from cardre.domain.binning.woe import apply_woe_columns
 from cardre.domain.evidence.kinds import (
     AmbiguousEvidenceError,
     EvidenceKind,
@@ -121,9 +121,9 @@ class CalculateWoeIvNode(NodeType):
         meta_def = context.inputs.target_metadata()
 
         from cardre.modeling.target import TargetSpec
-        target_spec = TargetSpec.from_metadata(meta_def)
-        if target_spec is None:
+        if meta_def is None:
             raise ValueError("WOE/IV requires target metadata")
+        target_spec = TargetSpec.from_metadata(meta_def)
 
         df = context.inputs.read_dataframe(train_artifact)
 
@@ -372,7 +372,6 @@ class CalculateWoeIvNode(NodeType):
             "schema_version": SCHEMA_WOE_IV_EVIDENCE,
             "project_id": "",
             "run_id": context.runtime.run_id,
-            "branch_id": context.step_spec.branch_id or "",
             "step_id": context.runtime.step_id,
             "canonical_step_id": context.step_spec.canonical_step_id,
             "dataset_role": "train",
@@ -486,7 +485,6 @@ class WoeTransformTrainNode(NodeType):
             df,
             selected_vars,
             lambda variable, bin_id: woe_map.get(variable, {}).get(bin_id),
-            policy=MissingWoePolicy.ZERO,
         )
         column_variable_map = [(c, c[: -len("_woe")]) for c in woe_columns]
 

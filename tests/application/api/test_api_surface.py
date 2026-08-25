@@ -105,7 +105,7 @@ def test_plan_not_found(app_env, tmp_path):
 
 
 def test_create_canonical_version_populates_steps(app_env, tmp_path):
-    import csv
+    import polars as pl
 
     client, container = app_env
     pid, _ = provision(container, tmp_path)
@@ -113,15 +113,12 @@ def test_create_canonical_version_populates_steps(app_env, tmp_path):
     assert plan_resp.status_code == 201, plan_resp.text
     plan_id = plan_resp.json()["plan_id"]
 
-    csv_path = tmp_path / "in.csv"
-    with open(csv_path, "w", newline="") as f:
-        w = csv.DictWriter(f, fieldnames=["x", "credit_risk_class"])
-        w.writeheader()
-        w.writerow({"x": 1, "credit_risk_class": "good"})
+    parquet_path = tmp_path / "in.parquet"
+    pl.DataFrame({"x": [1], "credit_risk_class": ["good"]}).write_parquet(parquet_path)
 
     resp = client.post(
         f"/projects/{pid}/plans/{plan_id}/canonical-version",
-        json={"source_path": str(csv_path)},
+        json={"source_path": str(parquet_path)},
     )
     assert resp.status_code == 201, resp.text
     pv = resp.json()
@@ -133,12 +130,28 @@ def test_create_canonical_version_populates_steps(app_env, tmp_path):
     assert steps.json()[0]["canonical_step_id"] == "import"
 
 
+def test_create_canonical_version_rejects_csv_source(app_env, tmp_path):
+    """A CSV source_path must be rejected with PARAMETER_VALIDATION_ERROR."""
+    client, container = app_env
+    pid, _ = provision(container, tmp_path)
+    plan_resp = client.post(f"/projects/{pid}/plans", json={"name": "P"})
+    assert plan_resp.status_code == 201, plan_resp.text
+    plan_id = plan_resp.json()["plan_id"]
+
+    resp = client.post(
+        f"/projects/{pid}/plans/{plan_id}/canonical-version",
+        json={"source_path": str(tmp_path / "in.csv")},
+    )
+    assert resp.status_code == 400, resp.text
+    assert resp.json()["detail"]["code"] == "PARAMETER_VALIDATION_ERROR"
+
+
 def test_create_canonical_version_unknown_plan_404(app_env, tmp_path):
     client, container = app_env
     pid, _ = provision(container, tmp_path)
     resp = client.post(
         f"/projects/{pid}/plans/nonexistent/canonical-version",
-        json={"source_path": "x.csv"},
+        json={"source_path": "x.parquet"},
     )
     assert resp.status_code == 404
     assert resp.json()["detail"]["code"] == "PLAN_NOT_FOUND"
@@ -175,7 +188,7 @@ def test_node_types_project_scoped(app_env, tmp_path):
     assert resp.status_code == 200
     data = resp.json()
     assert "node_types" in data
-    assert any(nt["node_type"] == "cardre.noop" for nt in data["node_types"])
+    assert any(nt["node_type"] == "cardre.import_dataset" for nt in data["node_types"])
 
 
 # ---------------------------------------------------------------------------
@@ -283,9 +296,9 @@ def test_patch_draft_plan_version_succeeds(app_env, tmp_path):
         pv_id = uow.plans.create_version(
             plan_id,
             [StepSpec(
-                step_id="s1", node_type="cardre.noop", node_version="1",
+                step_id="s1", node_type="cardre.variable_selection", node_version="1",
                 category="transform", params={}, params_hash=json_logical_hash({}),
-                parent_step_ids=[], branch_label="", position=0, canonical_step_id="s1",
+                parent_step_ids=[], position=0, canonical_step_id="s1",
             )],
             is_committed=False,
         )
@@ -309,9 +322,9 @@ def test_patch_draft_step_params_succeeds(app_env, tmp_path):
         pv_id = uow.plans.create_version(
             plan_id,
             [StepSpec(
-                step_id="s1", node_type="cardre.noop", node_version="1",
+                step_id="s1", node_type="cardre.variable_selection", node_version="1",
                 category="transform", params={}, params_hash=json_logical_hash({}),
-                parent_step_ids=[], branch_label="", position=0, canonical_step_id="s1",
+                parent_step_ids=[], position=0, canonical_step_id="s1",
             )],
             is_committed=False,
         )
@@ -322,8 +335,8 @@ def test_patch_draft_step_params_succeeds(app_env, tmp_path):
     )
     assert resp.status_code == 200
     steps = client.get(f"/projects/{pid}/plan-versions/{pv_id}/steps").json()
-    assert steps[0]["params"] == {"min_iv": 0.05}
-    assert steps[0]["params_hash"] == json_logical_hash({"min_iv": 0.05})
+    assert steps[0]["params"]["min_iv"] == 0.05
+    assert steps[0]["params_hash"] == json_logical_hash(steps[0]["params"])
 
 
 def test_patch_committed_step_params_returns_409(app_env, tmp_path):
@@ -349,9 +362,9 @@ def test_patch_unknown_step_returns_404(app_env, tmp_path):
         pv_id = uow.plans.create_version(
             plan_id,
             [StepSpec(
-                step_id="s1", node_type="cardre.noop", node_version="1",
+                step_id="s1", node_type="cardre.variable_selection", node_version="1",
                 category="transform", params={}, params_hash=json_logical_hash({}),
-                parent_step_ids=[], branch_label="", position=0, canonical_step_id="s1",
+                parent_step_ids=[], position=0, canonical_step_id="s1",
             )],
             is_committed=False,
         )
@@ -367,32 +380,31 @@ def test_patch_unknown_step_returns_404(app_env, tmp_path):
 def test_patch_null_indeterminate_values_rejected(app_env, tmp_path):
     """The step editor accepts arbitrary JSON params; an explicit null for an
     optional target list must be rejected with a structured 422."""
-    import csv
     import json
+
+    import polars as pl
 
     from cardre.application.plans.create_canonical_scorecard_version import (
         CreateCanonicalScorecardVersion,
         CreateCanonicalScorecardVersionCommand,
     )
     from cardre.bootstrap.node_catalogue import build_default_catalogue
-    from cardre.bootstrap.settings import Settings
 
     client, container = app_env
     pid, _ = provision(container, tmp_path)
     plan_resp = client.post(f"/projects/{pid}/plans", json={"name": "P"})
     plan_id = plan_resp.json()["plan_id"]
-    csv_path = tmp_path / "in.csv"
-    with open(csv_path, "w", newline="") as f:
-        w = csv.DictWriter(f, fieldnames=["x", "outcome"])
-        w.writeheader()
-        w.writerow({"x": 1, "outcome": "good"})
-        w.writerow({"x": 2, "outcome": "bad"})
-    cat = build_default_catalogue(Settings())
+    parquet_path = tmp_path / "in.parquet"
+    pl.DataFrame({
+        "x": [1, 2],
+        "outcome": ["good", "bad"],
+    }).write_parquet(parquet_path)
+    cat = build_default_catalogue()
     create = CreateCanonicalScorecardVersion(
         lambda: container.uow_factory.for_project(pid), cat,
     )
     pv = create(CreateCanonicalScorecardVersionCommand(
-        plan_id=plan_id, source_path=str(csv_path), target_column="outcome",
+        plan_id=plan_id, source_path=str(parquet_path), target_column="outcome",
         good_values=["good"], bad_values=["bad"],
     ))
     pv_id = pv.plan_version_id
@@ -417,11 +429,6 @@ def test_branch_scope_without_branch_id_rejected(app_env, tmp_path):
         json={"plan_version_id": pv_id, "run_scope": "branch"},
     )
     assert resp.status_code == 400
-
-
-# ---------------------------------------------------------------------------
-# Reports / exports
-# ---------------------------------------------------------------------------
 
 
 def test_reports_empty(app_env, tmp_path):
@@ -466,24 +473,3 @@ def test_step_evidence_missing_plan_version_422(app_env, tmp_path):
     resp = client.get(f"/projects/{pid}/steps/s1/evidence")
     # plan_version_id is a required query param -> FastAPI validation error.
     assert resp.status_code == 422
-
-
-# ---------------------------------------------------------------------------
-# Governance routes
-# ---------------------------------------------------------------------------
-
-
-def test_governance_disabled_403(app_env, tmp_path):
-    client, container = app_env
-    pid, _ = provision(container, tmp_path)
-    resp = client.get(f"/projects/{pid}/governance/branches")
-    assert resp.status_code == 403
-    assert resp.json()["detail"]["code"] == "GOVERNANCE_DISABLED"
-
-
-def test_governance_list_branches_empty(gov_env, tmp_path):
-    client, container = gov_env
-    pid, _ = provision(container, tmp_path)
-    resp = client.get(f"/projects/{pid}/governance/branches")
-    assert resp.status_code == 200
-    assert "branches" in resp.json()

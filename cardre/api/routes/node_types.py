@@ -18,7 +18,6 @@ def list_node_types(project_id: str, container=Depends(get_container)):
         node_type_to_response(
             nt,
             category=getattr(catalogue.resolve(nt), "category", ""),
-            tier=getattr(catalogue.availability(nt), "tier", "launch"),
             has_params=True,
         )
         for nt in catalogue.list_types()

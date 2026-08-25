@@ -12,67 +12,44 @@ from pathlib import Path
 import pytest
 
 from cardre.bootstrap.node_catalogue import build_default_catalogue
-from cardre.bootstrap.settings import Settings
 from cardre.domain.plans.scorecard_pathway import build_canonical_scorecard_steps
 
 _EXPECTED_NODE_TYPES: frozenset[str] = frozenset({
-    "cardre.alternative_data_manifest",
     "cardre.apply_exclusions",
     "cardre.apply_model",
     "cardre.apply_woe_mapping",
     "cardre.automatic_binning",
     "cardre.build_summary_report",
     "cardre.calculate_woe_iv",
-    "cardre.calibrate_probabilities",
     "cardre.calibration_diagnostics",
-    "cardre.catboost_classifier",
     "cardre.coefficient_sign_check",
     "cardre.cutoff_analysis",
-    "cardre.decision_tree_classifier",
     "cardre.define_modelling_metadata",
-    "cardre.define_reject_population",
     "cardre.development_sample_definition",
     "cardre.explicit_missing_outlier_treatment",
-    "cardre.fairness_report",
-    "cardre.feature_selection_embedded",
-    "cardre.feature_selection_filter",
     "cardre.freeze_scorecard_bundle",
-    "cardre.gradient_boosting_classifier",
-    "cardre.hyperparameter_tuning",
     "cardre.import_dataset",
-    "cardre.lightgbm_classifier",
     "cardre.logistic_regression",
     "cardre.manual_binning",
-    "cardre.model_explainability",
-    "cardre.model_limitations",
-    "cardre.noop",
     "cardre.profile_dataset",
-    "cardre.proxy_risk_report",
-    "cardre.random_forest_classifier",
-    "cardre.reject_inference_augmentation",
-    "cardre.reject_inference_none",
-    "cardre.resample_training_data",
     "cardre.score_scaling",
     "cardre.scorecard_table_export",
     "cardre.scoring_export_python",
     "cardre.scoring_export_sql",
     "cardre.separation_diagnostics",
-    "cardre.smote_training_data",
     "cardre.split_train_test_oot",
     "cardre.technical_manifest_export",
-    "cardre.threshold_optimization",
     "cardre.validate_binary_target",
     "cardre.validation_metrics",
     "cardre.variable_clustering",
     "cardre.variable_selection",
     "cardre.vif_diagnostics",
     "cardre.woe_transform_train",
-    "cardre.xgboost_classifier",
 })
 
 
 def test_catalogue_keys_are_current_supported_set():
-    cat = build_default_catalogue(Settings(launch_mode=True))
+    cat = build_default_catalogue()
     keys = set(cat.list_types())
     assert keys == _EXPECTED_NODE_TYPES, (
         "Catalogue key set drifted from the current supported node set. "
@@ -82,8 +59,8 @@ def test_catalogue_keys_are_current_supported_set():
 
 
 def test_canonical_plan_steps_match_current_node_versions():
-    cat = build_default_catalogue(Settings(launch_mode=True))
-    steps = build_canonical_scorecard_steps("dummy.csv", cat.resolve)
+    cat = build_default_catalogue()
+    steps = build_canonical_scorecard_steps("dummy.parquet", cat.resolve)
     for step in steps:
         node = cat.resolve(step.node_type)
         current = node.node_definition().version
@@ -94,7 +71,7 @@ def test_canonical_plan_steps_match_current_node_versions():
 
 
 def test_every_node_has_complete_definition():
-    cat = build_default_catalogue(Settings(launch_mode=True))
+    cat = build_default_catalogue()
     for node_type in cat.list_types():
         cls = cat.resolve(node_type)
         assert "__definition__" in cls.__dict__, node_type
@@ -107,7 +84,7 @@ def test_every_node_has_complete_definition():
 
 
 def test_manual_binning_distinct_node():
-    cat = build_default_catalogue(Settings(launch_mode=True))
+    cat = build_default_catalogue()
     manual = cat.resolve("cardre.manual_binning")
     assert manual.category == "refinement"
     assert manual.node_type == "cardre.manual_binning"
@@ -131,13 +108,13 @@ def test_every_evidence_profile_has_single_canonical_identity():
 
 
 def test_canonical_automatic_binning_has_explicit_method():
-    cat = build_default_catalogue(Settings(launch_mode=True))
-    steps = build_canonical_scorecard_steps("dummy.csv", cat.resolve)
+    cat = build_default_catalogue()
+    steps = build_canonical_scorecard_steps("dummy.parquet", cat.resolve)
     auto_step = next(s for s in steps if s.step_id == "automatic-binning")
-    assert "method" in auto_step.params, (
-        "automatic-binning step must have an explicit method param"
+    assert "method" not in auto_step.params, (
+        "automatic-binning step must not declare a method param after the "
+        "methodology purge (fine classing is the only automatic binning method)"
     )
-    assert auto_step.params["method"] == "fine_classing"
     assert auto_step.params_hash, "params_hash must be non-empty"
     from cardre.domain.artifacts import json_logical_hash
     expected_hash = json_logical_hash(auto_step.params)
@@ -246,17 +223,27 @@ def test_model_artifact_rejects_list_coefficients():
         ModelArtifactV1.from_dict(
             {
                 "schema_version": "cardre.model_artifact.v1",
-                "model_family": "logistic_regression",
                 "target_column": "bad_flag",
                 "target_event_value": "bad",
                 "class_mapping": {"0": "good", "1": "bad"},
-                "feature_contract": {"features": ["age_woe"]},
+                "probability_column_index": 1,
+                "feature_contract": {
+                    "features": ["age_woe"],
+                    "transformation_strategy": "woe",
+                    "order_hash": "h",
+                    "missing_policy": "error",
+                    "unknown_category_policy": "error",
+                },
                 "model_payload": {
                     "intercept": -0.4,
                     "coefficients": [
                         {"variable_name": "age_woe", "coefficient": 0.8},
                     ],
                 },
+                "training": {"row_count": 100},
+                "source_variables": ["age"],
+                "bad_class_label": "bad",
+                "warnings": [],
             }
         )
 
@@ -275,35 +262,40 @@ def test_cutoff_analysis_rejects_legacy_score_key():
         CutoffAnalysis.from_json({"cutoff_tables": {"train": [{"score": 100}]}})
 
 
-def test_model_artifact_requires_schema_version():
-    from cardre.modeling.schema import ModelArtifactV1
-    payload = {
-        "model_family": "logistic_regression",
+def _strict_model_payload() -> dict:
+    return {
+        "schema_version": "cardre.model_artifact.v1",
         "target_column": "y",
         "target_event_value": "bad",
         "class_mapping": {"good": "good", "bad": "bad"},
         "probability_column_index": 1,
-        "feature_contract": {"features": ["x"]},
+        "feature_contract": {
+            "features": ["x"],
+            "transformation_strategy": "woe",
+            "order_hash": "h",
+            "missing_policy": "error",
+            "unknown_category_policy": "error",
+        },
         "model_payload": {"intercept": 0.0, "coefficients": {"x": 1.0}},
         "training": {"row_count": 100},
+        "source_variables": ["x_src"],
+        "bad_class_label": "bad",
+        "warnings": [],
     }
+
+
+def test_model_artifact_requires_schema_version():
+    from cardre.modeling.schema import ModelArtifactV1
+    payload = _strict_model_payload()
+    del payload["schema_version"]
     with pytest.raises(ValueError, match="requires schema_version"):
         ModelArtifactV1.from_dict(payload)
 
 
 def test_model_artifact_rejects_wrong_schema_version():
     from cardre.modeling.schema import ModelArtifactV1
-    payload = {
-        "schema_version": "cardre.model_artifact.v2",
-        "model_family": "logistic_regression",
-        "target_column": "y",
-        "target_event_value": "bad",
-        "class_mapping": {"good": "good", "bad": "bad"},
-        "probability_column_index": 1,
-        "feature_contract": {"features": ["x"]},
-        "model_payload": {"intercept": 0.0, "coefficients": {"x": 1.0}},
-        "training": {"row_count": 100},
-    }
+    payload = _strict_model_payload()
+    payload["schema_version"] = "cardre.model_artifact.v2"
     with pytest.raises(ValueError, match="requires schema_version"):
         ModelArtifactV1.from_dict(payload)
 

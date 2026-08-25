@@ -218,14 +218,22 @@ _JSON_KIND_FIXTURES = [
     (EvidenceKind.MODEL_ARTIFACT, "model_artifact", "model",
      "cardre.model_artifact.v1", {
          "schema_version": "cardre.model_artifact.v1",
-         "model_family": "logistic_regression",
          "target_column": "y",
          "target_event_value": "bad",
          "class_mapping": {"good": "good", "bad": "bad"},
          "probability_column_index": 1,
-         "feature_contract": {"features": ["age"]},
-         "model_payload": {"intercept": 0.0, "coefficients": {"age": 1.5}},
-         "training": {"row_count": 100},
+         "feature_contract": {
+             "features": ["age_woe"],
+             "transformation_strategy": "woe",
+             "order_hash": "h",
+             "missing_policy": "error",
+             "unknown_category_policy": "error",
+         },
+         "model_payload": {"intercept": 0.0, "coefficients": {"age_woe": 1.5}},
+         "training": {"row_count": 100, "converged": True, "iterations": 5, "params": {"C": 1.0}},
+         "source_variables": ["age"],
+         "bad_class_label": "bad",
+         "warnings": [],
      }),
     (EvidenceKind.SCORE_SCALING, "score_scaling", "scorecard",
      "cardre.score_scaling.v1", {"factor": 20, "offset": 500}),
@@ -235,9 +243,6 @@ _JSON_KIND_FIXTURES = [
      "cardre.validation_metrics.v1", {"roles": {"train": {"auc": 0.75}}, "metrics": {"train": {"auc": 0.75}}, "stability": {}}),
     (EvidenceKind.CUTOFF_ANALYSIS, "cutoff_analysis", "report",
      "cardre.cutoff_analysis.v1", {"cutoff_tables": {"train": [{"score_cutoff": 100}]}}),
-    (EvidenceKind.COMPARISON_ARTIFACT, "comparison_artifact", "comparison",
-     "cardre.comparison_artifact.v1",
-     {"comparison_type": "woe_iv", "baseline_branch_id": "b1", "challenger_branch_id": "b2"}),
 ]
 
 
@@ -251,33 +256,6 @@ def test_modelling_metadata_matches_kind_specific_artifact_type(artifacts: _Proj
     matched = _assert_match_parity(artifacts, EvidenceKind.MODELLING_METADATA, [art])
 
     assert matched == [art]
-
-
-def test_feature_selection_evidence_round_trips_through_reader(artifacts: _ProjectArtifacts) -> None:
-    """The embedded feature-selection report (with selected/rejected) must be
-    retrievable through the EvidenceReader as FEATURE_SELECTION_EVIDENCE."""
-    from cardre.domain.evidence.schemas import SCHEMA_FEATURE_SELECTION_EVIDENCE
-
-    payload = {
-        "method": "embedded",
-        "estimator": "decision_tree",
-        "feature_importance": {"age": 0.6, "income": 0.4},
-        "selected": [
-            {"variable": "age", "reason": "Importance 0.6 >= threshold 0.0", "method": "embedded", "score": 0.6},
-        ],
-        "rejected": [
-            {"variable": "income", "reason": "Importance 0.4 < threshold 0.5", "method": "embedded", "score": 0.4},
-        ],
-        "selected_count": 1,
-        "rejected_count": 1,
-        "importance_threshold": 0.0,
-    }
-    art = artifacts.write_json(
-        "feature_selection_evidence", "report", SCHEMA_FEATURE_SELECTION_EVIDENCE, payload,
-    )
-    matched = _assert_match_parity(artifacts, EvidenceKind.FEATURE_SELECTION_EVIDENCE, [art])
-    assert matched == [art]
-    _assert_parse_parity(artifacts, EvidenceKind.FEATURE_SELECTION_EVIDENCE, art)
 
 
 @pytest.mark.parametrize("kind,artifact_type,role,schema_version,payload", _JSON_KIND_FIXTURES)

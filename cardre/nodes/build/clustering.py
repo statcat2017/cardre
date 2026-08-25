@@ -5,7 +5,7 @@ from typing import Any, cast
 import numpy as np
 import polars as pl
 
-from cardre.domain.binning.woe import MissingWoePolicy, apply_woe_columns
+from cardre.domain.binning.woe import apply_woe_columns
 from cardre.domain.evidence.kinds import EvidenceKind, EvidenceNotFoundError
 from cardre.domain.evidence.schemas import SCHEMA_VARIABLE_CLUSTERING_EVIDENCE
 from cardre.nodes._evidence_utils import load_iv_map
@@ -111,80 +111,11 @@ class VariableClusteringNode(NodeType):
                         ),
                     ],
                 ),
-                MethodOption(
-                    id="hierarchical",
-                    label="Hierarchical Correlation",
-                    status="available",
-                    params=[
-                        ParameterDefinition(
-                            name="similarity_metric", label="Similarity Metric",
-                            kind="enum", default="pearson",
-                            constraint=ParameterConstraint(enum_values=["pearson", "spearman"]),
-                            help_text="Correlation metric for pairwise similarity",
-                        ),
-                        ParameterDefinition(
-                            name="linkage", label="Linkage",
-                            kind="enum", default="average",
-                            constraint=ParameterConstraint(enum_values=["average", "complete"]),
-                            help_text="Linkage criterion for hierarchical clustering",
-                        ),
-                        ParameterDefinition(
-                            name="cut_threshold", label="Cut Threshold",
-                            kind="float", default=0.3,
-                            constraint=ParameterConstraint(exclusive_min=0.0),
-                            help_text="Distance threshold for cutting the dendrogram",
-                        ),
-                        ParameterDefinition(
-                            name="input_representation", label="Input Representation",
-                            kind="enum", default="raw_train",
-                            constraint=ParameterConstraint(enum_values=["raw_train", "woe_train"]),
-                            help_text="Variable representation for clustering",
-                        ),
-                        ParameterDefinition(
-                            name="missing_handling", label="Missing Handling",
-                            kind="enum", default="pairwise",
-                            constraint=ParameterConstraint(enum_values=["pairwise", "complete_case"]),
-                            help_text="How to handle missing values in correlation computation",
-                        ),
-                        ParameterDefinition(
-                            name="candidate_limit", label="Candidate Limit",
-                            kind="integer", default=50,
-                            constraint=ParameterConstraint(min_value=1),
-                            help_text="Maximum number of candidate variables to consider",
-                        ),
-                        ParameterDefinition(
-                            name="representative_rule", label="Representative Rule",
-                            kind="enum", default="highest_iv",
-                            constraint=ParameterConstraint(enum_values=["highest_iv", "lowest_missing", "manual"]),
-                            help_text="Rule for selecting cluster representative",
-                        ),
-                        ParameterDefinition(
-                            name="minimum_pair_count", label="Minimum Pair Count",
-                            kind="integer", default=30,
-                            constraint=ParameterConstraint(min_value=1),
-                            help_text="Minimum number of joint non-null rows required for a reliable pairwise correlation estimate",
-                        ),
-                    ],
-                ),
-                MethodOption(id="varclus_pca", label="VARCLUS / PCA (coming soon)", status="coming_soon", params=[]),
-                MethodOption(id="mixed_type", label="Mixed-Type (coming soon)", status="coming_soon", params=[]),
-                MethodOption(id="target_aware", label="Target-Aware (coming soon)", status="coming_soon", params=[]),
             ],
         )
 
     def validate_params(self, params: dict[str, Any]) -> list[str]:
         errors: list[str] = []
-        method = params.get("method", "correlation_threshold")
-
-        valid_methods = {"correlation_threshold", "hierarchical", "varclus_pca", "mixed_type", "target_aware"}
-        if method not in valid_methods:
-            errors.append(f"Unknown method: {method!r}")
-            return errors
-
-        if method in ("varclus_pca", "mixed_type", "target_aware"):
-            errors.append(f"Method {method!r} is not yet available")
-            return errors
-
         candidate_limit = params.get("candidate_limit", 50)
         try:
             if int(candidate_limit) < 1:
@@ -195,31 +126,13 @@ class VariableClusteringNode(NodeType):
         similarity_metric = params.get("similarity_metric", "pearson")
         if similarity_metric not in ("pearson", "spearman"):
             errors.append(f"Unknown similarity_metric: {similarity_metric!r}")
-        if similarity_metric == "spearman":
-            try:
-                import scipy.stats  # noqa: F401
-            except ImportError:
-                errors.append("spearman requires scipy, which is a core dependency of cardre")
 
-        if method == "correlation_threshold":
-            threshold = params.get("threshold", params.get("correlation_threshold", 0.7))
-            try:
-                if not (0 < float(threshold) < 1):
-                    errors.append("threshold must be between 0 and 1 (exclusive)")
-            except (ValueError, TypeError):
-                errors.append("threshold must be a number")
-
-        elif method == "hierarchical":
-            cut_threshold = params.get("cut_threshold", 0.3)
-            try:
-                if float(cut_threshold) <= 0:
-                    errors.append("cut_threshold must be > 0")
-            except (ValueError, TypeError):
-                errors.append("cut_threshold must be a number")
-
-            linkage = params.get("linkage", "average")
-            if linkage not in ("average", "complete"):
-                errors.append(f"Unknown linkage: {linkage!r}")
+        threshold = params.get("threshold", 0.7)
+        try:
+            if not (0 < float(threshold) < 1):
+                errors.append("threshold must be between 0 and 1 (exclusive)")
+        except (ValueError, TypeError):
+            errors.append("threshold must be a number")
 
         input_representation = params.get("input_representation", "raw_train")
         if input_representation not in ("raw_train", "woe_train"):
@@ -249,7 +162,6 @@ class VariableClusteringNode(NodeType):
             df,
             bin_def.variables,
             lambda variable, bin_id: woe_table.mapping.get(variable, {}).get(bin_id),
-            policy=MissingWoePolicy.SKIP_BIN,
         )
         return woe_df, woe_cols
 
@@ -261,7 +173,7 @@ class VariableClusteringNode(NodeType):
 
     def _compute_correlation_matrix(
         self, df: pl.DataFrame, columns: list[str],
-        method: str, missing_handling: str,
+        similarity_metric: str, missing_handling: str,
         absolute: bool, minimum_pair_count: int = 30,
     ) -> tuple[pl.DataFrame, list[dict[str, Any]]]:
         import numpy as np
@@ -295,7 +207,7 @@ class VariableClusteringNode(NodeType):
                     "variable_b": "",
                     "message": f"Complete-case rows ({mat.shape[0]}) below minimum pair count ({minimum_pair_count})",
                 })
-            if method == "spearman":
+            if similarity_metric == "spearman":
                 ranks = np.apply_along_axis(self._tie_aware_rank, 0, mat)
                 corr_mat = np.corrcoef(ranks.T)
             else:
@@ -338,7 +250,7 @@ class VariableClusteringNode(NodeType):
                         })
                     xi = col_i[valid]
                     xj = col_j[valid]
-                    if method == "spearman":
+                    if similarity_metric == "spearman":
                         xi = self._tie_aware_rank(xi)
                         xj = self._tie_aware_rank(xj)
                     corr_val = np.corrcoef(xi, xj)[0, 1]
@@ -426,80 +338,6 @@ class VariableClusteringNode(NodeType):
 
         return clusters_out, singletons, warnings_list
 
-    def _hierarchical_clusters(
-        self, columns: list[str],
-        corr_matrix: pl.DataFrame, linkage: str, cut_threshold: float,
-        iv_map: dict[str, float], missing_map: dict[str, float],
-        representative_rule: str,
-    ) -> tuple[list[dict[str, Any]], list[str], list[dict[str, Any]]]:
-        import numpy as np
-
-        arr = 1.0 - corr_matrix.drop("_col").to_numpy()
-        n = len(columns)
-        np.fill_diagonal(arr, 0.0)
-
-        clusters: list[list[int]] = [[i] for i in range(n)]
-
-        def cluster_distance(c1: list[int], c2: list[int]) -> float:
-            if linkage == "complete":
-                return float(max(arr[i, j] for i in c1 for j in c2))
-            return float(sum(arr[i, j] for i in c1 for j in c2) / (len(c1) * len(c2)))
-
-        while len(clusters) > 1:
-            best_i, best_j, best_d = -1, -1, float("inf")
-            for i in range(len(clusters)):
-                for j in range(i + 1, len(clusters)):
-                    d = cluster_distance(clusters[i], clusters[j])
-                    if d < best_d:
-                        best_d, best_i, best_j = d, i, j
-
-            if best_d > cut_threshold:
-                break
-
-            merged = clusters[best_i] + clusters[best_j]
-            clusters = [c for k, c in enumerate(clusters) if k not in (best_i, best_j)]
-            clusters.append(merged)
-
-        clusters_out: list[dict[str, Any]] = []
-        singletons: list[str] = []
-        warnings_list: list[dict[str, Any]] = []
-
-        arr_sim = 1.0 - arr
-        for cid, members in enumerate(clusters, 1):
-            var_names = [columns[m] for m in members]
-            if len(var_names) == 1:
-                singletons.append(var_names[0])
-                continue
-
-            max_corr = 0.0
-            for i in members:
-                for j in members:
-                    if i < j and arr_sim[i, j] > max_corr:
-                        max_corr = arr_sim[i, j]
-
-            rep = self._pick_representative(
-                var_names, iv_map, missing_map, representative_rule,
-            )
-
-            enriched_members = []
-            for vn in var_names:
-                enriched_members.append({
-                    "variable": vn,
-                    "iv": iv_map.get(vn),
-                    "missing_rate": missing_map.get(vn),
-                })
-
-            clusters_out.append({
-                "cluster_id": f"cluster_{cid:03d}",
-                "variables": enriched_members,
-                "representative_suggestion": rep["variable"],
-                "representative_reason": rep["reason"],
-                "max_pairwise_abs_corr": round(max_corr, 4),
-                "notes": [],
-            })
-
-        return clusters_out, singletons, warnings_list
-
     def _pick_representative(
         self, variables: list[str],
         iv_map: dict[str, float], missing_map: dict[str, float],
@@ -518,7 +356,6 @@ class VariableClusteringNode(NodeType):
     def run(self, context: NodeContext) -> NodeResult:
         params = context.params
 
-        method = str(params.get("method", "correlation_threshold"))
         similarity_metric = str(params.get("similarity_metric", "pearson"))
         absolute_correlation = bool(params.get("absolute_correlation", True))
         candidate_limit = int(params.get("candidate_limit", 50))
@@ -526,13 +363,7 @@ class VariableClusteringNode(NodeType):
         representative_rule = str(params.get("representative_rule", "highest_iv"))
         minimum_pair_count = int(params.get("minimum_pair_count", 30))
 
-        if method == "correlation_threshold":
-            threshold = float(cast(Any, params.get("threshold", params.get("correlation_threshold", 0.7))))
-        elif method == "hierarchical":
-            threshold = float(cast(Any, params.get("cut_threshold", 0.3)))
-            linkage = str(params.get("linkage", "average"))
-        else:
-            raise ValueError(f"Unknown or unavailable clustering method: {method!r}")
+        threshold = float(cast(Any, params.get("threshold", 0.7)))
 
         input_representation = params.get("input_representation", "raw_train")
 
@@ -549,14 +380,13 @@ class VariableClusteringNode(NodeType):
 
         clusters_out, singleton_variables, warnings_list = self._cluster_candidates(
             df, candidates, bin_def, woe_table, iv_map, missing_map,
-            input_representation, method, similarity_metric, missing_handling,
-            absolute_correlation, minimum_pair_count, linkage if method == "hierarchical" else None,
-            threshold, representative_rule, candidate_limit,
+            input_representation, similarity_metric, missing_handling,
+            absolute_correlation, minimum_pair_count, threshold, representative_rule, candidate_limit,
         )
 
         clustering_report = {
             "schema_version": SCHEMA_VARIABLE_CLUSTERING_EVIDENCE,
-            "method": method,
+            "method": "correlation_threshold",
             "input_representation": input_representation,
             "similarity_metric": similarity_metric,
             "absolute_correlation": absolute_correlation,
@@ -639,9 +469,9 @@ class VariableClusteringNode(NodeType):
     def _cluster_candidates(
         self, df: pl.DataFrame, candidates: list[str], bin_def: Any, woe_table: Any,
         iv_map: dict[str, float], missing_map: dict[str, float],
-        input_representation: str, method: str, similarity_metric: str,
+        input_representation: str, similarity_metric: str,
         missing_handling: str, absolute_correlation: bool, minimum_pair_count: int,
-        linkage: str | None, threshold: float, representative_rule: str, candidate_limit: int,
+        threshold: float, representative_rule: str, candidate_limit: int,
     ) -> tuple[list[dict[str, Any]], list[str], list[dict[str, Any]]]:
         clusters_out: list[dict[str, Any]] = []
         singleton_variables: list[str] = []
@@ -696,16 +526,10 @@ class VariableClusteringNode(NodeType):
                     iv_map_woe: dict[str, float] = {wc: iv_map.get(oc, 0.0) for wc, oc in woe_candidate_map.items()}
                     missing_map_woe: dict[str, float] = {wc: missing_map.get(oc, 0.0) for wc, oc in woe_candidate_map.items()}
 
-                    if method == "hierarchical":
-                        clusters_out, singleton_variables, cluster_warnings = self._hierarchical_clusters(
-                            woe_cols, corr_matrix, cast(str, linkage), threshold,
-                            iv_map_woe, missing_map_woe, representative_rule,
-                        )
-                    else:
-                        clusters_out, singleton_variables, cluster_warnings = self._correlation_threshold_clusters(
-                            woe_cols, corr_matrix, threshold,
-                            iv_map_woe, missing_map_woe, representative_rule,
-                        )
+                    clusters_out, singleton_variables, cluster_warnings = self._correlation_threshold_clusters(
+                        woe_cols, corr_matrix, threshold,
+                        iv_map_woe, missing_map_woe, representative_rule,
+                    )
                     warnings_list.extend(cluster_warnings)
 
                     for cl in clusters_out:
@@ -738,16 +562,10 @@ class VariableClusteringNode(NodeType):
             )
             warnings_list.extend(corr_warnings)
 
-            if method == "hierarchical":
-                clusters_out, singleton_variables, cluster_warnings = self._hierarchical_clusters(
-                    candidates, corr_matrix, cast(str, linkage), threshold,
-                    iv_map, missing_map, representative_rule,
-                )
-            else:
-                clusters_out, singleton_variables, cluster_warnings = self._correlation_threshold_clusters(
-                    candidates, corr_matrix, threshold,
-                    iv_map, missing_map, representative_rule,
-                )
+            clusters_out, singleton_variables, cluster_warnings = self._correlation_threshold_clusters(
+                candidates, corr_matrix, threshold,
+                iv_map, missing_map, representative_rule,
+            )
             warnings_list.extend(cluster_warnings)
 
         return clusters_out, singleton_variables, warnings_list

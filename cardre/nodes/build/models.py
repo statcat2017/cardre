@@ -60,9 +60,6 @@ class LogisticRegressionNode(NodeType):
         ),
     )
 
-    VALID_PENALTIES = {"l1", "l2", "elasticnet", None}
-    VALID_SOLVERS = {"lbfgs", "liblinear", "newton-cg", "newton-cholesky", "sag", "saga"}
-
     @classmethod
     def parameter_schema(cls) -> NodeParameterSchema:
         return NodeParameterSchema(
@@ -75,24 +72,8 @@ class LogisticRegressionNode(NodeType):
                     id="standard_logit",
                     label="Standard Logit",
                     status="available",
-                    description="Standard logistic regression with L2 penalty (default).",
+                    description="Standard logistic regression.",
                     params=[
-                        ParameterDefinition(
-                            name="solver",
-                            label="Solver",
-                            kind="enum",
-                            default="lbfgs",
-                            help_text="Algorithm to use in the optimization problem.",
-                            constraint=ParameterConstraint(enum_values=sorted(cls.VALID_SOLVERS)),
-                        ),
-                        ParameterDefinition(
-                            name="C",
-                            label="Inverse Regularization Strength",
-                            kind="float",
-                            default=1.0,
-                            help_text="Inverse of regularization strength; must be positive.",
-                            constraint=ParameterConstraint(min_value=0.0, exclusive_min=0.0),
-                        ),
                         ParameterDefinition(
                             name="max_iter",
                             label="Max Iterations",
@@ -117,86 +98,12 @@ class LogisticRegressionNode(NodeType):
                             help_text="Raise when logistic regression does not converge. Set to false to warn only.",
                         ),
                     ],
-                ),
-                MethodOption(
-                    id="penalised_logit",
-                    label="Penalised Logit",
-                    status="available",
-                    description="Logistic regression with configurable penalty.",
-                    params=[
-                        ParameterDefinition(
-                            name="penalty",
-                            label="Penalty",
-                            kind="enum",
-                            default="l2",
-                            help_text="Norm used in the penalization.",
-                            constraint=ParameterConstraint(enum_values=["l1", "l2", "elasticnet"]),
-                        ),
-                        ParameterDefinition(
-                            name="solver",
-                            label="Solver",
-                            kind="enum",
-                            default="lbfgs",
-                            help_text="Algorithm to use in the optimization problem.",
-                            constraint=ParameterConstraint(enum_values=sorted(cls.VALID_SOLVERS)),
-                        ),
-                        ParameterDefinition(
-                            name="C",
-                            label="Inverse Regularization Strength",
-                            kind="float",
-                            default=1.0,
-                            help_text="Inverse of regularization strength; must be positive.",
-                            constraint=ParameterConstraint(min_value=0.0, exclusive_min=0.0),
-                        ),
-                        ParameterDefinition(
-                            name="max_iter",
-                            label="Max Iterations",
-                            kind="integer",
-                            default=1000,
-                            help_text="Maximum number of iterations for convergence.",
-                            constraint=ParameterConstraint(min_value=1),
-                        ),
-                        ParameterDefinition(
-                            name="random_seed",
-                            label="Random Seed",
-                            kind="integer",
-                            default=42,
-                            help_text="Random state for reproducibility.",
-                            constraint=ParameterConstraint(min_value=0),
-                        ),
-                        ParameterDefinition(
-                            name="fail_on_non_convergence",
-                            label="Fail on Non-convergence",
-                            kind="boolean",
-                            default=True,
-                            help_text="Raise when logistic regression does not converge. Set to false to warn only.",
-                        ),
-                    ],
-                ),
-                MethodOption(
-                    id="lasso_logit",
-                    label="Lasso Logit",
-                    status="coming_soon",
-                    description="L1-regularized logistic regression (LASSO).",
-                    params=[],
                 ),
             ],
         )
 
     def validate_params(self, params: dict[str, Any]) -> list[str]:
         errors: list[str] = []
-        penalty = params.get("penalty")
-        if penalty is not None and penalty not in self.VALID_PENALTIES:
-            errors.append(f"penalty must be one of {self.VALID_PENALTIES}, got '{penalty}'")
-        solver = params.get("solver", "lbfgs")
-        if solver not in self.VALID_SOLVERS:
-            errors.append(f"solver must be one of {self.VALID_SOLVERS}, got '{solver}'")
-        C = params.get("C", 1.0)
-        try:
-            if float(C) <= 0:
-                errors.append("C must be positive")
-        except (ValueError, TypeError):
-            errors.append("C must be a number")
         max_iter = params.get("max_iter", 1000)
         try:
             if int(max_iter) < 1:
@@ -215,9 +122,9 @@ class LogisticRegressionNode(NodeType):
 
         meta = context.inputs.target_metadata()
         from cardre.modeling.target import TargetSpec
-        target_spec = TargetSpec.from_metadata(meta)
-        if target_spec is None:
+        if meta is None:
             raise ValueError("Target metadata is required for logistic regression")
+        target_spec = TargetSpec.from_metadata(meta)
 
         sel_def_list = context.inputs.by_kind(EvidenceKind.SELECTION_DEFINITION)  # type: ignore[arg-type]
         sel_def = sel_def_list[0] if sel_def_list else None
@@ -297,7 +204,6 @@ class LogisticRegressionNode(NodeType):
 
         model = {
             "schema_version": SCHEMA_MODEL_ARTIFACT,
-            "model_family": "logistic_regression",
             "target_column": target_column,
             "source_variables": source_variables,
             "class_mapping": class_mapping,
@@ -311,7 +217,6 @@ class LogisticRegressionNode(NodeType):
                 "missing_policy": "error",
                 "unknown_category_policy": "error",
             },
-            "feature_order_hash": feature_order_hash,
             "model_payload": {
                 "intercept": round(float(lr.intercept_[0]), COEF_ROUND),
                 "coefficients": coefficients,
@@ -436,18 +341,6 @@ class ScoreScalingNode(NodeType):
                 candidate_artifact_ids=[],
             )
         model = context.inputs.read(model_arts[0], EvidenceKind.MODEL_ARTIFACT)
-
-        calibration = model.calibration
-        if calibration:
-            application_mode = calibration.get("application_mode", "")
-            score_scaling_compatible = bool(calibration.get("score_scaling_compatible", False))
-            if application_mode != "folded_linear_log_odds" or not score_scaling_compatible:
-                raise ValueError(
-                    "Score scaling requires calibration.application_mode="
-                    "'folded_linear_log_odds'. Runtime probability calibration "
-                    "(including isotonic and CV Platt ensembles) is not compatible "
-                    "with additive scorecard points."
-                )
 
         bin_def_list = context.inputs.by_kind(EvidenceKind.BIN_DEFINITION)
         if not bin_def_list:
@@ -632,77 +525,5 @@ class BuildSummaryReportNode(NodeType):
             metadata={},
         )
         context.outputs.add_metric("feature_count", len(model_features))
-        return context.outputs.build_result()
-
-
-class DummyFitNode(NodeType):
-    node_type = "cardre.dummy_fit"
-    version = "1"
-    category = "fit"
-    description = "Create a dummy fit definition from training data"
-
-    __definition__ = NodeDefinition(
-        node_type="cardre.dummy_fit",
-        version="1",
-        category="fit",
-        description="Create a dummy fit definition from training data",
-        input_contract=ArtifactContract(
-            roles=(ArtifactRoleSpec("train", required=True),),
-        ),
-        output_contract=ArtifactContract(
-            roles=(ArtifactRoleSpec("definition", required=True),),
-        ),
-    )
-
-    def run(self, context: NodeContext) -> NodeResult:
-        input_art = context.inputs.require("train", "DummyFitNode")
-        params = context.params
-        df = context.inputs.read_dataframe(input_art)
-        dummy_def = {
-            "model_type": "dummy",
-            "version": self.version,
-            "params": params,
-            "input_columns": list(df.columns),
-            "row_count": df.height,
-        }
-
-        context.outputs.publish_json(
-            role="definition",
-            kind=EvidenceKind.MODELLING_METADATA,
-            payload=dummy_def,
-            metadata={"source_artifact_id": input_art.artifact_id},
-        )
-        context.outputs.add_metric("row_count", df.height)
-        return context.outputs.build_result()
-
-
-class NoopNode(NodeType):
-    node_type = "cardre.noop"
-    version = "1"
-    category = "transform"
-    description = "Pass-through node that produces no outputs"
-
-    __definition__ = NodeDefinition(
-        node_type="cardre.noop",
-        version="1",
-        category="transform",
-        description="Pass-through node that produces no outputs",
-        input_contract=ArtifactContract(
-            roles=(
-                ArtifactRoleSpec("input", required=False),
-                ArtifactRoleSpec("train", required=False),
-                ArtifactRoleSpec("test", required=False),
-                ArtifactRoleSpec("oot", required=False),
-                ArtifactRoleSpec("definition", required=False),
-                ArtifactRoleSpec("report", required=False),
-                ArtifactRoleSpec("model", required=False),
-                ArtifactRoleSpec("scorecard", required=False),
-                ArtifactRoleSpec("manifest", required=False),
-            ),
-        ),
-        output_contract=ArtifactContract(roles=()),
-    )
-
-    def run(self, context: NodeContext) -> NodeResult:
         return context.outputs.build_result()
 

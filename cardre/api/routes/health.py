@@ -14,12 +14,7 @@ router = APIRouter(tags=["health"])
 @router.get("/health", response_model=HealthResponse)
 def health(container: object = Depends(get_container)) -> HealthResponse:
     """Return API health status."""
-    settings = getattr(container, "settings", None)
-    governance_enabled = getattr(settings, "governance_enabled", False) if settings else False
     return HealthResponse(
         status="ok",
         version=__version__,
-        launch_node_count=0,
-        deferred_node_count=0,
-        governance_enabled=governance_enabled,
     )

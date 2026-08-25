@@ -24,25 +24,35 @@ class TargetSpec:
             object.__setattr__(self, "all_known", self.good_values | self.bad_values | self.indeterminate_values)
 
     @classmethod
-    def from_metadata(cls, meta: object) -> TargetSpec | None:
+    def from_metadata(cls, meta: object) -> TargetSpec:
+        """Build a strict TargetSpec from a typing-metadata object.
+
+        Requires the current metadata type and fields; missing or mis-shaped
+        fields are an error rather than a legacy-null fallback. ``all_known``
+        is always derived from good/bad/indeterminate — it is never read off
+        the metadata.
+        """
         if meta is None:
-            return None
+            raise ValueError("Target metadata is required; received None")
         target_column = getattr(meta, "target_column", "")
-        if not target_column:
-            return None
-        good = frozenset(str(v) for v in getattr(meta, "good_values", []))
-        bad = frozenset(str(v) for v in getattr(meta, "bad_values", []))
-        indet = frozenset(str(v) for v in getattr(meta, "indeterminate_values", []))
-        if hasattr(meta, "all_known") and meta.all_known:
-            all_known = frozenset(str(v) for v in meta.all_known)
-        else:
-            all_known = good | bad | indet
+        if not isinstance(target_column, str) or not target_column:
+            raise ValueError("Target metadata requires a non-empty target_column")
+        good = getattr(meta, "good_values", None)
+        bad = getattr(meta, "bad_values", None)
+        indet = getattr(meta, "indeterminate_values", None)
+        if good is None or bad is None:
+            raise ValueError("Target metadata requires good_values and bad_values")
+        good_set = frozenset(str(v) for v in good)
+        bad_set = frozenset(str(v) for v in bad)
+        if not good_set or not bad_set:
+            raise ValueError("Target metadata requires non-empty good_values and bad_values")
+        indet_set = frozenset(str(v) for v in indet) if indet is not None else frozenset()
         return cls(
             target_column=target_column,
-            good_values=good,
-            bad_values=bad,
-            indeterminate_values=indet,
-            all_known=all_known,
+            good_values=good_set,
+            bad_values=bad_set,
+            indeterminate_values=indet_set,
+            all_known=good_set | bad_set | indet_set,
         )
 
     def validate_known(self, df: pl.DataFrame) -> None:

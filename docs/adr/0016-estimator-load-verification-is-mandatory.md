@@ -1,8 +1,15 @@
 # ADR 0016 — Estimator load verification is mandatory
 
+> Status: Superseded by [ADR-0017](0017-one-product-purge-enforcement.md).
+> ADR-0017 records the one-product purge, which removed the serialized joblib
+> estimator and its estimator reference. The model artifact is now a single
+> strict JSON logistic payload with no binary twin, so estimator-binary load
+> verification is no longer a current product concern. Retained as a historical
+> record of the estimator-load trust policy that preceded the purge.
+
 ## Status
 
-Accepted
+Superseded
 
 ## Decision
 

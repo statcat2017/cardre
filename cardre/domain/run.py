@@ -51,7 +51,6 @@ class RunStatus(enum.StrEnum):
 class RunScope(enum.StrEnum):
     """Execution scope discriminator for a run."""
     FULL_PLAN = "full_plan"
-    BRANCH = "branch"
 
 
 _VALID_TRANSITIONS: dict[RunStatus, set[RunStatus]] = {
@@ -81,7 +80,6 @@ class Run:
     status: str  # one of the state machine values above
     started_at: str
     finished_at: str | None = None
-    branch_id: str | None = None
     force: bool = False
     run_scope: str = "full_plan"
     heartbeat_at: str | None = None
@@ -101,7 +99,6 @@ class Run:
             status=new_status,
             started_at=self.started_at,
             finished_at=utc_now_iso() if new_status in terminal_statuses else None,
-            branch_id=self.branch_id,
             force=self.force,
             run_scope=self.run_scope,
             heartbeat_at=self.heartbeat_at,

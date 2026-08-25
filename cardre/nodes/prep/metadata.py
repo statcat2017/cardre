@@ -139,25 +139,18 @@ class DevelopmentSampleDefinitionNode(NodeType):
     def validate_params(self, params: dict[str, Any]) -> list[str]:
         errors: list[str] = []
         domain = params.get("sample_domain", "ttd")
-        if domain not in ("ttd", "otb"):
-            errors.append("sample_domain must be 'ttd' or 'otb'")
-        if domain == "ttd":
-            rejection_source = params.get("rejection_source")
-            if rejection_source is not None and rejection_source not in ("flag_column", "target_missing"):
-                errors.append("rejection_source must be 'flag_column', 'target_missing', or None")
-        if domain == "otb" and not params.get("approval_column"):
-            errors.append("approval_column is required for otb sample domain")
+        if domain not in ("ttd",):
+            errors.append("sample_domain must be 'ttd'")
+        sample_method = params.get("sample_method", "full_population")
+        if sample_method not in ("full_population",):
+            errors.append("sample_method must be 'full_population'")
         return errors
 
     def run(self, context: NodeContext) -> NodeResult:
         params = context.params
 
         sample_domain = params.get("sample_domain", "ttd")
-        rejection_source = params.get("rejection_source")
-        rejection_column = params.get("rejection_column")
-        rejection_values = params.get("rejection_values")
-        approval_column = params.get("approval_column")
-        approval_values = params.get("approval_values", [])
+        sample_method = params.get("sample_method", "full_population")
         weight_column = params.get("weight_column")
 
         dataset_artifact = context.inputs.first("input") or context.inputs.first("train")
@@ -172,19 +165,12 @@ class DevelopmentSampleDefinitionNode(NodeType):
 
         sample_def = {
             "schema_version": SCHEMA_SAMPLE_DEFINITION,
-            "sample_method": params.get("sample_method", "full_population"),
+            "sample_method": sample_method,
             "weight_column": weight_column,
             "population_bad_rate": params.get("population_bad_rate"),
             "prior_probability_adjustment": params.get("prior_probability_adjustment"),
             "sample_domain": sample_domain,
             "total_rows": total_rows,
-            "financed_rows": 0,
-            "non_financed_rows": 0,
-            "rejection_source": rejection_source,
-            "rejection_column": rejection_column,
-            "rejection_values": rejection_values,
-            "approval_column": approval_column,
-            "approval_values": approval_values,
             "sample_description": params.get("sample_description", ""),
         }
 

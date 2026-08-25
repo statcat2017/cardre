@@ -12,9 +12,6 @@ from typing import Any
 from cardre._version import __version__
 from cardre.api.schemas import (
     ArtifactResponse,
-    BranchResponse,
-    ChampionAssignmentResponse,
-    ComparisonResponse,
     DiagnosticResponse,
     EvidenceArtifactResponse,
     EvidenceEdgeResponse,
@@ -71,7 +68,6 @@ def run_to_response(
         plan_version_id=run.plan_version_id,
         status=str(run.status),
         run_scope=run.run_scope,
-        branch_id=run.branch_id,
         force=run.force,
         started_at=run.started_at,
         finished_at=run.finished_at,
@@ -130,41 +126,8 @@ def step_spec_to_response(step: StepSpec, *, plan_version_id: str = "") -> PlanS
         params=dict(step.params),
         params_hash=step.params_hash,
         parent_step_ids=list(step.parent_step_ids),
-        branch_label=step.branch_label,
         position=step.position,
         canonical_step_id=step.canonical_step_id,
-        branch_id=step.branch_id,
-    )
-
-
-def branch_to_response(branch: Mapping[str, Any]) -> BranchResponse:
-    return BranchResponse(
-        branch_id=branch["branch_id"],
-        project_id=branch["project_id"],
-        plan_id=branch["plan_id"],
-        name=branch["name"],
-        description=branch.get("description"),
-        branch_type=branch["branch_type"],
-        status=branch.get("status", "active"),
-        base_branch_id=branch.get("base_branch_id"),
-        base_plan_version_id=branch["base_plan_version_id"],
-        head_plan_version_id=branch["head_plan_version_id"],
-        branch_point_step_id=branch.get("branch_point_step_id"),
-        branch_point_canonical_step_id=branch.get("branch_point_canonical_step_id"),
-        created_reason=branch.get("created_reason", ""),
-        created_at=branch.get("created_at", ""),
-        updated_at=branch.get("updated_at", ""),
-    )
-
-
-def comparison_to_response(comparison: Mapping[str, Any]) -> ComparisonResponse:
-    return ComparisonResponse(
-        comparison_id=comparison["comparison_id"],
-        project_id=comparison["project_id"],
-        plan_id=comparison["plan_id"],
-        baseline_branch_id=comparison["baseline_branch_id"],
-        created_at=comparison.get("created_at", ""),
-        latest_ready=comparison.get("latest_ready"),
     )
 
 
@@ -192,18 +155,6 @@ def project_to_response(
         name=project.name,
         created_at=project.created_at,
         cardre_version=getattr(project, "cardre_version", __version__),
-    )
-
-
-def champion_assignment_to_response(assignment: Mapping[str, Any]) -> ChampionAssignmentResponse:
-    return ChampionAssignmentResponse(
-        champion_assignment_id=assignment["champion_assignment_id"],
-        project_id=assignment["project_id"],
-        plan_id=assignment["plan_id"],
-        champion_branch_id=assignment["champion_branch_id"],
-        selected_plan_version_id=assignment["selected_plan_version_id"],
-        assigned_at=assignment.get("assigned_at", ""),
-        superseded_at=assignment.get("superseded_at"),
     )
 
 
@@ -238,7 +189,6 @@ def node_type_to_response(
     *,
     category: str = "",
     description: str = "",
-    tier: str = "launch",
     has_params: bool = True,
 ) -> NodeTypeResponse:
     return NodeTypeResponse(
@@ -246,7 +196,6 @@ def node_type_to_response(
         display_name=node_type.split(".")[-1] if "." in node_type else node_type,
         description=description,
         category=category,
-        tier=tier,
         has_params=has_params,
     )
 
@@ -338,9 +287,6 @@ def export_to_response(item: Any) -> ExportResponse:
 
 __all__ = [
     "artifact_to_response",
-    "branch_to_response",
-    "champion_assignment_to_response",
-    "comparison_to_response",
     "diagnostic_to_response",
     "evidence_artifact_to_response",
     "evidence_edge_to_brief_response",

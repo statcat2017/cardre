@@ -1,9 +1,8 @@
 """FastAPI application for the Cardre hexagonal architecture.
 
 Created by bootstrap/build_app.py with a Container. All routes are registered
-here; governance routes are conditional on CARDRE_GOVERNANCE=1. The app
-lifespan owns process-level resources (e.g. the async run dispatcher) so they
-are drained when uvicorn shuts down.
+here. The app lifespan owns process-level resources (e.g. the async run
+dispatcher) so they are drained when uvicorn shuts down.
 """
 
 from __future__ import annotations
@@ -20,7 +19,6 @@ from cardre.api.routes import (
     artifacts,
     evidence,
     exports,
-    governance,
     health,
     node_types,
     plans,
@@ -91,6 +89,5 @@ def create_app(container: object) -> FastAPI:
     app.include_router(node_types.router)
     app.include_router(exports.router)
     app.include_router(reports.router)
-    app.include_router(governance.router)
 
     return app

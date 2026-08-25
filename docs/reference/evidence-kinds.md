@@ -13,19 +13,22 @@ Evidence is resolved by canonical step IDs defined in `cardre/application/report
 | `cutoff-analysis` | Cutoff analysis evidence |
 | `manual-binning` | Manual binning evidence |
 | `variable-clustering` | Variable clustering evidence |
-| `technical-manifest` | Technical manifest (comparison mode) |
+| `technical-manifest` | Technical manifest |
 
-## Required Steps by Report Mode
+## Required Steps
 
 The canonical required-step lists are defined in
 `cardre/application/reporting/contracts.py`:
 
-| Mode | Required Steps |
-|------|---------------|
-| Branch report | `final-woe-iv`, `model-fit`, `score-scaling`, `validation-metrics`, `cutoff-analysis` |
-| Champion report | `final-woe-iv`, `model-fit`, `score-scaling`, `freeze-scorecard-bundle`, `apply-model`, `validation-metrics`, `cutoff-analysis`, `scorecard-table-export`, `scoring-export-python`, `scoring-export-sql` |
-| Full collector | everything in Champion plus `manual-binning`, `variable-clustering`, `coefficient-sign-check`, `separation-diagnostics`, `vif-diagnostics`, `calibration-diagnostics`, `apply-exclusions`, `sample-definition`, `explicit-missing-outlier-treatment`, `initial-woe-iv`, `model-limitations`, `apply-woe` |
-| Comparison | `final-woe-iv`, `model-fit`, `score-scaling`, `validation-metrics`, `cutoff-analysis`, `technical-manifest` |
+The run report collector requires the current scorecard pathway steps:
+
+`final-woe-iv`, `model-fit`, `score-scaling`, `validation-metrics`,
+`cutoff-analysis`, `manual-binning`, `variable-clustering`,
+`coefficient-sign-check`, `separation-diagnostics`, `vif-diagnostics`,
+`calibration-diagnostics`, `apply-exclusions`, `sample-definition`,
+`explicit-missing-outlier-treatment`, `initial-woe-iv`, `apply-woe`,
+`freeze-scorecard-bundle`, `apply-model`, `scorecard-table-export`,
+`scoring-export-python`, and `scoring-export-sql`.
 
 ## Evidence Kinds
 
@@ -45,8 +48,6 @@ the most commonly used kinds; the full enum covers all artifact types in the eng
 | `SELECTION_DEFINITION` | `cardre.selection_definition.v1` | `SelectionDefinition` |
 | `EXCLUSION_SUMMARY` | `cardre.exclusion_summary.v1` | `ExclusionSummary` |
 | `SCORED_DATASET` | `cardre.scored_dataset.v1` | `ScoredDataset` |
-| `EXPLAINABILITY_REPORT` | `cardre.explainability_report.v1` | `ExplainabilityReport` |
-| `CALIBRATION_REPORT` | `cardre.calibration_report.v1` | (raw dict) |
 | `VARIABLE_CLUSTERING` | `cardre.variable_clustering_evidence.v1` | `VariableClusteringEvidence` |
 | `FROZEN_SCORECARD_BUNDLE` | `cardre.frozen_scorecard_bundle.v1` | (raw dict) |
 | `MANUAL_BINNING_OVERRIDES` | `cardre.manual_binning_overrides.v1` | `ManualBinningOverrides` |
@@ -54,10 +55,9 @@ the most commonly used kinds; the full enum covers all artifact types in the eng
 | `SEPARATION_DIAGNOSTICS` | `cardre.separation_diagnostics.v1` | `SeparationDiagnostics` |
 | `VIF_DIAGNOSTICS` | `cardre.vif_diagnostics.v1` | `VifDiagnostics` |
 | `CALIBRATION_DIAGNOSTICS` | `cardre.calibration_diagnostics.v1` | `CalibrationDiagnostics` |
-| `FEATURE_SELECTION_EVIDENCE` | `cardre.feature_selection_evidence.v1` | `FeatureSelectionEvidence` |
 | `CUTOFF_ANALYSIS` | `cardre.cutoff_analysis.v1` | `CutoffAnalysis` |
 | `VALIDATION_METRICS` | `cardre.validation_metrics.v1` | `ValidationMetrics` |
-| `SCORE_TABLE` | `cardre.scorecard_table.v1` | (raw dict) |
+| `SCORE_TABLE` | `cardre.scorecard_table.v1` | tabular Parquet |
 | `SCORING_EXPORT_PYTHON` | `cardre.scoring_export_python.v1` | (raw dict) |
 | `SCORING_EXPORT_SQL` | `cardre.scoring_export_sql.v1` | (raw dict) |
 
@@ -74,6 +74,6 @@ added during the thermo-nuclear quality sprint (PR2).
   evidence collection resolve a persisted step's canonical ID to the canonical
   set in `contracts.py`. `StepSpec` requires it to be non-empty but the current
   pre-execution validation does not compare it to a canonical identity — it
-  validates topology, node availability, and `node_version`. An obsolete
+  validates topology and `node_version`. An obsolete
   canonical ID on a current-version step therefore surfaces as missing report
   evidence, not as a pre-execution rejection.

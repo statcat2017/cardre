@@ -46,10 +46,10 @@ def _kv_list(items: list[tuple[str, str]]) -> str:
 
 def _render_pathway(data: dict[str, Any]) -> str:
     rows = [
-        [_esc(step["canonical_step_id"]), _esc(step["status"]), _esc(step["resolution"])]
+        [_esc(step["canonical_step_id"]), _esc(step["status"])]
         for step in data["pathway"]["steps"]
     ]
-    return _table(["Step", "Status", "Resolution"], rows)
+    return _table(["Step", "Status"], rows)
 
 
 def _render_dataset_roles(data: dict[str, Any]) -> str:
@@ -62,33 +62,6 @@ def _render_dataset_roles(data: dict[str, Any]) -> str:
         for r in roles
     ]
     return _table(["Role", "Dataset ID", "Rows", "Cols", "Good/Bad", "Bad Rate"], rows)
-
-
-def _render_branches(data: dict[str, Any]) -> str:
-    branches = data["branches"]["branches"]
-    if not branches:
-        return "<p>No branch evidence</p>"
-    rows = [
-        [_esc(b["branch_id"]), _esc(b["name"]), _esc(b.get("parent_branch_id") or "—"),
-         "yes" if b["is_target_branch"] else "no", "yes" if b["is_champion"] else "no",
-         _esc(b["status"])]
-        for b in branches
-    ]
-    return _table(["Branch ID", "Name", "Parent", "Target", "Champion", "Status"], rows)
-
-
-def _render_champion(data: dict[str, Any]) -> str:
-    c = data["champion"]
-    if c["champion_status"] == "not_available":
-        return "<p>No champion assigned</p>"
-    return _kv_list([
-        ("Status", c["champion_status"]),
-        ("Champion branch", c.get("champion_branch_id") or "—"),
-        ("Assignment ID", c.get("assignment_id") or "—"),
-        ("Rationale", c.get("rationale") or "—"),
-        ("Selected at", c.get("selected_at") or "—"),
-        ("Target is champion", "yes" if c["target_branch_is_champion"] else "no"),
-    ])
 
 
 def _render_variables(data: dict[str, Any]) -> str:
@@ -105,15 +78,13 @@ def _render_model(data: dict[str, Any]) -> str:
     parts = [_kv_list([
         ("Type", m["model_type"]), ("Target", m["target"]),
         ("Intercept", _fmt(m["intercept"])),
-        ("Fit dataset", m["fit_dataset_role"]),
     ])]
     rows = [
         [_esc(f["variable_name"]), _fmt(f["coefficient"]),
-         _fmt(f.get("standard_error")), _fmt(f.get("p_value")),
          "yes" if f.get("included", True) else "no"]
         for f in m["features"]
     ]
-    parts.append(_table(["Feature", "Coefficient", "Std Error", "P-value", "Included"], rows))
+    parts.append(_table(["Feature", "Coefficient", "Included"], rows))
     return "".join(parts)
 
 
@@ -251,7 +222,6 @@ def _render_run_status(data: dict[str, Any]) -> str:
         ("Run ID", r["run_id"]), ("Status", r["status"]),
         ("Started at", r.get("started_at") or "—"),
         ("Finished at", r.get("finished_at") or "—"),
-        ("Execution mode", r.get("execution_mode", "—")),
     ])]
     if r.get("diagnostics"):
         rows = [
@@ -333,8 +303,6 @@ def _render_implementation_artifacts(data: dict[str, Any]) -> str:
 
 def _render_executive_summary(data: dict[str, Any]) -> str:
     s = data["summary"]
-    champ = data["champion"]
-    champion_branch = champ.get("champion_branch_id") or "—"
     return _kv_list([
         ("Model name", s.get("model_name") or "—"),
         ("Target column", s.get("target_column") or "—"),
@@ -342,19 +310,15 @@ def _render_executive_summary(data: dict[str, Any]) -> str:
         ("Development sample", s.get("development_sample") or "—"),
         ("Final variable count", str(s.get("final_variable_count", 0))),
         ("Excluded variable count", str(s.get("excluded_variable_count", 0))),
-        ("Champion branch", champion_branch),
-        ("Target branch", s.get("target_branch_id") or data.get("target_branch_id") or "—"),
-        ("Candidate branch count", str(s.get("candidate_branch_count", 0))),
     ])
 
 
 class HtmlReportRenderer:
     """Render a report bundle as a self-contained offline HTML document.
 
-    Emits every section of the ReportBundle, preserving the full report
-    structure from the legacy renderer (artifacts, champion status, cutoffs,
-    diagnostics, exclusions, exports, manual interventions, reproducibility,
-    sample definition, selection, and other governance content).
+    Emits every section of the ReportBundle, preserving the report structure
+    (artifacts, cutoffs, diagnostics, exclusions, exports, manual
+    interventions, reproducibility, sample definition, selection).
     """
 
     def render(self, bundle: ReportBundle, output_dir: Path) -> Path:
@@ -366,15 +330,13 @@ class HtmlReportRenderer:
     @staticmethod
     def render_to_html(bundle: ReportBundle) -> str:
         data = bundle.model_dump(mode="json")
-        title = _esc(data["summary"].get("model_name") or "Cardre governance report")
+        title = _esc(data["summary"].get("model_name") or "Cardre report")
         gen_at = _esc(data.get("generated_at") or "")
         gen_by = data.get("generated_by") or {}
         sections = [
             _section("Executive Summary", _render_executive_summary(data)),
             _section("Pathway", _render_pathway(data)),
             _section("Dataset Roles", _render_dataset_roles(data)),
-            _section("Branches", _render_branches(data)),
-            _section("Champion", _render_champion(data)),
             _section("Variables", _render_variables(data)),
             _section("Model", _render_model(data)),
             _section("Score Scaling", _render_score_scaling(data)),
@@ -397,8 +359,7 @@ class HtmlReportRenderer:
         header = (
             f"<body><h1>{title}</h1>"
             f"<p>Run: {_esc(data['run_id'])} | "
-            f"Status: {_esc(data['report_status'])} | "
-            f"Mode: {_esc(data['report_mode'])}"
+            f"Status: {_esc(data['report_status'])}"
             + (f" | Generated: {gen_at}" if gen_at else "")
             + (f" | Cardre {_esc(gen_by.get('cardre_version', ''))}" if gen_by.get("cardre_version") else "")
             + "</p>"

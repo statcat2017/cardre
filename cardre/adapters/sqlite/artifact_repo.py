@@ -138,13 +138,13 @@ class ArtifactRepo:
         return result
 
     def register_lineage(self, run_id: str, run_step_id: str, plan_version_id: str,
-                         step_id: str, artifact_id: str, direction: str, branch_id: str | None = None) -> None:
+                         step_id: str, artifact_id: str, direction: str) -> None:
         from cardre.domain.diagnostics import utc_now_iso
         self._conn.execute(
             "INSERT OR IGNORE INTO artifact_lineage (lineage_id, run_id, run_step_id, plan_version_id, "
-            "step_id, branch_id, artifact_id, direction, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "step_id, artifact_id, direction, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
             (str(uuid.uuid4()), run_id, run_step_id, plan_version_id, step_id,
-             branch_id, artifact_id, direction, utc_now_iso()),
+             artifact_id, direction, utc_now_iso()),
         )
 
     def output_artifact_ids_for_run_step(self, run_step_id: str) -> list[str]:

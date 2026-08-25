@@ -43,11 +43,6 @@ class _RequiredInputNode(NodeType):
 
 
 class _Catalogue:
-    def availability(self, node_type: str):
-        from cardre.bootstrap.node_catalogue import NodeAvailability
-
-        return NodeAvailability(available=True, tier="launch")
-
     def instantiate(self, node_type: str) -> NodeType:
         _RequiredInputNode.ran = False
         return _RequiredInputNode()

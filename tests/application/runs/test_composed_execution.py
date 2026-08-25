@@ -7,9 +7,9 @@ succeeded, evidence graph integrity, manifest content, and artifact lineage.
 
 from __future__ import annotations
 
-import csv
 import json
 
+import polars as pl
 import pytest
 
 from cardre.adapters.sqlite.connection import SqliteUnitOfWorkFactory
@@ -23,7 +23,7 @@ from cardre.domain.plans.scorecard_pathway import canonical_scorecard_step_ids
 from tests.acceptance.fixture_pathway import build_acceptance_fixture_steps
 
 
-def _write_input_csv(path):
+def _write_input_parquet(path):
     rows = []
     for i in range(60):
         rows.append({
@@ -32,10 +32,7 @@ def _write_input_csv(path):
             "duration_months": 6 + (i % 36),
             "credit_risk_class": "good" if i % 3 != 0 else "bad",
         })
-    with open(path, "w", newline="") as f:
-        w = csv.DictWriter(f, fieldnames=list(rows[0].keys()))
-        w.writeheader()
-        w.writerows(rows)
+    pl.DataFrame(rows).write_parquet(path)
     return path
 
 
@@ -53,15 +50,15 @@ def composed_run(tmp_path):
         uow.commit()
     registry.register(project_id, root)
 
-    csv_path = _write_input_csv(tmp_path / "input.csv")
-    cat = build_default_catalogue(Settings(launch_mode=True))
-    steps = build_acceptance_fixture_steps(csv_path, cat)
+    parquet_path = _write_input_parquet(tmp_path / "input.parquet")
+    cat = build_default_catalogue()
+    steps = build_acceptance_fixture_steps(parquet_path, cat)
 
     with uow_factory.for_project(project_id) as uow:
         pv_id = uow.plans.create_version(plan_id, steps, is_committed=True)
         uow.commit()
 
-    settings = Settings(launch_mode=True, registry_path=str(tmp_path / "registry.json"))
+    settings = Settings(registry_path=str(tmp_path / "registry.json"))
     container = build_container(settings)
     result = container.submit_run_factory(project_id)(
         SubmitRunCommand(plan_version_id=pv_id, sync=True),

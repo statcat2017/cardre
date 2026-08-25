@@ -60,6 +60,6 @@ def test_provisioner_creates_directory_and_schema(tmp_path: pytest.TempPathFacto
     finally:
         conn.close()
 
-    assert meta["schema_family"] == "cardre-v3"
+    assert meta["schema_family"] == "cardre-v4"
     assert meta["schema_version"] == "1"
     assert "created_by_cardre_version" in meta

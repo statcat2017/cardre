@@ -9,7 +9,6 @@ from cardre.nodes.build._automatic_params import (
     validate_automatic_binning_params,
 )
 from cardre.nodes.build._fine_classing import run_fine_classing
-from cardre.nodes.build._optbinning import _run_optbinning
 from cardre.nodes.contracts import (
     ArtifactContract,
     ArtifactRoleSpec,
@@ -30,7 +29,7 @@ class AutomaticBinningNode(NodeType):
         node_type="cardre.automatic_binning",
         version="1",
         category="fit",
-        description="Automatic binning using fine classing or optbinning",
+        description="Automatic binning using fine classing",
         input_contract=ArtifactContract(
             roles=(
                 ArtifactRoleSpec("train", kinds=(EvidenceKind.MODELLING_METADATA,)),
@@ -53,9 +52,4 @@ class AutomaticBinningNode(NodeType):
         return validate_automatic_binning_params(params)
 
     def run(self, context: NodeContext) -> NodeResult:
-        method = context.params.get("method", "fine_classing")
-        if method == "fine_classing":
-            return run_fine_classing(context)
-        elif method == "optbinning":
-            return _run_optbinning(context)
-        raise ValueError(f"Unknown binning method: {method!r}")
+        return run_fine_classing(context)

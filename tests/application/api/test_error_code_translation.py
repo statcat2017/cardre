@@ -1,8 +1,7 @@
 """HTTP-level regression tests for the ErrorCode closed vocabulary.
 
-These pin Phase 4 behaviour changes: the global ``cardre_error_handler`` now
-applies ``translate_domain_error`` to every unwrapped ``CardreError``, so a
-missing project on a governance route returns 404 (not the old 500), and the
+These pin behaviour changes: the global ``cardre_error_handler`` now
+applies ``translate_domain_error`` to every unwrapped ``CardreError``, and the
 domain-error map owns the status for every translated code.
 """
 
@@ -15,9 +14,8 @@ from cardre.domain.errors import CardreError, ErrorCode
 
 
 def test_unwrapped_project_not_found_returns_404(monkeypatch, tmp_path):
-    """A governance list endpoint for a nonexistent project id returns 404
+    """A plans list endpoint for a nonexistent project id returns 404
     with PROJECT_NOT_FOUND via the global handler (was 500)."""
-    monkeypatch.setenv("CARDRE_GOVERNANCE", "1")
     monkeypatch.setenv("CARDRE_REGISTRY_PATH", str(tmp_path / "registry.json"))
 
     from fastapi.testclient import TestClient
@@ -31,7 +29,7 @@ def test_unwrapped_project_not_found_returns_404(monkeypatch, tmp_path):
     app = create_app(container)
     client = TestClient(app)
 
-    resp = client.get("/projects/nonexistent-project-id/governance/branches")
+    resp = client.get("/projects/nonexistent-project-id/plans")
     assert resp.status_code == 404
     assert resp.json()["detail"]["code"] == "PROJECT_NOT_FOUND"
 
@@ -48,9 +46,6 @@ def test_translate_domain_error_map_entries(key: str) -> None:
 @pytest.mark.parametrize(
     ("code", "explicit_status"),
     [
-        ("BRANCH_SCOPE_MISMATCH", 403),
-        ("BRANCH_NOT_ACTIVE", 403),
-        ("COMPARISON_NOT_READY", 403),
         ("CANONICAL_MANIFEST_MISSING", 403),
     ],
 )
@@ -73,3 +68,11 @@ def test_unmapped_code_passthrough() -> None:
     )
     assert api_error.code == ErrorCode.BAD_REQUEST
     assert api_error.status_code == 400
+
+
+def test_store_version_incompatible_preserves_public_code() -> None:
+    api_error = translate_domain_error(
+        CardreError("recreate the project", code=ErrorCode.STORE_VERSION_INCOMPATIBLE),
+    )
+    assert api_error.code == ErrorCode.STORE_VERSION_INCOMPATIBLE
+    assert api_error.status_code == 409

@@ -14,10 +14,18 @@ class NodeCataloguePort(Protocol):
     and testable.
     """
 
-    def availability(self, node_type: str) -> Any:
-        """Return availability info for a node type."""
-        ...
-
     def resolve(self, node_type: str) -> Any:
         """Resolve a node type name to its node class."""
+        ...
+
+    def list_types(self) -> list[str]:
+        """Return the node type names in the catalogue."""
+        ...
+
+    def instantiate(self, node_type: str) -> Any:
+        """Instantiate a node type name into a node instance."""
+        ...
+
+    def has(self, node_type: str) -> bool:
+        """Return whether a node type is registered."""
         ...

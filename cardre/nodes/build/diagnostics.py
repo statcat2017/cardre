@@ -15,6 +15,7 @@ from cardre.domain.evidence.schemas import (
     SCHEMA_VIF_DIAGNOSTICS,
     SCHEMA_WOE_IV_EVIDENCE,
 )
+from cardre.modeling.target import TargetSpec
 from cardre.nodes._reporting import publish_report
 from cardre.nodes.contracts import (
     ArtifactContract,
@@ -431,7 +432,11 @@ class CalibrationDiagnosticsNode(NodeType):
                 ArtifactRoleSpec("test"),
                 ArtifactRoleSpec("oot"),
                 ArtifactRoleSpec("model", kinds=(EvidenceKind.MODEL_ARTIFACT,)),
-                ArtifactRoleSpec("definition", kinds=(EvidenceKind.BIN_DEFINITION,)),
+                ArtifactRoleSpec(
+                    "definition",
+                    required=True,
+                    kinds=(EvidenceKind.BIN_DEFINITION, EvidenceKind.MODELLING_METADATA),
+                ),
             ),
         ),
         output_contract=ArtifactContract(
@@ -442,12 +447,12 @@ class CalibrationDiagnosticsNode(NodeType):
     )
 
     def run(self, context: NodeContext) -> NodeResult:
-        model = _find_model_artifact(context.inputs)
-        meta = context.inputs.target_metadata()
+        _find_model_artifact(context.inputs)
+        target_spec = TargetSpec.from_metadata(context.inputs.target_metadata())
 
-        target_col = meta.target_column if meta is not None else model.target_column
-        good = meta.good_values if meta is not None else frozenset()
-        bad = meta.bad_values if meta is not None else frozenset()
+        target_col = target_spec.target_column
+        good = target_spec.good_values
+        bad = target_spec.bad_values
         bad_list = list(bad)
 
         data_arts = []
@@ -580,7 +585,6 @@ class CalibrationDiagnosticsNode(NodeType):
         payload = {
             "schema_version": SCHEMA_CALIBRATION_DIAGNOSTICS,
             "target_column": target_col,
-            "model_family": model.model_family,
             "conventions": {
                 "event": "bad",
                 "non_event": "good",

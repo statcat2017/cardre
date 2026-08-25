@@ -65,6 +65,11 @@ class FrozenScorecardBundleNode(NodeType):
             raise ValueError("No model artifact found")
         model = model_list[0]
 
+        model_role_arts = context.inputs.by_role("model")
+        if not model_role_arts:
+            raise ValueError("No model artifact found")
+        model_art = model_role_arts[0]
+
         scorecard_list = context.inputs.by_kind(EvidenceKind.SCORE_SCALING)
         if not scorecard_list:
             raise ValueError("No score scaling found")
@@ -87,7 +92,6 @@ class FrozenScorecardBundleNode(NodeType):
         )
 
         scorecard_art = context.inputs.artifact_ref(scorecard.source_artifact_id)
-        model_art = context.inputs.artifact_ref(model.source_artifact_id)
         bin_def_art = context.inputs.artifact_ref(bin_def.source_artifact_id)
         woe_table_art = context.inputs.artifact_ref(woe_table.source_artifact_id)
         selection_art_ref = context.inputs.artifact_ref(selection_def.source_artifact_id) if selection_def is not None else None
@@ -99,7 +103,6 @@ class FrozenScorecardBundleNode(NodeType):
             "plan_version_id": context.runtime.plan_version_id,
             "step_id": context.runtime.step_id,
             "canonical_step_id": context.step_spec.canonical_step_id,
-            "branch_id": context.step_spec.branch_id or "",
         }
 
         target = {
@@ -129,13 +132,6 @@ class FrozenScorecardBundleNode(NodeType):
         order_hash = raw_fc.order_hash or json_logical_hash({"features": model_features})
 
         source_variables = model.source_variables
-        if source_variables is None:
-            if model_features and all(
-                f.endswith("_woe") for f in model_features
-            ):
-                source_variables = [f[:-4] for f in model_features]
-            else:
-                source_variables = list(model_features)
 
         feature_contract = {
             "features": model_features,

@@ -92,7 +92,6 @@ def test_score_scaling_with_known_input(tmp_path: Path) -> None:
         kind=EvidenceKind.MODEL_ARTIFACT,
         payload={
             "schema_version": SCHEMA_MODEL_ARTIFACT,
-            "model_family": "logistic_regression",
             "target_column": "default_flag",
             "target_event_value": "1",
             "class_mapping": {"good": "0", "bad": "1"},
@@ -109,6 +108,8 @@ def test_score_scaling_with_known_input(tmp_path: Path) -> None:
                 "coefficients": {"age_woe": 1.2, "income_woe": -0.8},
             },
             "training": {"row_count": 100, "converged": True, "iterations": 15, "params": {"C": 1.0}},
+            "source_variables": ["age", "income"],
+            "bad_class_label": "1",
             "warnings": [],
         },
         metadata={"schema_version": SCHEMA_MODEL_ARTIFACT},

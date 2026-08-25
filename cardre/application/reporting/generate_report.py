@@ -1,4 +1,4 @@
-"""Generate a governance report through read-only ports."""
+"""Generate a report through read-only ports."""
 
 from __future__ import annotations
 
@@ -15,7 +15,6 @@ from cardre.application.ports.unit_of_work import (
     RunStepRepoPort,
     UnitOfWorkFactory,
 )
-from cardre.application.reporting.contracts import ReportMode
 from cardre.application.reporting.readiness import check_report_readiness
 from cardre.application.reporting.schema import Limitation, ReportBundle
 from cardre.domain.errors import CardreError, ErrorCode
@@ -25,8 +24,6 @@ from cardre.domain.errors import CardreError, ErrorCode
 class GenerateReportCommand:
     project_id: str
     run_id: str
-    target_branch_id: str
-    report_mode: ReportMode = "branch"
     output_dir: str | Path | None = None
 
 
@@ -68,7 +65,6 @@ class GenerateReport:
             collector = self._collector_factory(evidence_reader, artifact_reader)
             readiness = check_report_readiness(
                 uow, evidence_reader, command.project_id, command.run_id,
-                command.target_branch_id, command.report_mode,
             )
             if not readiness.ready:
                 raise CardreError(
@@ -76,7 +72,6 @@ class GenerateReport:
                     code=ErrorCode.REPORT_BLOCKED,
                     context={
                         "run_id": command.run_id,
-                        "branch_id": command.target_branch_id,
                         "blockers": [
                             {"code": finding.code, "message": finding.message}
                             for finding in readiness.blockers
@@ -87,8 +82,6 @@ class GenerateReport:
                 uow,
                 command.project_id,
                 command.run_id,
-                command.target_branch_id,
-                command.report_mode,
             )
             blockers = [
                 limitation for limitation in bundle.limitations
@@ -100,7 +93,6 @@ class GenerateReport:
                     code=ErrorCode.REPORT_BLOCKED,
                     context={
                         "run_id": command.run_id,
-                        "branch_id": command.target_branch_id,
                         "blockers": [
                             {"code": limitation.code, "message": limitation.message}
                             for limitation in blockers

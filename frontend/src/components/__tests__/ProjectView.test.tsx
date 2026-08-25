@@ -80,7 +80,7 @@ describe("ProjectView", () => {
       expect(screen.getAllByText("Generate launch pathway").length).toBeGreaterThan(0);
     });
 
-    expect(screen.getByPlaceholderText("Absolute path to your CSV")).toBeDefined();
+    expect(screen.getByPlaceholderText("Absolute path to your Parquet file")).toBeDefined();
   });
 
   it("renders error banner when present", async () => {

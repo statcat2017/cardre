@@ -75,21 +75,9 @@ async def cardre_api_error_handler(request: Request, exc: CardreApiError) -> JSO
     )
 
 
-class GovernanceNotEnabled(CardreApiError):
-    """Raised when governance is disabled and a governance endpoint is called."""
-
-    def __init__(self) -> None:
-        super().__init__(
-            code=ErrorCode.GOVERNANCE_DISABLED,
-            message="Governance is not enabled. Set CARDRE_GOVERNANCE=1 to enable.",
-            status_code=403,
-        )
-
-
 # ---------------------------------------------------------------------------
 # Domain error translation
 # ---------------------------------------------------------------------------
-# Maps a domain ``CardreError.code`` to the API ``ErrorCode`` + HTTP status.
 # The map is the sole source of HTTP status (and any code translation) for a
 # mapped code: per-call ``status_code=`` on a mapped domain error is ignored,
 # so one code always maps to exactly one status. Unmapped codes pass through
@@ -107,52 +95,16 @@ _DOMAIN_ERROR_MAP: dict[ErrorCode, tuple[ErrorCode, int]] = {
     ErrorCode.PLAN_NOT_FOUND: (ErrorCode.PLAN_NOT_FOUND, 404),
     ErrorCode.ARTIFACT_NOT_FOUND: (ErrorCode.ARTIFACT_NOT_FOUND, 404),
     ErrorCode.STEP_NOT_FOUND: (ErrorCode.STEP_NOT_FOUND, 404),
-    ErrorCode.BRANCH_NOT_FOUND: (ErrorCode.BRANCH_NOT_FOUND, 404),
-    ErrorCode.COMPARISON_NOT_FOUND: (ErrorCode.COMPARISON_NOT_FOUND, 404),
     ErrorCode.REVIEW_NOT_FOUND: (ErrorCode.REVIEW_NOT_FOUND, 404),
     ErrorCode.INVALID_PROJECT_PATH: (ErrorCode.INVALID_PROJECT_PATH, 400),
     ErrorCode.STORE_ALREADY_EXISTS: (ErrorCode.STORE_ALREADY_EXISTS, 409),
-    ErrorCode.STORE_VERSION_INCOMPATIBLE: (ErrorCode.STORE_ALREADY_EXISTS, 409),
-    ErrorCode.BRANCH_VALIDATION_ERROR: (ErrorCode.BAD_REQUEST, 400),
+    ErrorCode.STORE_VERSION_INCOMPATIBLE: (ErrorCode.STORE_VERSION_INCOMPATIBLE, 409),
     ErrorCode.RUN_SCOPE_INVALID: (ErrorCode.BAD_REQUEST, 400),
     # 400 — request validation
-    ErrorCode.SEGMENT_FILTER_RULES_REQUIRED: (ErrorCode.SEGMENT_FILTER_RULES_REQUIRED, 400),
-    ErrorCode.SEGMENT_FILTER_REQUIRED: (ErrorCode.SEGMENT_FILTER_REQUIRED, 400),
-    ErrorCode.SEGMENT_FILTER_INVALID: (ErrorCode.SEGMENT_FILTER_INVALID, 400),
-    ErrorCode.SEGMENT_FILTER_UNSUPPORTED_OPERATOR: (ErrorCode.SEGMENT_FILTER_UNSUPPORTED_OPERATOR, 400),
-    ErrorCode.SEGMENT_FILTER_REASON_REQUIRED: (ErrorCode.SEGMENT_FILTER_REASON_REQUIRED, 400),
-    ErrorCode.SEGMENT_FILTER_VALUE_REQUIRED: (ErrorCode.SEGMENT_FILTER_VALUE_REQUIRED, 400),
-    ErrorCode.BRANCH_NAME_REQUIRED: (ErrorCode.BRANCH_NAME_REQUIRED, 400),
-    ErrorCode.BRANCH_REASON_REQUIRED: (ErrorCode.BRANCH_REASON_REQUIRED, 400),
-    ErrorCode.BRANCH_TYPE_MISMATCH: (ErrorCode.BRANCH_TYPE_MISMATCH, 400),
-    ErrorCode.BRANCH_POINT_NOT_ALLOWED: (ErrorCode.BRANCH_POINT_NOT_ALLOWED, 400),
-    ErrorCode.BRANCH_POINT_NOT_IN_PLAN: (ErrorCode.BRANCH_POINT_NOT_IN_PLAN, 400),
-    ErrorCode.BASE_BRANCH_INACTIVE: (ErrorCode.BASE_BRANCH_INACTIVE, 400),
-    ErrorCode.BASE_BRANCH_SCOPE_MISMATCH: (ErrorCode.BASE_BRANCH_SCOPE_MISMATCH, 400),
-    ErrorCode.PLAN_PROJECT_MISMATCH: (ErrorCode.PLAN_PROJECT_MISMATCH, 400),
-    ErrorCode.BRANCH_SCOPE_MISMATCH: (ErrorCode.BRANCH_SCOPE_MISMATCH, 409),
-    ErrorCode.BRANCH_NOT_ACTIVE: (ErrorCode.BRANCH_NOT_ACTIVE, 409),
-    ErrorCode.CHAMPION_BRANCH_INACTIVE: (ErrorCode.CHAMPION_BRANCH_INACTIVE, 400),
-    ErrorCode.BRANCH_PLAN_VERSION_MISMATCH: (ErrorCode.BRANCH_PLAN_VERSION_MISMATCH, 409),
-    ErrorCode.CHAMPION_REASON_REQUIRED: (ErrorCode.CHAMPION_REASON_REQUIRED, 400),
-    ErrorCode.CHAMPION_BRANCH_MISMATCH: (ErrorCode.CHAMPION_BRANCH_MISMATCH, 400),
-    ErrorCode.COMPARISON_PLAN_PROJECT_MISMATCH: (ErrorCode.COMPARISON_PLAN_PROJECT_MISMATCH, 409),
-    ErrorCode.BRANCH_NOT_IN_COMPARISON: (ErrorCode.BRANCH_NOT_IN_COMPARISON, 400),
     ErrorCode.EVIDENCE_VALIDATION_ERROR: (ErrorCode.EVIDENCE_VALIDATION_ERROR, 400),
-    ErrorCode.REJECT_INFERENCE_CHALLENGER_MISSING_SAMPLE_DEF: (ErrorCode.REJECT_INFERENCE_CHALLENGER_MISSING_SAMPLE_DEF, 400),
-    ErrorCode.REJECT_INFERENCE_CHALLENGER_REQUIRES_TTD: (ErrorCode.REJECT_INFERENCE_CHALLENGER_REQUIRES_TTD, 400),
     # 404 — not found
-    ErrorCode.COMPARISON_SNAPSHOT_NOT_FOUND: (ErrorCode.COMPARISON_SNAPSHOT_NOT_FOUND, 404),
-    ErrorCode.BASE_BRANCH_NOT_FOUND: (ErrorCode.BASE_BRANCH_NOT_FOUND, 404),
-    ErrorCode.BASELINE_BRANCH_NOT_FOUND: (ErrorCode.BASELINE_BRANCH_NOT_FOUND, 404),
-    ErrorCode.CHALLENGER_BRANCH_NOT_FOUND: (ErrorCode.CHALLENGER_BRANCH_NOT_FOUND, 404),
-    ErrorCode.CHAMPION_BRANCH_NOT_FOUND: (ErrorCode.CHAMPION_BRANCH_NOT_FOUND, 404),
     # 409 — state conflict / not ready
     ErrorCode.EXPORT_RUN_NOT_FOUND: (ErrorCode.EXPORT_RUN_NOT_FOUND, 409),
-    ErrorCode.STALE_HEAD_VERSION: (ErrorCode.STALE_HEAD_VERSION, 409),
-    ErrorCode.STALE_BASE_VERSION: (ErrorCode.STALE_BASE_VERSION, 409),
-    ErrorCode.STALE_SNAPSHOT: (ErrorCode.STALE_SNAPSHOT, 409),
-    ErrorCode.COMPARISON_NOT_READY: (ErrorCode.COMPARISON_NOT_READY, 400),
     ErrorCode.REPORT_BLOCKED: (ErrorCode.REPORT_BLOCKED, 409),
     ErrorCode.CANONICAL_MANIFEST_MISSING: (ErrorCode.CANONICAL_MANIFEST_MISSING, 404),
     # 500 — infrastructure
@@ -180,7 +132,6 @@ def translate_domain_error(exc: CardreError) -> CardreApiError:
 __all__ = [
     "ErrorCode",
     "CardreApiError",
-    "GovernanceNotEnabled",
     "cardre_api_error_handler",
     "cardre_error_handler",
     "error_response",

@@ -35,8 +35,8 @@ def test_bulk_evidence_queries_preserve_order_and_grouping(provisioned_project) 
             started_at = (base + timedelta(seconds=idx)).isoformat().replace("+00:00", "Z")
             uow._conn.execute(
                 "INSERT INTO plan_steps (step_id, plan_version_id, node_type, node_version, category, "
-                " params_json, params_hash, branch_label, position, canonical_step_id) "
-                "VALUES (?, ?, 'test', '1', 'fit', '{}', ?, '', ?, ?)",
+                " params_json, params_hash, position, canonical_step_id) "
+                "VALUES (?, ?, 'test', '1', 'fit', '{}', ?, ?, ?)",
                 (step_id, pv_id, f"hash-{idx}", idx, step_id),
             )
             uow._conn.execute(

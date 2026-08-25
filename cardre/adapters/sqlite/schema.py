@@ -1,12 +1,11 @@
-"""Clean SQLite schema v1 for the Cardre hexagonal architecture.
+"""SQLite schema for the Cardre hexagonal architecture.
 
-Replaces cardre/store/schema.py v101. No migration chain — projects are
-recreated (ADR-0003). Schema version row recorded but no migration runner
-shipped until first real deployment.
+The store retains one schema identifier and rejects incompatible project
+stores. No migration chain is provided (ADR-0015); projects are recreated.
 """
 
-V3_STORE_SCHEMA_FAMILY = "cardre-v3"
-V3_STORE_SCHEMA_VERSION = 1
+STORE_SCHEMA_FAMILY = "cardre-v4"
+STORE_SCHEMA_VERSION = 1
 
 SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS store_meta (
@@ -49,10 +48,8 @@ CREATE TABLE IF NOT EXISTS plan_steps (
     category TEXT NOT NULL,
     params_json TEXT NOT NULL,
     params_hash TEXT NOT NULL,
-    branch_label TEXT NOT NULL DEFAULT '',
     position INTEGER NOT NULL,
     canonical_step_id TEXT NOT NULL CHECK (canonical_step_id <> ''),
-    branch_id TEXT,
     PRIMARY KEY (plan_version_id, step_id)
 );
 
@@ -72,8 +69,7 @@ CREATE TABLE IF NOT EXISTS runs (
     run_id TEXT PRIMARY KEY,
     plan_version_id TEXT NOT NULL REFERENCES plan_versions(plan_version_id) ON DELETE CASCADE,
     status TEXT NOT NULL CHECK (status IN ('submitted','running','succeeded','failed','cancelled','interrupted')),
-    run_scope TEXT NOT NULL CHECK (run_scope IN ('full_plan','branch')),
-    branch_id TEXT,
+    run_scope TEXT NOT NULL CHECK (run_scope IN ('full_plan')),
     force INTEGER NOT NULL DEFAULT 0,
     requested_by TEXT,
     request_id TEXT,
@@ -127,7 +123,6 @@ CREATE TABLE IF NOT EXISTS artifact_lineage (
     run_step_id TEXT NOT NULL REFERENCES run_steps(run_step_id) ON DELETE CASCADE,
     plan_version_id TEXT NOT NULL REFERENCES plan_versions(plan_version_id) ON DELETE CASCADE,
     step_id TEXT NOT NULL,
-    branch_id TEXT,
     artifact_id TEXT NOT NULL REFERENCES artifacts(artifact_id) ON DELETE CASCADE,
     direction TEXT NOT NULL CHECK (direction IN ('input','output')),
     created_at TEXT NOT NULL,
@@ -164,84 +159,6 @@ CREATE TABLE IF NOT EXISTS evidence_artifacts (
 );
 """
 
-BRANCH_TABLES_SQL = """
-CREATE TABLE IF NOT EXISTS plan_branches (
-    branch_id TEXT PRIMARY KEY,
-    project_id TEXT NOT NULL,
-    plan_id TEXT NOT NULL,
-    name TEXT NOT NULL,
-    description TEXT,
-    branch_type TEXT NOT NULL,
-    status TEXT NOT NULL DEFAULT 'active',
-    base_branch_id TEXT REFERENCES plan_branches(branch_id),
-    base_plan_version_id TEXT NOT NULL REFERENCES plan_versions(plan_version_id),
-    head_plan_version_id TEXT NOT NULL REFERENCES plan_versions(plan_version_id),
-    branch_point_step_id TEXT,
-    branch_point_canonical_step_id TEXT,
-    segment_filter_spec_json TEXT,
-    created_reason TEXT NOT NULL,
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL,
-    archived_at TEXT,
-    FOREIGN KEY(project_id) REFERENCES projects(project_id),
-    FOREIGN KEY(plan_id) REFERENCES plans(plan_id)
-);
-
-CREATE TABLE IF NOT EXISTS branch_step_map (
-    branch_step_map_id TEXT PRIMARY KEY,
-    branch_id TEXT NOT NULL,
-    plan_version_id TEXT NOT NULL REFERENCES plan_versions(plan_version_id),
-    canonical_step_id TEXT NOT NULL,
-    step_id TEXT NOT NULL,
-    source_branch_id TEXT REFERENCES plan_branches(branch_id),
-    source_step_id TEXT,
-    is_shared_upstream INTEGER NOT NULL DEFAULT 0,
-    is_branch_owned INTEGER NOT NULL DEFAULT 1,
-    created_at TEXT NOT NULL,
-    FOREIGN KEY(branch_id) REFERENCES plan_branches(branch_id)
-);
-
-CREATE TABLE IF NOT EXISTS branch_comparisons (
-    comparison_id TEXT PRIMARY KEY,
-    project_id TEXT NOT NULL REFERENCES projects(project_id),
-    plan_id TEXT NOT NULL REFERENCES plans(plan_id),
-    baseline_branch_id TEXT NOT NULL,
-    comparison_spec_json TEXT NOT NULL,
-    latest_snapshot_id TEXT,
-    latest_ready INTEGER,
-    latest_readiness_json TEXT,
-    created_at TEXT NOT NULL,
-    created_reason TEXT,
-    FOREIGN KEY(baseline_branch_id) REFERENCES plan_branches(branch_id)
-);
-
-CREATE TABLE IF NOT EXISTS comparison_challenger_branches (
-    comparison_id TEXT NOT NULL REFERENCES branch_comparisons(comparison_id) ON DELETE CASCADE,
-    branch_id TEXT NOT NULL REFERENCES plan_branches(branch_id) ON DELETE CASCADE,
-    position INTEGER NOT NULL DEFAULT 0,
-    PRIMARY KEY (comparison_id, branch_id)
-);
-
-CREATE TABLE IF NOT EXISTS branch_comparison_snapshots (
-    comparison_snapshot_id TEXT PRIMARY KEY,
-    comparison_id TEXT NOT NULL,
-    project_id TEXT NOT NULL,
-    plan_id TEXT NOT NULL,
-    comparison_artifact_id TEXT NOT NULL REFERENCES artifacts(artifact_id),
-    readiness_json TEXT NOT NULL,
-    created_at TEXT NOT NULL,
-    created_reason TEXT,
-    FOREIGN KEY(comparison_id) REFERENCES branch_comparisons(comparison_id)
-);
-
-CREATE TABLE IF NOT EXISTS comparison_snapshot_plan_versions (
-    comparison_snapshot_id TEXT NOT NULL REFERENCES branch_comparison_snapshots(comparison_snapshot_id) ON DELETE CASCADE,
-    plan_version_id TEXT NOT NULL REFERENCES plan_versions(plan_version_id),
-    branch_id TEXT REFERENCES plan_branches(branch_id),
-    PRIMARY KEY (comparison_snapshot_id, plan_version_id)
-);
-"""
-
 ANNOTATION_TABLES_SQL = """
 CREATE TABLE IF NOT EXISTS step_annotations (
     annotation_id TEXT PRIMARY KEY,
@@ -252,27 +169,6 @@ CREATE TABLE IF NOT EXISTS step_annotations (
     payload_json TEXT NOT NULL DEFAULT '{}',
     created_at TEXT NOT NULL,
     FOREIGN KEY(plan_version_id, step_id) REFERENCES plan_steps(plan_version_id, step_id) ON DELETE CASCADE
-);
-
-CREATE TABLE IF NOT EXISTS champion_assignments (
-    champion_assignment_id TEXT PRIMARY KEY,
-    project_id TEXT NOT NULL REFERENCES projects(project_id),
-    plan_id TEXT NOT NULL REFERENCES plans(plan_id),
-    scope_type TEXT NOT NULL,
-    scope_key TEXT NOT NULL,
-    champion_branch_id TEXT NOT NULL,
-    comparison_id TEXT NOT NULL,
-    comparison_snapshot_id TEXT NOT NULL,
-    comparison_artifact_id TEXT NOT NULL REFERENCES artifacts(artifact_id),
-    selected_plan_version_id TEXT NOT NULL REFERENCES plan_versions(plan_version_id),
-    assigned_reason TEXT NOT NULL,
-    assigned_by TEXT,
-    assigned_at TEXT NOT NULL,
-    superseded_at TEXT,
-    superseded_by_assignment_id TEXT REFERENCES champion_assignments(champion_assignment_id),
-    FOREIGN KEY(champion_branch_id) REFERENCES plan_branches(branch_id),
-    FOREIGN KEY(comparison_id) REFERENCES branch_comparisons(comparison_id),
-    FOREIGN KEY(comparison_snapshot_id) REFERENCES branch_comparison_snapshots(comparison_snapshot_id)
 );
 """
 
@@ -385,10 +281,6 @@ CREATE INDEX IF NOT EXISTS idx_plan_step_edges_child
     ON plan_step_edges(plan_version_id, child_step_id);
 CREATE INDEX IF NOT EXISTS idx_plan_step_edges_parent
     ON plan_step_edges(plan_version_id, parent_step_id);
-CREATE INDEX IF NOT EXISTS idx_plan_branches_project_plan_status
-    ON plan_branches(project_id, plan_id, status, created_at);
-CREATE INDEX IF NOT EXISTS idx_branch_step_map_branch_pv
-    ON branch_step_map(branch_id, plan_version_id);
 CREATE INDEX IF NOT EXISTS idx_artifacts_type_role
     ON artifacts(artifact_type, role);
 CREATE INDEX IF NOT EXISTS idx_artifacts_physical_hash
@@ -400,7 +292,6 @@ CREATE INDEX IF NOT EXISTS idx_lineage_run_direction ON artifact_lineage(run_id,
 CREATE INDEX IF NOT EXISTS idx_lineage_step_direction ON artifact_lineage(step_id, direction);
 CREATE INDEX IF NOT EXISTS idx_lineage_pv_step ON artifact_lineage(plan_version_id, step_id);
 CREATE INDEX IF NOT EXISTS idx_lineage_run_step ON artifact_lineage(run_step_id, direction);
-CREATE INDEX IF NOT EXISTS idx_lineage_branch_direction ON artifact_lineage(branch_id, direction);
 CREATE INDEX IF NOT EXISTS idx_evidence_edges_run_step
     ON evidence_edges(run_step_id);
 CREATE INDEX IF NOT EXISTS idx_evidence_edges_pv_step
@@ -417,16 +308,10 @@ CREATE INDEX IF NOT EXISTS idx_evidence_artifacts_edge_role
     ON evidence_artifacts(evidence_edge_id, role);
 CREATE INDEX IF NOT EXISTS idx_diagnostics_run
     ON diagnostics(run_id);
-CREATE INDEX IF NOT EXISTS idx_comparison_challenger_branches_comparison
-    ON comparison_challenger_branches(comparison_id);
-CREATE INDEX IF NOT EXISTS idx_comparison_snapshot_pv_snapshot
-    ON comparison_snapshot_plan_versions(comparison_snapshot_id);
 CREATE INDEX IF NOT EXISTS idx_step_annotations_pv_step
     ON step_annotations(plan_version_id, step_id);
 CREATE INDEX IF NOT EXISTS idx_manual_binning_reviews_pv_step
     ON manual_binning_reviews(plan_version_id, step_id);
-CREATE INDEX IF NOT EXISTS idx_champion_assignments_plan_superseded
-    ON champion_assignments(plan_id, superseded_at);
 CREATE INDEX IF NOT EXISTS idx_exports_run
     ON exports(run_id);
 CREATE INDEX IF NOT EXISTS idx_publication_outbox_state
@@ -438,7 +323,6 @@ CREATE INDEX IF NOT EXISTS idx_publication_outbox_run
 ALL_TABLES_SQL = (
     SCHEMA_SQL
     + EVIDENCE_TABLES_SQL
-    + BRANCH_TABLES_SQL
     + ANNOTATION_TABLES_SQL
     + REVIEW_TABLES_SQL
     + PUBLICATION_OUTBOX_TABLE_SQL

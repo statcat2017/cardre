@@ -22,7 +22,6 @@ def _row_to_run(r: Any) -> Run:
         status=RunStatus(r["status"]),
         started_at=r["started_at"],
         finished_at=r["finished_at"],
-        branch_id=r["branch_id"],
         force=bool(r["force"]),
         run_scope=r["run_scope"],
         heartbeat_at=r["heartbeat_at"],
@@ -36,13 +35,8 @@ class RunRepo:
     def __init__(self, conn: Any) -> None:
         self._conn = conn
 
-    def _branch_filter(self, branch_id: str | None) -> tuple[str, list[str]]:
-        if branch_id is not None:
-            return "AND branch_id = ?", [branch_id]
-        return "AND branch_id IS NULL", []
-
     def create(self, plan_version_id: str, run_scope: str = "full_plan",
-               branch_id: str | None = None, force: bool = False,
+               force: bool = False,
                requested_by: str | None = None, request_id: str | None = None,
                metadata: dict[str, Any] | None = None) -> str:
         from cardre.domain.run import RunScope
@@ -51,10 +45,10 @@ class RunRepo:
         run_id = str(uuid.uuid4())
         now = utc_now_iso()
         self._conn.execute(
-            "INSERT INTO runs (run_id, plan_version_id, status, run_scope, branch_id, "
+            "INSERT INTO runs (run_id, plan_version_id, status, run_scope, "
             "force, requested_by, request_id, created_at, started_at, heartbeat_at, metadata_json) "
-            "VALUES (?, ?, 'submitted', ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (run_id, plan_version_id, run_scope, branch_id,
+            "VALUES (?, ?, 'submitted', ?, ?, ?, ?, ?, ?, ?, ?)",
+            (run_id, plan_version_id, run_scope,
              int(force), requested_by, request_id, now, now, now,
              json.dumps(metadata or {}, sort_keys=True)),
         )
@@ -64,7 +58,6 @@ class RunRepo:
         self,
         plan_version_id: str,
         run_scope: str = "full_plan",
-        branch_id: str | None = None,
         force: bool = False,
         requested_by: str | None = None,
         request_id: str | None = None,
@@ -88,7 +81,6 @@ class RunRepo:
         return self.create(
             plan_version_id,
             run_scope=run_scope,
-            branch_id=branch_id,
             force=force,
             requested_by=requested_by,
             request_id=request_id,
@@ -288,30 +280,28 @@ class RunRepo:
         ).fetchall()
         return [_row_to_run(r) for r in rows]
 
-    def get_latest_successful_id(self, plan_version_id: str, branch_id: str | None = None) -> str | None:
-        clause, params = self._branch_filter(branch_id)
+    def get_latest_successful_id(self, plan_version_id: str) -> str | None:
         row = self._conn.execute(
-            f"SELECT run_id FROM runs WHERE plan_version_id = ? AND status = 'succeeded' {clause} ORDER BY started_at DESC LIMIT 1",
-            [plan_version_id] + params,
+            "SELECT run_id FROM runs WHERE plan_version_id = ? AND status = 'succeeded' ORDER BY started_at DESC LIMIT 1",
+            [plan_version_id],
         ).fetchone()
         return None if row is None else row["run_id"]
 
     def get_latest_successful_id_for_plan(self, plan_id: str) -> str | None:
         row = self._conn.execute(
             "SELECT r.run_id FROM runs r JOIN plan_versions pv ON r.plan_version_id = pv.plan_version_id "
-            "WHERE pv.plan_id = ? AND r.status = 'succeeded' AND r.branch_id IS NULL ORDER BY r.started_at DESC LIMIT 1",
+            "WHERE pv.plan_id = ? AND r.status = 'succeeded' ORDER BY r.started_at DESC LIMIT 1",
             (plan_id,),
         ).fetchone()
         return None if row is None else row["run_id"]
 
-    def get_latest_successful_step_across_plan(self, plan_id: str, step_id: str, branch_id: str | None = None) -> RunStep | None:
-        clause, params = self._branch_filter(branch_id)
+    def get_latest_successful_step_across_plan(self, plan_id: str, step_id: str) -> RunStep | None:
         row = self._conn.execute(
             "SELECT rs.* FROM run_steps rs JOIN runs r ON rs.run_id = r.run_id "
             "JOIN plan_versions pv ON rs.plan_version_id = pv.plan_version_id "
             "WHERE pv.plan_id = ? AND rs.step_id = ? AND rs.status = 'succeeded' AND r.status = 'succeeded' "
-            f"{clause} ORDER BY rs.started_at DESC LIMIT 1",
-            [plan_id, step_id] + params,
+            "ORDER BY rs.started_at DESC LIMIT 1",
+            [plan_id, step_id],
         ).fetchone()
         if row is None:
             return None
@@ -326,16 +316,15 @@ class RunRepo:
         )
 
     def list_successful_steps_across_plan_ordered(
-        self, plan_id: str, step_id: str, branch_id: str | None = None,
+        self, plan_id: str, step_id: str,
     ) -> list[RunStep]:
         """Return all successful run steps across all plan versions, newest-first."""
-        clause, params = self._branch_filter(branch_id)
         rows = self._conn.execute(
             "SELECT rs.* FROM run_steps rs JOIN runs r ON rs.run_id = r.run_id "
             "JOIN plan_versions pv ON rs.plan_version_id = pv.plan_version_id "
             "WHERE pv.plan_id = ? AND rs.step_id = ? AND rs.status = 'succeeded' AND r.status = 'succeeded' "
-            f"{clause} ORDER BY rs.started_at DESC, rs.run_step_id DESC",
-            [plan_id, step_id] + params,
+            "ORDER BY rs.started_at DESC, rs.run_step_id DESC",
+            [plan_id, step_id],
         ).fetchall()
         return [RunStep(
             run_step_id=r["run_step_id"], run_id=r["run_id"],

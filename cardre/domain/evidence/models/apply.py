@@ -10,7 +10,6 @@ from cardre.domain.diagnostics import JsonDict
 
 @dataclass(frozen=True)
 class ApplyWoeEvidence:
-    policy: JsonDict
     roles: dict[str, JsonDict]
     warnings: list[JsonDict] = field(default_factory=list)
     bin_definition_artifact_id: str = ""
@@ -23,7 +22,6 @@ class ApplyWoeEvidence:
     @classmethod
     def from_json(cls, data: JsonDict, artifact_id: str = "") -> ApplyWoeEvidence:
         return cls(
-            policy=dict(data.get("policy", {})),
             roles={str(k): dict(v) for k, v in dict(data.get("roles", {})).items()},
             warnings=list(data.get("warnings", [])),
             bin_definition_artifact_id=data.get("bin_definition_artifact_id", ""),

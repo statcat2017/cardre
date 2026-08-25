@@ -26,10 +26,8 @@ class StepSpec:
     params: JsonDict
     params_hash: str
     parent_step_ids: list[str]
-    branch_label: str = ""
     position: int = 0
     canonical_step_id: str = field(kw_only=True)
-    branch_id: str | None = field(default=None, kw_only=True)
 
     def __post_init__(self) -> None:
         if not self.canonical_step_id:
@@ -44,10 +42,8 @@ class StepSpec:
             "params": self.params,
             "params_hash": self.params_hash,
             "parent_step_ids": list(self.parent_step_ids),
-            "branch_label": self.branch_label,
             "position": self.position,
             "canonical_step_id": self.canonical_step_id,
-            "branch_id": self.branch_id,
         }
 
 

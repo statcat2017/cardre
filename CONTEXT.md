@@ -35,8 +35,6 @@ JSON relationship arrays from v1 have been replaced by relational join tables:
 | v1 (JSON array) | v2 (relational table) |
 |---|---|
 | `plan_steps.parent_step_ids_json` | `plan_step_edges` |
-| `branch_comparisons.challenger_branch_ids_json` | `comparison_challenger_branches` |
-| `branch_comparison_snapshots.source_plan_version_ids_json` | `comparison_snapshot_plan_versions` |
 
 ## Node Type vs Step
 
@@ -44,15 +42,10 @@ JSON relationship arrays from v1 have been replaced by relational join tables:
 - **Step**: one occurrence of a node type within a plan. Has a `step_id`, params, parent step IDs (via `plan_step_edges`), status, and run records. A plan is a graph of steps.
 - Plan endpoints model `plan_steps` (intended configuration). Run endpoints model `run_steps` (execution evidence).
 
-## Node Tiers
-
-- **Launch**: Nodes executable in the default scorecard journey. Instantiation of a deferred node raises `NodeNotAvailableForLaunch`.
-- **Deferred**: Nodes registered as schemas for UI display but not executable in launch mode (boosting, ensembles, fairness, reject inference, etc.).
-
 ## Plan Version vs Run
 
 - A **plan version** is created when the user explicitly saves/modifies the plan (adds/removes/reconfigures steps). It is a user-triggered snapshot of *intent*.
-- A **run** is one execution of a given plan version. The same plan version may be run multiple times (e.g. different seeds, comparison runs).
+- A **run** is one execution of a given plan version. The same plan version may be run multiple times (e.g. with different seeds).
 - A plan version exists independently of any run. Every run references exactly one plan version.
 
 ## Build Stream vs Validate Stream
@@ -86,16 +79,6 @@ The boundary: once score scaling produces the finalized scorecard, the validate 
 - **Refinement nodes** (build stream only): consume a definition artifact and produce a refined definition. Manual bin editing is the canonical example — it takes auto bin definitions and produces overridden bin definitions for selected variables only.
 - **Selection nodes** (build stream only): consume metrics/rankings and filter which variables proceed downstream. Variable clustering/correlation grouping and variable selection are canonical examples.
 - **Apply nodes** (validate stream only): consume definitions from build stream + test/oot data, produce predictions and metrics. Examples: apply WOE mapping, apply model, calculate validation metrics.
-
-## Branch / Comparison / Champion
-
-- **Branch**: A diverged copy of a plan starting from a permitted branch point. Each challenger branch creates a new plan version with duplicated downstream steps and shared upstream steps.
-- **Comparison**: An intent to compare a baseline branch against one or more challenger branches. Produces immutable comparison snapshots containing WOE/IV, model coefficients, validation metrics, and cutoff analysis.
-- **Champion**: The designated best-performing branch for a given scope. Supersedes previous champions. Assignments require a ready comparison snapshot.
-
-## Governance
-
-Governance features (branching, comparison, champion assignment) are gated behind `CARDRE_GOVERNANCE=1`. The API uses `Depends(require_governance)` to return 403 when governance is not enabled.
 
 ## Error Codes
 
@@ -134,10 +117,12 @@ These are two different node types: `impute_missing` (data transform) and the `m
 - For definition artifacts (bin maps, model coefficients): JSON-sorted-keys canonical serialization, then hash.
 - The artifact store deduplicates by `physical_hash`. Audit/reproducibility compares by `logical_hash`.
 
-## Estimator Reference
+## Model Artifact
 
-A fitted model is published as **two** Artifacts sharing one descriptor family: a parseable JSON `model` artifact and a joblib-serialized `estimator` binary. The JSON model carries an **estimator reference** — the binary's `provisional_artifact_id` (a descriptor id computed *before* the binary is staged) plus its `physical_hash` and `logical_hash`. This lets the model JSON cite the binary before the binary exists on disk.
-
-The **publish ordering invariant** is load-bearing: the JSON model is published **first**, the estimator bytes **second**, both under the same descriptor id. Downstream `require("model")` / `first("model")` consumers select by role and must receive the parseable JSON, not the joblib blob (which the MODEL_ARTIFACT evidence profile rejects on media type). A node that reverses the order silently breaks every downstream model consumer.
-
-Loading the binary is the inverse: resolve the reference via `InputCollection.artifact_ref`, `read_bytes`, **verify the hash** (the published `logical_hash` against the bytes' SHA-256) and **require `creating_run_id` metadata** before deserialising. Refusing to load untrusted binaries is the trust policy; there is no "unverified" load path.
+The fitted model is published as a single strict JSON `model` artifact
+(`cardre.model_artifact.v1`): a WOE feature contract, an intercept,
+per-feature coefficients, and training provenance. There is no serialized
+joblib estimator, no estimator reference, and no binary twin. The model
+payload is parsed by the strict logistic schema in `cardre/modeling/schema.py`,
+which rejects unknown top-level fields and requires the complete current
+payload (see ADR 0017).

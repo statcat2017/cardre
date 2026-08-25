@@ -192,55 +192,27 @@ class SplitTrainTestOotNode(NodeType):
                         ),
                     ],
                 ),
-                MethodOption(
-                    id="preassigned_role_column",
-                    label="Preassigned Role Column",
-                    status="available",
-                    params=[
-                        ParameterDefinition(
-                            name="role_column",
-                            label="Role Column",
-                            kind="string",
-                            required=True,
-                            help_text="Name of a column with preassigned role values ('train', 'test', 'oot')",
-                        ),
-                    ],
-                ),
             ],
         )
 
     def run(self, context: NodeContext) -> NodeResult:
         dataset_artifact = context.inputs.first("input")
         params = context.params
-        method = params.get("method", "random_stratified")
+        method = "random_stratified"
         train_frac = float(params.get("train_fraction", 0.6))
         test_frac = float(params.get("test_fraction", 0.2))
         oot_frac = float(params.get("oot_fraction", 0.2))
         seed = int(params.get("random_seed", 42))
         target_column = params.get("target_column", "credit_risk_class")
-        role_column = params.get("role_column")
         total = train_frac + test_frac + oot_frac
         if abs(total - 1.0) > 0.001:
             raise ValueError(f"Split fractions sum to {total}, expected 1.0")
 
         df = context.inputs.read_dataframe(dataset_artifact)
 
-        if method == "preassigned_role_column":
-            if not role_column or role_column not in df.columns:
-                raise ValueError(f"Role column '{role_column}' not found in dataset for 'preassigned_role_column' method")
-            role_map = {}
-            for role_val in ("train", "test", "oot"):
-                mask = df[role_column] == role_val
-                count = mask.sum()
-                if count == 0:
-                    raise ValueError(f"Role column {role_column} has no rows with value '{role_val}'")
-                role_map[role_val] = df[mask]
-        elif method == "random_stratified":
-            if target_column not in df.columns:
-                raise ValueError(f"Target column '{target_column}' not found in dataset")
-            role_map = self._stratified_split(df, target_column, train_frac, test_frac, oot_frac, seed)
-        else:
-            raise ValueError(f"Unknown split method: {method}")
+        if target_column not in df.columns:
+            raise ValueError(f"Target column '{target_column}' not found in dataset")
+        role_map = self._stratified_split(df, target_column, train_frac, test_frac, oot_frac, seed)
 
         for role in ("train", "test", "oot"):
             subset = role_map[role]
@@ -267,7 +239,7 @@ class SplitTrainTestOotNode(NodeType):
 
         split_report = {
             "method": method,
-            "random_seed": seed if method != "preassigned_role_column" else None,
+            "random_seed": seed,
             "fractions": {"train": train_frac, "test": test_frac, "oot": oot_frac},
             "row_counts": {role: subset.height for role, subset in role_map.items()},
             "target_rates": target_rates, "warnings": split_warnings,

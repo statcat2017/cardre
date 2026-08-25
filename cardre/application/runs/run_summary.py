@@ -11,7 +11,6 @@ class RunSummary:
     started_at: str | None = None
     finished_at: str | None = None
     step_count: int = 0
-    branch_id: str | None = None
     executed_step_ids: list[str] = field(default_factory=list)
     diagnostics: list[str] = field(default_factory=list)
     latest_error: str | None = None

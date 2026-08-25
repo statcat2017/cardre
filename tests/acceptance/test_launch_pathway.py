@@ -15,7 +15,6 @@ Supersedes the pre-Batch-05 ``test_launch_pathway.py`` and
 
 from __future__ import annotations
 
-import csv
 import hashlib
 import json
 from pathlib import Path
@@ -37,7 +36,7 @@ from cardre.domain.evidence.schemas import (
 )
 
 
-def _write_input_csv(path: Path) -> Path:
+def _write_input_parquet(path: Path) -> Path:
     rows = []
     for i in range(60):
         rows.append({
@@ -49,10 +48,7 @@ def _write_input_csv(path: Path) -> Path:
             # not hardcode "credit_risk_class".
             "outcome": "good" if i % 3 != 0 else "bad",
         })
-    with open(path, "w", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=list(rows[0].keys()))
-        writer.writeheader()
-        writer.writerows(rows)
+    pl.DataFrame(rows).write_parquet(path)
     return path
 
 
@@ -65,8 +61,6 @@ def acceptance_env(tmp_path):
     """
     registry_path = tmp_path / "registry.json"
     settings = Settings(
-        launch_mode=True,
-        governance_enabled=False,
         registry_path=registry_path,
     )
     container = build_container(settings)
@@ -81,8 +75,8 @@ def acceptance_env(tmp_path):
     assert resp.status_code == 201, resp.text
     project_id = resp.json()["project_id"]
 
-    # 2. Import a supported dataset (the run's import step points at the CSV).
-    csv_path = _write_input_csv(tmp_path / "input.csv")
+    # 2. Import a supported dataset (the run's import step points at the Parquet file).
+    parquet_path = _write_input_parquet(tmp_path / "input.parquet")
 
     # 4. Create a plan through the API.
     resp = client.post(f"/projects/{project_id}/plans", json={"name": "Acceptance Plan"})
@@ -95,7 +89,7 @@ def acceptance_env(tmp_path):
     resp = client.post(
         f"/projects/{project_id}/plans/{plan_id}/canonical-version",
         json={
-            "source_path": str(csv_path),
+            "source_path": str(parquet_path),
             "target_column": "outcome",
             "good_values": ["good"],
             "bad_values": ["bad"],
@@ -350,34 +344,11 @@ class TestLaunchPathway:
         # 16. Audit package generation.
         from cardre.application.reporting.export_audit_pack import ExportAuditPackCommand
 
-        with uow_factory.for_project(project_id) as uow:
-            branch_row = uow._conn.execute(
-                "SELECT branch_id FROM plan_branches LIMIT 1"
-            ).fetchone()
-        if branch_row is None:
-            # Create a baseline branch + step map so the audit pack can resolve
-            # the canonical step identities (mirrors golden report test setup).
-            with uow_factory.for_project(project_id) as uow:
-                branch_id = uow.branches.create_branch(
-                    project_id=project_id, plan_id=plan_id,
-                    name="main", branch_type="baseline",
-                    base_plan_version_id=pv_id, head_plan_version_id=pv_id,
-                    created_reason="acceptance test",
-                )
-                for s in _canonical_steps(pv_id, uow):
-                    uow.branches.create_step_map(
-                        branch_id=branch_id, plan_version_id=pv_id,
-                        canonical_step_id=s["canonical_step_id"],
-                        step_id=s["step_id"], is_branch_owned=True,
-                    )
-                uow.commit()
-        else:
-            branch_id = branch_row["branch_id"]
-        audit_dir = root / "exports" / f"audit-pack-{branch_id}"
+        audit_dir = root / "exports" / f"audit-pack-{run_id}"
         container.export_audit_pack(ExportAuditPackCommand(
             project_id=project_id,
             plan_id=plan_id,
-            branch_id=branch_id,
+            run_id=run_id,
             project_root=str(root),
             export_path=str(audit_dir),
         ))

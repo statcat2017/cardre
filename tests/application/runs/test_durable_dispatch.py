@@ -63,7 +63,7 @@ def _provision(tmp_path):
             [StepSpec(
                 step_id="s1", node_type="cardre.noop", node_version="1",
                 category="transform", params={}, params_hash=json_logical_hash({}),
-                parent_step_ids=[], branch_label="", position=0, canonical_step_id="s1",
+                parent_step_ids=[], position=0, canonical_step_id="s1",
             )],
             is_committed=True,
         )
@@ -83,7 +83,7 @@ def test_submit_records_durable_dispatch_before_inmemory_dispatch(tmp_path):
         dispatcher,
         None,
         None,
-        governance_enabled=True,
+
         project_id=project_id,
     )
     result = submit(SubmitRunCommand(plan_version_id=pv_id, run_scope="full_plan"))
@@ -110,7 +110,7 @@ def test_reconcile_dispatches_after_crash_redispatches_pending_runs(tmp_path):
         _RecordingDispatcher(),  # in-memory dispatch "never ran" (crashed)
         None,
         None,
-        governance_enabled=True,
+
         project_id=project_id,
     )
     result = submit(SubmitRunCommand(plan_version_id=pv_id, run_scope="full_plan"))
@@ -135,7 +135,7 @@ def test_reconcile_drops_dispatch_row_for_terminalized_run(tmp_path):
         _RecordingDispatcher(),
         None,
         None,
-        governance_enabled=True,
+
         project_id=project_id,
     )
     result = submit(SubmitRunCommand(plan_version_id=pv_id, run_scope="full_plan"))
@@ -219,7 +219,7 @@ def _seed_pending_runs_two_plans(uow_factory, project_id):
             plan_a, [StepSpec(
                 step_id="s1", node_type="cardre.noop", node_version="1",
                 category="transform", params={}, params_hash=json_logical_hash({}),
-                parent_step_ids=[], branch_label="", position=0, canonical_step_id="s1",
+                parent_step_ids=[], position=0, canonical_step_id="s1",
             )],
             is_committed=True,
         )
@@ -228,7 +228,7 @@ def _seed_pending_runs_two_plans(uow_factory, project_id):
             plan_b, [StepSpec(
                 step_id="s1", node_type="cardre.noop", node_version="1",
                 category="transform", params={}, params_hash=json_logical_hash({}),
-                parent_step_ids=[], branch_label="", position=0, canonical_step_id="s1",
+                parent_step_ids=[], position=0, canonical_step_id="s1",
             )],
             is_committed=True,
         )

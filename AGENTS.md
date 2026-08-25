@@ -81,10 +81,7 @@ Canonical API error codes (from `frontend/src/api/client.ts`):
 - `HTML_ERROR_RESPONSE` — non-2xx with HTML body
 - `NON_JSON_ERROR_RESPONSE` — non-2xx with non-JSON body
 - Server codes (e.g. `RUN_EXECUTION_FAILED`) — from `detail.code`
-- `NODE_NOT_AVAILABLE_FOR_LAUNCH` — deferred node instantiated in launch mode
-- `OPTIONAL_DEPENDENCY_NOT_INSTALLED` — node's optional dep group missing
-- `PLAN_CONTAINS_UNAVAILABLE_NODES` — plan has unavailable nodes; rejected before run
 
 Test commands:
-- `npm run test -- src/api src/hooks src/components/__tests__/ProjectView` — frontend robustness tests
+- `npm run test -- src/api src/hooks src/components/__tests__/ProjectView.test.tsx` — frontend robustness tests
 - `pytest tests/` — backend tests (slow; use `-k stale` for lifecycle tests)

@@ -62,10 +62,6 @@ class Container:
     publication_publisher_factory: Any = None
     reconcile_publications_factory: Any = None
     reconcile_dispatches_factory: Any = None
-    refresh_comparison_factory: Any = None
-    create_branch_factory: Any = None
-    create_comparison_factory: Any = None
-    assign_champion_factory: Any = None
     list_reports: Any = None
     list_exports: Any = None
     get_run_manifest: Any = None
@@ -75,7 +71,7 @@ def build_container(settings: Settings) -> Container:
     registry = JsonProjectRegistry(settings.registry_path)
     provisioner = SqliteProjectProvisioner()
     uow_factory = SqliteUnitOfWorkFactory(registry)
-    node_catalogue = build_default_catalogue(settings)
+    node_catalogue = build_default_catalogue()
     clock = SystemClock()
     id_generator = UuidGenerator()
     capability_probe = FilesystemCapabilityProbe()
@@ -198,7 +194,6 @@ def build_container(settings: Settings) -> Container:
             async_dispatcher,
             exec_run,
             finalize_run_factory(project_id),
-            governance_enabled=settings.governance_enabled,
             project_id=project_id,
             stale_heartbeat_seconds=settings.stale_heartbeat_seconds,
         )
@@ -239,36 +234,6 @@ def build_container(settings: Settings) -> Container:
             capability_probe=capability_probe,
         )
 
-    # Governance use cases — built here in the composition root so the API
-    # layer only depends on the application/use-case surface and never
-    # imports adapters directly. Each factory closes over a single project.
-    from cardre.adapters.evidence.comparison_reader import ComparisonEvidenceReader
-    from cardre.application.governance.assign_champion import AssignChampion
-    from cardre.application.governance.create_branch import CreateBranch
-    from cardre.application.governance.create_comparison import CreateComparison
-    from cardre.application.governance.refresh_comparison import RefreshComparison
-
-    def refresh_comparison_factory(project_id: str) -> RefreshComparison:
-        return RefreshComparison(
-            uow_factory,
-            ComparisonEvidenceReader(
-                uow_factory,
-                artifact_reader_factory(project_id),
-                project_id,
-            ),
-            artifact_store_factory(project_id),
-            publication_publisher_factory,
-        )
-
-    def create_branch_factory(project_id: str) -> CreateBranch:
-        return CreateBranch(uow_factory)
-
-    def create_comparison_factory(project_id: str) -> CreateComparison:
-        return CreateComparison(uow_factory, id_generator=id_generator)
-
-    def assign_champion_factory(project_id: str) -> AssignChampion:
-        return AssignChampion(uow_factory)
-
     from cardre.application.reporting.report_queries import GetRunManifest, ListExports, ListReports
     list_reports = ListReports(uow_factory, manifest_publisher_factory)
     list_exports = ListExports(uow_factory)
@@ -296,10 +261,6 @@ def build_container(settings: Settings) -> Container:
         async_dispatcher=async_dispatcher,
         reconcile_publications_factory=reconcile_publications_factory,
         reconcile_dispatches_factory=reconcile_dispatches_factory,
-        refresh_comparison_factory=refresh_comparison_factory,
-        create_branch_factory=create_branch_factory,
-        create_comparison_factory=create_comparison_factory,
-        assign_champion_factory=assign_champion_factory,
         list_reports=list_reports,
         list_exports=list_exports,
         get_run_manifest=get_run_manifest,

@@ -73,19 +73,12 @@ class RunStepRepo:
             errors=json.loads(r["errors_json"]),
         ) for r in rows]
 
-    def get_latest_successful_step(self, plan_version_id: str, step_id: str, branch_id: str | None = None) -> RunStep | None:
-        clause = ""
-        params: list[str] = [plan_version_id, step_id]
-        if branch_id is not None:
-            clause = "AND r.branch_id = ?"
-            params.append(branch_id)
-        else:
-            clause = "AND r.branch_id IS NULL"
+    def get_latest_successful_step(self, plan_version_id: str, step_id: str) -> RunStep | None:
         row = self._conn.execute(
-            f"SELECT rs.* FROM run_steps rs JOIN runs r ON rs.run_id = r.run_id "
-            f"WHERE rs.plan_version_id = ? AND rs.step_id = ? AND rs.status = 'succeeded' "
-            f"AND r.status = 'succeeded' {clause} ORDER BY rs.started_at DESC LIMIT 1",
-            params,
+            "SELECT rs.* FROM run_steps rs JOIN runs r ON rs.run_id = r.run_id "
+            "WHERE rs.plan_version_id = ? AND rs.step_id = ? AND rs.status = 'succeeded' "
+            "AND r.status = 'succeeded' ORDER BY rs.started_at DESC LIMIT 1",
+            [plan_version_id, step_id],
         ).fetchone()
         if row is None:
             return None
@@ -100,24 +93,17 @@ class RunStepRepo:
         )
 
     def list_successful_steps_ordered(
-        self, plan_version_id: str, step_id: str, branch_id: str | None = None,
+        self, plan_version_id: str, step_id: str,
     ) -> list[RunStep]:
-        """Return all successful run steps for the given plan_version/step/branch,
+        """Return all successful run steps for the given plan_version/step,
         ordered newest-first by run start time, then run_step_id as a tie-breaker.
         """
-        clause = ""
-        params: list[str] = [plan_version_id, step_id]
-        if branch_id is not None:
-            clause = "AND r.branch_id = ?"
-            params.append(branch_id)
-        else:
-            clause = "AND r.branch_id IS NULL"
         rows = self._conn.execute(
-            f"SELECT rs.* FROM run_steps rs JOIN runs r ON rs.run_id = r.run_id "
-            f"WHERE rs.plan_version_id = ? AND rs.step_id = ? AND rs.status = 'succeeded' "
-            f"AND r.status = 'succeeded' {clause} "
-            f"ORDER BY rs.started_at DESC, rs.run_step_id DESC",
-            params,
+            "SELECT rs.* FROM run_steps rs JOIN runs r ON rs.run_id = r.run_id "
+            "WHERE rs.plan_version_id = ? AND rs.step_id = ? AND rs.status = 'succeeded' "
+            "AND r.status = 'succeeded' "
+            "ORDER BY rs.started_at DESC, rs.run_step_id DESC",
+            [plan_version_id, step_id],
         ).fetchall()
         return [RunStep(
             run_step_id=r["run_step_id"], run_id=r["run_id"],

@@ -149,22 +149,6 @@ jobs:
         run: make audit-artifact-reads
       - name: Run tests
         run: make test-python-ci
-    
-  test-python-governance:
-    needs: [detect-changes, lint, typecheck-python]
-    if: needs.detect-changes.outputs.python == 'true' || needs.detect-changes.outputs.ci == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    env:
-      CARDRE_GOVERNANCE: "1"
-    steps:
-      - uses: actions/checkout@v7
-      - uses: ./.github/actions/setup-python-env
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-          extras: sidecar,test
-      - name: Run governance tests
-        run: python3 -m pytest -m governance -q --tb=short --no-cov
 
   test-frontend:
     needs: [detect-changes, typecheck-frontend]
@@ -339,7 +323,6 @@ jobs:
       - typecheck-python
       - typecheck-frontend
       - test-python
-      - test-python-governance
       - test-frontend
       - build-sidecar
       - check-tauri
@@ -358,7 +341,6 @@ jobs:
           TYPECHECK_PYTHON: ${{ needs.typecheck-python.result }}
           TYPECHECK_FRONTEND: ${{ needs.typecheck-frontend.result }}
           TEST_PYTHON: ${{ needs.test-python.result }}
-          TEST_PYTHON_GOVERNANCE: ${{ needs.test-python-governance.result }}
           TEST_FRONTEND: ${{ needs.test-frontend.result }}
           BUILD_SIDECAR: ${{ needs.build-sidecar.result }}
           CHECK_TAURI: ${{ needs.check-tauri.result }}
@@ -374,7 +356,6 @@ jobs:
             "typecheck-python:$TYPECHECK_PYTHON" \
             "typecheck-frontend:$TYPECHECK_FRONTEND" \
             "test-python:$TEST_PYTHON" \
-            "test-python-governance:$TEST_PYTHON_GOVERNANCE" \
             "test-frontend:$TEST_FRONTEND" \
             "build-sidecar:$BUILD_SIDECAR" \
             "check-tauri:$CHECK_TAURI" \

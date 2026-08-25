@@ -25,7 +25,7 @@ Only these modules may perform direct artifact I/O:
 
 Why:
 
-- `cardre/adapters/filesystem/artifact_store.py` owns artifact write helpers and low-level store plumbing, including binary estimator IO.
+- `cardre/adapters/filesystem/artifact_store.py` owns artifact write helpers and low-level store plumbing, including artifact-byte IO.
 - `cardre/domain/evidence/` and `cardre/adapters/evidence/` contains the parser, profiles, schemas, and typed models.
 
 ## Forbidden Patterns
@@ -77,7 +77,6 @@ Minimal parser rule: the current versioned schema is the single accepted shape.
 Adapters validate schema first, then role/type/media, and reject anything that
 is not the canonical identity (see ADR 0015). No fallback readers or legacy-shape
 branches may be added.
-
 ## Writing A Node That Consumes Artifacts
 
 Nodes receive typed evidence through `InputCollection`

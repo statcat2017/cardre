@@ -12,11 +12,11 @@ renderer.
 
 from __future__ import annotations
 
-import csv
 import json
 import re
 from pathlib import Path
 
+import polars as pl
 import pytest
 
 from cardre.adapters.reporting.collector import ReportCollector
@@ -85,7 +85,7 @@ def _is_non_deterministic_leaf(key: str, value: object) -> bool:
     return bool(isinstance(value, str) and _HASH_IN_PATH_RE.search(value))
 
 
-def _write_input_csv(path: Path) -> Path:
+def _write_input_parquet(path: Path) -> Path:
     rows = []
     for i in range(60):
         rows.append({
@@ -94,10 +94,7 @@ def _write_input_csv(path: Path) -> Path:
             "duration_months": 6 + (i % 36),
             "credit_risk_class": "good" if i % 3 != 0 else "bad",
         })
-    with open(path, "w", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=list(rows[0].keys()))
-        writer.writeheader()
-        writer.writerows(rows)
+    pl.DataFrame(rows).write_parquet(path)
     return path
 
 
@@ -114,35 +111,19 @@ def _run_pathway(tmp_path: Path) -> dict:
         uow.commit()
     registry.register(project_id, root)
 
-    csv_path = _write_input_csv(tmp_path / "input.csv")
-    cat = build_default_catalogue(Settings(launch_mode=True))
-    steps = build_acceptance_fixture_steps(csv_path, cat)
+    parquet_path = _write_input_parquet(tmp_path / "input.parquet")
+    cat = build_default_catalogue()
+    steps = build_acceptance_fixture_steps(parquet_path, cat)
 
     with uow_factory.for_project(project_id) as uow:
         pv_id = uow.plans.create_version(plan_id, steps, is_committed=True)
         uow.commit()
 
-    settings = Settings(launch_mode=True, registry_path=str(tmp_path / "registry.json"))
+    settings = Settings(registry_path=str(tmp_path / "registry.json"))
     container = build_container(settings)
     result = container.submit_run_factory(project_id)(
         SubmitRunCommand(plan_version_id=pv_id, sync=True),
     )
-
-    # Create a baseline branch and step map
-    with uow_factory.for_project(project_id) as uow:
-        branch_id = uow.branches.create_branch(
-            project_id=project_id, plan_id=plan_id,
-            name="main", branch_type="baseline",
-            base_plan_version_id=pv_id, head_plan_version_id=pv_id,
-            created_reason="golden test",
-        )
-        for s in steps:
-            uow.branches.create_step_map(
-                branch_id=branch_id, plan_version_id=pv_id,
-                canonical_step_id=s.canonical_step_id,
-                step_id=s.step_id, is_branch_owned=True,
-            )
-        uow.commit()
 
     from cardre.adapters.evidence.reader import EvidenceReader
     from cardre.adapters.filesystem.artifact_store import FsArtifactStore
@@ -153,7 +134,7 @@ def _run_pathway(tmp_path: Path) -> dict:
             reader,
         )
         bundle = collector.collect(
-            uow, project_id, result.run_id, branch_id, "branch",
+            uow, project_id, result.run_id,
         )
     return bundle.model_dump(mode="json")
 

@@ -1,8 +1,4 @@
-"""ExplainStaleness — explain staleness for a single step.
-
-Port of StalenessService.explain_step from cardre/services/staleness_service.py.
-Uses UnitOfWork ports instead of direct store access.
-"""
+"""Explain staleness for a single step using unit-of-work ports."""
 
 from __future__ import annotations
 
@@ -28,7 +24,6 @@ class StalenessExplanation:
 class ExplainStalenessCommand:
     plan_version_id: str
     step_id: str
-    branch_id: str | None = None
     plan_id: str | None = None
 
 
@@ -51,12 +46,8 @@ class ExplainStaleness:
                 plan_id = uow.plans.get_plan_id_for_version(command.plan_version_id)
 
             run_id = uow.runs.get_latest_successful_id(
-                command.plan_version_id, branch_id=command.branch_id,
+                command.plan_version_id,
             )
-            if run_id is None and command.branch_id is not None:
-                run_id = uow.runs.get_latest_successful_id(
-                    command.plan_version_id, branch_id=None,
-                )
             if run_id is None and plan_id is not None:
                 run_id = uow.runs.get_latest_successful_id_for_plan(plan_id)
 
@@ -75,7 +66,7 @@ class ExplainStaleness:
             for s in steps:
                 is_stale = _step_is_stale(
                     uow, s, steps,
-                    command.plan_version_id, command.branch_id, plan_id,
+                    command.plan_version_id, plan_id,
                     stale_cache,
                 )
                 upstream_changes[s.step_id] = is_stale
@@ -121,7 +112,6 @@ def _step_is_stale(
     spec: StepSpec,
     all_steps: list[StepSpec],
     plan_version_id: str,
-    branch_id: str | None,
     plan_id: str | None,
     stale_cache: dict[str, bool],
     selected_run_step: Any | None = None,
@@ -132,7 +122,7 @@ def _step_is_stale(
     rs = selected_run_step
     if rs is None:
         pairs = resolve_evidence(
-            uow, plan_version_id, spec.step_id, branch_id=branch_id,
+            uow, plan_version_id, spec.step_id,
             plan_id=plan_id, fingerprint_match=spec,
         )
         rs = uow.run_steps.get(pairs[0][0].run_step_id) if pairs else None
@@ -146,7 +136,7 @@ def _step_is_stale(
         parent_spec = _find_spec(pid, all_steps)
         parent_stale = _step_is_stale(
             uow, parent_spec, all_steps,
-            plan_version_id, branch_id, plan_id, stale_cache,
+            plan_version_id, plan_id, stale_cache,
         )
         if parent_stale:
             stale_cache[spec.step_id] = True
@@ -155,7 +145,7 @@ def _step_is_stale(
         parent_pairs = resolve_evidence(
             uow,
             plan_version_id, pid,
-            branch_id=branch_id, plan_id=plan_id,
+            plan_id=plan_id,
             fingerprint_match=parent_spec,
         )
 
@@ -182,11 +172,11 @@ def _step_is_stale(
 
 def step_is_stale(
     uow: Any, spec: StepSpec, all_steps: list[StepSpec], plan_version_id: str,
-    branch_id: str | None, plan_id: str | None,
+    plan_id: str | None,
     selected_run_step: Any | None = None,
 ) -> bool:
     """Determine whether a step or any of its recorded upstream inputs is stale."""
-    return _step_is_stale(uow, spec, all_steps, plan_version_id, branch_id, plan_id, {}, selected_run_step)
+    return _step_is_stale(uow, spec, all_steps, plan_version_id, plan_id, {}, selected_run_step)
 
 
 __all__ = ["ExplainStaleness", "ExplainStalenessCommand", "StalenessExplanation", "step_is_stale"]

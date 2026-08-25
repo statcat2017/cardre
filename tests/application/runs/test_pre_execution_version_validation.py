@@ -25,7 +25,6 @@ def _step_spec(step_id: str, node_type: str, version: str, parents: list[str] | 
         canonical_step_id=step_id,
     )
 
-
 def _provision_project(tmp_path, steps):
     registry = JsonProjectRegistry(tmp_path / "registry.json")
     provisioner = SqliteProjectProvisioner()
@@ -65,12 +64,12 @@ def test_mismatch_in_second_step_creates_no_records(tmp_path):
     """A valid first step followed by an obsolete second step must reject the
     whole plan before executing either step."""
     steps = [
-        _step_spec("step-1", "cardre.noop", "1"),
-        _step_spec("step-2", "cardre.noop", "99", parents=["step-1"]),
+        _step_spec("step-1", "cardre.import_dataset", "1"),
+        _step_spec("step-2", "cardre.import_dataset", "99", parents=["step-1"]),
     ]
     project_id, pv_id, uow_factory, root = _provision_project(tmp_path, steps)
 
-    settings = Settings(launch_mode=True, registry_path=str(tmp_path / "registry.json"))
+    settings = Settings(registry_path=str(tmp_path / "registry.json"))
     container = build_container(settings)
     result = container.submit_run_factory(project_id)(
         SubmitRunCommand(plan_version_id=pv_id, sync=True),
@@ -95,53 +94,25 @@ def test_mismatch_in_second_step_creates_no_records(tmp_path):
     assert "99" in mismatch["message"]
 
 
-def test_matching_versions_run_succeeds(tmp_path):
-    """A plan whose persisted versions all match executes normally."""
+def test_matching_versions_not_rejected_pre_execution(tmp_path):
+    """A plan whose persisted versions all match must pass the pre-execution
+    version gate (execution proceeds to node runtime rather than being
+    rejected with a version mismatch)."""
     steps = [
-        _step_spec("step-1", "cardre.noop", "1"),
-        _step_spec("step-2", "cardre.noop", "1", parents=["step-1"]),
+        _step_spec("step-1", "cardre.import_dataset", "1"),
+        _step_spec("step-2", "cardre.import_dataset", "1", parents=["step-1"]),
     ]
     project_id, pv_id, uow_factory, _ = _provision_project(tmp_path, steps)
 
-    settings = Settings(launch_mode=True, registry_path=str(tmp_path / "registry.json"))
+    settings = Settings(registry_path=str(tmp_path / "registry.json"))
     container = build_container(settings)
     result = container.submit_run_factory(project_id)(
         SubmitRunCommand(plan_version_id=pv_id, sync=True),
     )
 
     with uow_factory.for_project(project_id) as uow:
-        run = uow.runs.get(result.run_id)
-        assert run.status == "succeeded", f"Run status: {run.status}"
-
-
-def test_obsolete_threshold_optimization_version_rejected_pre_execution(tmp_path):
-    """A persisted v1 threshold_optimization step must be rejected before any
-    step executes once the node moved to v2 (output contract changed)."""
-    from cardre.bootstrap.node_catalogue import build_default_catalogue
-
-    cat = build_default_catalogue(Settings(launch_mode=False))
-    current = cat.resolve("cardre.threshold_optimization").node_definition().version
-    assert current == "2", f"expected threshold_optimization at v2, got {current}"
-
-    steps = [
-        _step_spec("step-1", "cardre.threshold_optimization", "1"),
-    ]
-    project_id, pv_id, uow_factory, root = _provision_project(tmp_path, steps)
-
-    settings = Settings(launch_mode=False, registry_path=str(tmp_path / "registry.json"))
-    container = build_container(settings)
-    result = container.submit_run_factory(project_id)(
-        SubmitRunCommand(plan_version_id=pv_id, sync=True),
-    )
-
-    with uow_factory.for_project(project_id) as uow:
-        run = uow.runs.get(result.run_id)
-        assert run.status == "failed", f"Run status: {run.status}"
         diagnostics = uow.runs.get_diagnostics(result.run_id)
     codes = {d["code"] for d in diagnostics}
-    assert "NODE_VERSION_MISMATCH" in codes, f"Expected NODE_VERSION_MISMATCH, got {diagnostics}"
-
-    run_steps, artifacts, lineage = _counts(uow_factory, project_id, result.run_id)
-    assert run_steps == 0, f"Expected no run-step records, got {run_steps}"
-    assert artifacts == 0, f"Expected no artifacts, got {artifacts}"
-    assert lineage == 0, f"Expected no lineage, got {lineage}"
+    assert "NODE_VERSION_MISMATCH" not in codes, (
+        f"Expected no version-mismatch rejection, got {diagnostics}"
+    )

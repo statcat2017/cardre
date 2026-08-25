@@ -7,8 +7,8 @@ from pathlib import Path
 from cardre._version import __version__
 from cardre.adapters.sqlite.schema import (
     ALL_TABLES_SQL,
-    V3_STORE_SCHEMA_FAMILY,
-    V3_STORE_SCHEMA_VERSION,
+    STORE_SCHEMA_FAMILY,
+    STORE_SCHEMA_VERSION,
 )
 from cardre.domain.errors import CardreError, ErrorCode
 
@@ -52,11 +52,11 @@ class SqliteProjectProvisioner:
             conn.executescript(ALL_TABLES_SQL)
             conn.execute(
                 "INSERT OR REPLACE INTO store_meta (key, value) VALUES ('schema_family', ?)",
-                (V3_STORE_SCHEMA_FAMILY,),
+                (STORE_SCHEMA_FAMILY,),
             )
             conn.execute(
                 "INSERT OR REPLACE INTO store_meta (key, value) VALUES ('schema_version', ?)",
-                (str(V3_STORE_SCHEMA_VERSION),),
+                (str(STORE_SCHEMA_VERSION),),
             )
             conn.execute(
                 "INSERT OR REPLACE INTO store_meta (key, value) VALUES ('created_by_cardre_version', ?)",

@@ -30,13 +30,13 @@ class ScorecardTableExportNode(NodeType):
     node_type = "cardre.scorecard_table_export"
     version = "1"
     category = "export"
-    description = "Export scorecard as a table (CSV equivalent + JSON)"
+    description = "Export scorecard as a Parquet table"
 
     __definition__ = NodeDefinition(
         node_type="cardre.scorecard_table_export",
         version="1",
         category="export",
-        description="Export scorecard as a table (CSV equivalent + JSON)",
+        description="Export scorecard as a Parquet table",
         input_contract=ArtifactContract(
             roles=(
                 ArtifactRoleSpec("scorecard", required=True),
@@ -84,34 +84,14 @@ class ScorecardTableExportNode(NodeType):
             metadata={"schema_version": SCHEMA_SCORE_TABLE, "row_count": len(table_rows)},
         )
 
-        table_payload: dict[str, Any] = {
-            "schema_version": SCHEMA_SCORE_TABLE,
-            "base_score": scorecard.base_score,
-            "base_odds": scorecard.base_odds,
-            "points_to_double_odds": scorecard.points_to_double_odds,
-            "base_points": scorecard.base_points or 0,
-            "score_direction": scorecard.score_direction,
-            "target_column": scorecard.target_column,
-            "rows": table_rows,
-        }
-
-        context.outputs.publish_json(
-            role="report",
-            kind=EvidenceKind.SCORE_TABLE,
-            payload=table_payload,
-            metadata={
-                "schema_version": SCHEMA_SCORE_TABLE,
-                "row_count": len(table_rows),
-            },
-        )
         context.outputs.add_metric("row_count", len(table_rows))
         return context.outputs.build_result()
 
 
 def _validate_bundle_components(
     bundle_meta: dict[str, Any],
-    model_evidence: Any,
-    scorecard_evidence: Any,
+    model_art: Any,
+    scorecard_art: Any,
     bin_def_evidence: Any,
     woe_table_evidence: Any,
 ) -> None:
@@ -120,15 +100,15 @@ def _validate_bundle_components(
     expected_bin_def = bundle_meta.get("bin_definition_artifact_id")
     expected_woe_table = bundle_meta.get("woe_table_artifact_id")
 
-    if expected_model and model_evidence and expected_model != getattr(model_evidence, "source_artifact_id", None):
+    if expected_model and expected_model != getattr(model_art, "artifact_id", None):
         raise ValueError(
             f"Frozen bundle model_artifact_id ({expected_model}) "
-            f"does not match input model artifact ({getattr(model_evidence, 'source_artifact_id', None)})"
+            f"does not match input model artifact ({getattr(model_art, 'artifact_id', None)})"
         )
-    if expected_scorecard and scorecard_evidence and expected_scorecard != getattr(scorecard_evidence, "source_artifact_id", None):
+    if expected_scorecard and expected_scorecard != getattr(scorecard_art, "artifact_id", None):
         raise ValueError(
             f"Frozen bundle scorecard_artifact_id ({expected_scorecard}) "
-            f"does not match input scorecard artifact ({getattr(scorecard_evidence, 'source_artifact_id', None)})"
+            f"does not match input scorecard artifact ({getattr(scorecard_art, 'artifact_id', None)})"
         )
     if expected_bin_def and bin_def_evidence and expected_bin_def != getattr(bin_def_evidence, "source_artifact_id", None):
         raise ValueError(
@@ -331,7 +311,7 @@ class PythonScoringExportNode(NodeType):
         scorecard = context.inputs.read(scorecard_art, EvidenceKind.SCORE_SCALING)
 
         _validate_bundle_components(
-            bundle_art.metadata, model, scorecard, bin_def, woe_table,
+            bundle_art.metadata, model_art, scorecard_art, bin_def, woe_table,
         )
 
         bundle_payload = context.inputs.read(bundle_art, EvidenceKind.FROZEN_SCORECARD_BUNDLE)
@@ -366,7 +346,7 @@ class PythonScoringExportNode(NodeType):
                 "points_to_double_odds": scorecard.points_to_double_odds,
                 "score_direction": scorecard.score_direction,
                 "target_column": scorecard.target_column or model.target_column,
-                "model_family": model.model_family,
+                "model_family": "logistic_regression",
             },
         }
 
@@ -531,7 +511,7 @@ class SqlScoringExportNode(NodeType):
         scorecard = context.inputs.read(scorecard_art, EvidenceKind.SCORE_SCALING)
 
         _validate_bundle_components(
-            bundle_art.metadata, model, scorecard, bin_def, woe_table,
+            bundle_art.metadata, model_art, scorecard_art, bin_def, woe_table,
         )
 
         bundle_payload = context.inputs.read(bundle_art, EvidenceKind.FROZEN_SCORECARD_BUNDLE)
@@ -566,7 +546,7 @@ class SqlScoringExportNode(NodeType):
                 "points_to_double_odds": scorecard.points_to_double_odds,
                 "score_direction": scorecard.score_direction,
                 "target_column": scorecard.target_column or model.target_column,
-                "model_family": model.model_family,
+                "model_family": "logistic_regression",
             },
         }
 

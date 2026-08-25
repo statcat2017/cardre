@@ -5,8 +5,6 @@
 The `StepRunner` (`cardre/application/execution/step_runner.py`) is the single execution seam.
 
 - **Full-plan run**: executes all steps in a plan version in topological order.
-- **Branch launch**: the run metadata may be branch-scoped, but step execution still uses the same execute-all-steps loop. The only branch-specific pre-execution policy that survives is a short-circuit check via `cardre/application/evidence/evidence_resolver.py`.
-- **To-node execution is not supported at launch.** `RunCoordinator` rejects `run_scope="to_node"` before execution begins.
 
 ### Execution Flow
 

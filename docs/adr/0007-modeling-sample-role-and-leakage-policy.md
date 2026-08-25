@@ -4,6 +4,15 @@
 
 Proposed
 
+> **Superseded (Batch 4, one-product purge).** The development-sample vocabulary
+> described elsewhere in the product now supports one sample domain (`ttd`) and
+> one sample method (`full_population`) only. OTB/rejection and approval-driven
+> sample definitions, resampling, and explainability dispatch are removed.
+> `reject_inference_position` remains target metadata describing the project's
+> declared modelling context; no reject-inference execution path remains. The
+> leakage-policy decisions in this ADR remain current guidance for the canonical
+> scorecard pathway.
+
 ## Context
 
 Cardre's build/validate two-stream pathway (ADR 0001) enforces leakage prevention structurally: fit/refinement/selection nodes cannot consume `test` or `oot` dataset artifacts. However, several modeling paths can still leak information or produce misleading results within the training stream:

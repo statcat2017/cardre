@@ -24,10 +24,6 @@ def automatic_binning_parameter_schema(node_type: str, node_version: str) -> Nod
                 description="Equal-frequency binning with optional missing handling.",
                 params=[
                     ParameterDefinition(
-                        name="method", label="Method",
-                        kind="string", default="fine_classing",
-                    ),
-                    ParameterDefinition(
                         name="max_bins", label="Max bins",
                         kind="integer", default=20,
                         constraint=ParameterConstraint(min_value=2),
@@ -58,134 +54,13 @@ def automatic_binning_parameter_schema(node_type: str, node_version: str) -> Nod
                     ),
                 ],
             ),
-            MethodOption(
-                id="optbinning", label="OptBinning (supervised)",
-                status="available",
-                description="Supervised optimal binning using the optbinning engine.",
-                params=[
-                    ParameterDefinition(
-                        name="method", label="Method",
-                        kind="string", default="optbinning",
-                    ),
-                    ParameterDefinition(
-                        name="engine", label="Engine",
-                        kind="string", default="optbinning",
-                        constraint=ParameterConstraint(enum_values=["optbinning"]),
-                        help_text="Binning engine to use.",
-                    ),
-                    ParameterDefinition(
-                        name="prebinning_method", label="Prebinning method",
-                        kind="string", default="cart",
-                        constraint=ParameterConstraint(enum_values=["cart"]),
-                        help_text="Method for initial prebinning.",
-                    ),
-                    ParameterDefinition(
-                        name="solver", label="Solver",
-                        kind="string", default="cp",
-                        constraint=ParameterConstraint(enum_values=["cp", "mip"]),
-                        help_text="Optimization solver.",
-                    ),
-                    ParameterDefinition(
-                        name="divergence", label="Divergence",
-                        kind="string", default="iv",
-                        constraint=ParameterConstraint(enum_values=["iv", "js", "hellinger"]),
-                        help_text="Divergence measure for binning optimality.",
-                    ),
-                    ParameterDefinition(
-                        name="monotonic_trend", label="Monotonic trend",
-                        kind="string", default="auto",
-                        constraint=ParameterConstraint(enum_values=["auto", "none", "ascending", "descending"]),
-                        help_text="Monotonicity constraint for WOE trend.",
-                    ),
-                    ParameterDefinition(
-                        name="max_n_prebins", label="Max N prebins",
-                        kind="integer",
-                        constraint=ParameterConstraint(min_value=1),
-                        help_text="Maximum number of prebins.",
-                    ),
-                    ParameterDefinition(
-                        name="min_prebin_size", label="Min prebin size",
-                        kind="float",
-                        constraint=ParameterConstraint(exclusive_min=0, exclusive_max=1),
-                        help_text="Minimum fraction of rows per prebin.",
-                    ),
-                    ParameterDefinition(
-                        name="max_n_bins", label="Max N bins",
-                        kind="integer",
-                        constraint=ParameterConstraint(min_value=1),
-                        help_text="Maximum number of final bins.",
-                    ),
-                    ParameterDefinition(
-                        name="min_bin_size", label="Min bin size",
-                        kind="float",
-                        constraint=ParameterConstraint(exclusive_min=0, exclusive_max=1),
-                        help_text="Minimum fraction of rows per final bin.",
-                    ),
-                    ParameterDefinition(
-                        name="min_bin_n_event", label="Min bin N event",
-                        kind="integer",
-                        constraint=ParameterConstraint(min_value=1),
-                        help_text="Minimum event observations per bin.",
-                    ),
-                    ParameterDefinition(
-                        name="min_bin_n_nonevent", label="Min bin N nonevent",
-                        kind="integer",
-                        constraint=ParameterConstraint(min_value=1),
-                        help_text="Minimum non-event observations per bin.",
-                    ),
-                    ParameterDefinition(
-                        name="cat_cutoff", label="Category cutoff",
-                        kind="float",
-                        constraint=ParameterConstraint(exclusive_min=0, exclusive_max=1),
-                        help_text="Category frequency cutoff for categorical variables.",
-                    ),
-                    ParameterDefinition(
-                        name="time_limit", label="Time limit",
-                        kind="integer",
-                        constraint=ParameterConstraint(min_value=1),
-                        help_text="Time limit in seconds for the solver.",
-                    ),
-                    ParameterDefinition(
-                        name="special_codes", label="Special codes",
-                        kind="object", default={},
-                        help_text="Map of variable names to special code value lists.",
-                    ),
-                    ParameterDefinition(
-                        name="exclude_columns", label="Exclude columns",
-                        kind="list", default=[],
-                        help_text="Column names to exclude from binning.",
-                    ),
-                ],
-            ),
-            MethodOption(
-                id="chi_merge", label="Chi-merge binning",
-                status="coming_soon", description="Chi-square merge binning (coming soon).",
-                params=[],
-            ),
-            MethodOption(
-                id="tree_binning", label="Decision tree binning",
-                status="coming_soon",
-                description="Supervised binning via decision tree splits (coming soon).",
-                params=[],
-            ),
         ],
     )
 
 
-VALID_METHODS = {"fine_classing", "optbinning"}
-
-
 def validate_automatic_binning_params(params: dict[str, Any]) -> list[str]:
     errors: list[str] = []
-    method = params.get("method", "fine_classing")
-    if method not in VALID_METHODS:
-        errors.append(f"method must be one of {sorted(VALID_METHODS)}, got {method!r}")
-        return errors
-
-    if method == "fine_classing":
-        errors.extend(_validate_fine_classing(params))
-    elif method == "optbinning":
-        errors.extend(_validate_optbinning(params))
+    errors.extend(_validate_fine_classing(params))
     return errors
 
 
@@ -212,57 +87,4 @@ def _validate_fine_classing(params: dict[str, Any]) -> list[str]:
             errors.append("max_categorical_levels must be >= 1")
     except (ValueError, TypeError):
         errors.append("max_categorical_levels must be an integer")
-    return errors
-
-
-def _validate_optbinning(params: dict[str, Any]) -> list[str]:
-    errors: list[str] = []
-    engine = params.get("engine", "optbinning")
-    if engine not in {"optbinning"}:
-        return [f"engine must be one of {{'optbinning'}}, got {engine!r}"]
-    if engine == "optbinning":
-        try:
-            import optbinning  # noqa: F401
-        except ImportError:
-            errors.append(
-                "optbinning package not installed. "
-                "Install with: pip install cardre[optimal-binning]"
-            )
-
-    pbm = params.get("prebinning_method", "cart")
-    if pbm not in {"cart"}:
-        errors.append("prebinning_method must be 'cart'")
-
-    solver = params.get("solver", "cp")
-    if solver not in {"cp", "mip"}:
-        errors.append("solver must be one of {'cp', 'mip'}")
-
-    divergence = params.get("divergence", "iv")
-    if divergence not in {"iv", "js", "hellinger"}:
-        errors.append("divergence must be one of {'iv', 'js', 'hellinger'}")
-
-    trend = params.get("monotonic_trend", "auto")
-    if trend not in {"auto", "none", "ascending", "descending"}:
-        errors.append("monotonic_trend must be one of auto/none/ascending/descending")
-
-    for key in ("max_n_prebins", "max_n_bins", "min_bin_n_event",
-                 "min_bin_n_nonevent", "time_limit"):
-        v = params.get(key)
-        if v is not None:
-            try:
-                if int(v) < 1:
-                    errors.append(f"{key} must be >= 1")
-            except (ValueError, TypeError):
-                errors.append(f"{key} must be an integer")
-
-    for key in ("min_prebin_size", "min_bin_size", "cat_cutoff"):
-        v = params.get(key)
-        if v is not None:
-            try:
-                fv = float(v)
-                if not (0 < fv < 1):
-                    errors.append(f"{key} must be between 0 and 1")
-            except (ValueError, TypeError):
-                errors.append(f"{key} must be a number")
-
     return errors

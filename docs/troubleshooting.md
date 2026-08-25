@@ -77,22 +77,4 @@ cd frontend && npm install
 
 **Symptom**: Schema migration errors.
 
-**Fix**: Delete the project directory and recreate the project. The project directory contains the SQLite database and all artifacts.
-
-## Node Not Available
-
-**Symptom**: `NodeNotAvailableForLaunch` error.
-
-**Fix**: Set `CARDRE_LAUNCH_MODE=0` to enable deferred nodes:
-```bash
-CARDRE_LAUNCH_MODE=0 cardre-api
-```
-
-## Governance Features Not Available
-
-**Symptom**: Branch endpoints return 403.
-
-**Fix**: Set `CARDRE_GOVERNANCE=1` to enable governance features:
-```bash
-CARDRE_GOVERNANCE=1 cardre-api
-```
+**Fix**: Delete the project directory and recreate the project. The project directory contains the SQLite database and all artifacts. The store accepts one schema identifier and rejects incompatible project stores.

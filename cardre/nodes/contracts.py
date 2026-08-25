@@ -34,9 +34,9 @@ class NodeDefinition:
     """The single contract source for a node.
 
     Carries identity (node_type, version, category, description) and the
-    typed input/output contracts. Runtime authorities for tier, optional
-    dependencies and parameter schemas live on the ``NodeType`` class and
-    are consumed directly by the catalogue and ``StepRunner``.
+    typed input/output contracts. Runtime authorities for optional
+    dependencies and parameter schemas live on the ``NodeType`` class and are
+    consumed directly by the catalogue and ``StepRunner``.
     """
     node_type: str
     version: str
@@ -67,7 +67,7 @@ class InputCollection(Protocol):
     def read_bytes(self, artifact: Any) -> bytes: ...
     def target_metadata(self) -> Any | None: ...
     def find_frozen_bundle(self) -> Any | None: ...
-    def artifact_ref(self, artifact_id: str, *, physical_hash: str | None = None) -> Any | None: ...
+    def artifact_ref(self, artifact_id: str) -> Any | None: ...
 
 
 @runtime_checkable
@@ -116,8 +116,6 @@ class NodeType(ABC):
     version: str = ""
     category: str = ""
     description: str = ""
-    optional_dependencies: list[str] | None = None
-    _deferred: bool = False
 
     @classmethod
     def node_definition(cls) -> NodeDefinition:

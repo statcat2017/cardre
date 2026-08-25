@@ -12,7 +12,6 @@ from typing import Any
 
 class ErrorCode(StrEnum):
     BAD_REQUEST = "BAD_REQUEST"
-    GOVERNANCE_DISABLED = "GOVERNANCE_DISABLED"
     PLAN_VERSION_IMMUTABLE = "PLAN_VERSION_IMMUTABLE"
     STORE_VERSION_INCOMPATIBLE = "STORE_VERSION_INCOMPATIBLE"
     RUN_EXECUTION_FAILED = "RUN_EXECUTION_FAILED"
@@ -22,8 +21,6 @@ class ErrorCode(StrEnum):
     RUN_NOT_FOUND = "RUN_NOT_FOUND"
     ARTIFACT_NOT_FOUND = "ARTIFACT_NOT_FOUND"
     STEP_NOT_FOUND = "STEP_NOT_FOUND"
-    BRANCH_NOT_FOUND = "BRANCH_NOT_FOUND"
-    COMPARISON_NOT_FOUND = "COMPARISON_NOT_FOUND"
     REVIEW_NOT_FOUND = "REVIEW_NOT_FOUND"
     MISSING_PROJECT_ID = "MISSING_PROJECT_ID"
     MISSING_PROJECT_PATH = "MISSING_PROJECT_PATH"
@@ -32,66 +29,23 @@ class ErrorCode(StrEnum):
     INVALID_PROJECT_PATH = "INVALID_PROJECT_PATH"
     MISSING_PARAMETER = "MISSING_PARAMETER"
     PLAN_VERSION_NOT_COMMITTED = "PLAN_VERSION_NOT_COMMITTED"
-    GOVERNANCE_NOT_ENABLED = "GOVERNANCE_NOT_ENABLED"
     GRAPH_VALIDATION_ERROR = "GRAPH_VALIDATION_ERROR"
-    PLAN_CONTAINS_UNAVAILABLE_NODES = "PLAN_CONTAINS_UNAVAILABLE_NODES"
     RUN_NOT_RUNNING = "RUN_NOT_RUNNING"
     RUN_PLAN_VERSION_MISMATCH = "RUN_PLAN_VERSION_MISMATCH"
     MISSING_INPUT_ARTIFACT = "MISSING_INPUT_ARTIFACT"
     PARAMETER_VALIDATION_ERROR = "PARAMETER_VALIDATION_ERROR"
     ARTIFACT_READ_ERROR = "ARTIFACT_READ_ERROR"
     ARTIFACT_WRITE_ERROR = "ARTIFACT_WRITE_ERROR"
-    NODE_NOT_AVAILABLE_FOR_LAUNCH = "NODE_NOT_AVAILABLE_FOR_LAUNCH"
     NODE_VERSION_MISMATCH = "NODE_VERSION_MISMATCH"
-    RUN_SCOPE_NOT_AVAILABLE_FOR_LAUNCH = "RUN_SCOPE_NOT_AVAILABLE_FOR_LAUNCH"
-    BRANCH_VALIDATION_ERROR = "BRANCH_VALIDATION_ERROR"
-    OPTIONAL_DEPENDENCY_NOT_INSTALLED = "OPTIONAL_DEPENDENCY_NOT_INSTALLED"
     RUN_LIFECYCLE_ERROR = "RUN_LIFECYCLE_ERROR"
     PLAN_VERSION_ALREADY_COMMITTED = "PLAN_VERSION_ALREADY_COMMITTED"
-    STALE_SNAPSHOT = "STALE_SNAPSHOT"
     RUN_CANCELLED = "RUN_CANCELLED"
     OUTPUT_CONTRACT_VIOLATION = "OUTPUT_CONTRACT_VIOLATION"
     INPUT_CONTRACT_VIOLATION = "INPUT_CONTRACT_VIOLATION"
     ARTIFACT_STAGING_FAILED = "ARTIFACT_STAGING_FAILED"
     ARTIFACT_PUBLISH_FAILED = "ARTIFACT_PUBLISH_FAILED"
 
-    # --- Branch / governance validation (HTTP 400 family) ---
-    SEGMENT_FILTER_RULES_REQUIRED = "SEGMENT_FILTER_RULES_REQUIRED"
-    SEGMENT_FILTER_REQUIRED = "SEGMENT_FILTER_REQUIRED"
-    SEGMENT_FILTER_INVALID = "SEGMENT_FILTER_INVALID"
-    SEGMENT_FILTER_UNSUPPORTED_OPERATOR = "SEGMENT_FILTER_UNSUPPORTED_OPERATOR"
-    SEGMENT_FILTER_REASON_REQUIRED = "SEGMENT_FILTER_REASON_REQUIRED"
-    SEGMENT_FILTER_VALUE_REQUIRED = "SEGMENT_FILTER_VALUE_REQUIRED"
-    BRANCH_NAME_REQUIRED = "BRANCH_NAME_REQUIRED"
-    BRANCH_REASON_REQUIRED = "BRANCH_REASON_REQUIRED"
-    BRANCH_TYPE_MISMATCH = "BRANCH_TYPE_MISMATCH"
-    BRANCH_POINT_NOT_ALLOWED = "BRANCH_POINT_NOT_ALLOWED"
-    BRANCH_POINT_NOT_IN_PLAN = "BRANCH_POINT_NOT_IN_PLAN"
-    BASE_BRANCH_NOT_FOUND = "BASE_BRANCH_NOT_FOUND"
-    BASE_BRANCH_INACTIVE = "BASE_BRANCH_INACTIVE"
-    BASE_BRANCH_SCOPE_MISMATCH = "BASE_BRANCH_SCOPE_MISMATCH"
-    PLAN_PROJECT_MISMATCH = "PLAN_PROJECT_MISMATCH"
-    BRANCH_SCOPE_MISMATCH = "BRANCH_SCOPE_MISMATCH"
-    BRANCH_NOT_ACTIVE = "BRANCH_NOT_ACTIVE"
-    BRANCH_PLAN_VERSION_MISMATCH = "BRANCH_PLAN_VERSION_MISMATCH"
-
-    REJECT_INFERENCE_CHALLENGER_MISSING_SAMPLE_DEF = "REJECT_INFERENCE_CHALLENGER_MISSING_SAMPLE_DEF"
-    REJECT_INFERENCE_CHALLENGER_REQUIRES_TTD = "REJECT_INFERENCE_CHALLENGER_REQUIRES_TTD"
     EVIDENCE_VALIDATION_ERROR = "EVIDENCE_VALIDATION_ERROR"
-    STALE_HEAD_VERSION = "STALE_HEAD_VERSION"
-    STALE_BASE_VERSION = "STALE_BASE_VERSION"
-
-    # --- Champion / comparison ---
-    CHAMPION_REASON_REQUIRED = "CHAMPION_REASON_REQUIRED"
-    CHAMPION_BRANCH_NOT_FOUND = "CHAMPION_BRANCH_NOT_FOUND"
-    CHAMPION_BRANCH_INACTIVE = "CHAMPION_BRANCH_INACTIVE"
-    CHAMPION_BRANCH_MISMATCH = "CHAMPION_BRANCH_MISMATCH"
-    COMPARISON_SNAPSHOT_NOT_FOUND = "COMPARISON_SNAPSHOT_NOT_FOUND"
-    COMPARISON_NOT_READY = "COMPARISON_NOT_READY"
-    COMPARISON_PLAN_PROJECT_MISMATCH = "COMPARISON_PLAN_PROJECT_MISMATCH"
-    BRANCH_NOT_IN_COMPARISON = "BRANCH_NOT_IN_COMPARISON"
-    BASELINE_BRANCH_NOT_FOUND = "BASELINE_BRANCH_NOT_FOUND"
-    CHALLENGER_BRANCH_NOT_FOUND = "CHALLENGER_BRANCH_NOT_FOUND"
 
     # --- Reporting / export ---
     REPORT_BLOCKED = "REPORT_BLOCKED"
@@ -194,31 +148,10 @@ class NodeFailedWithArtifacts(CardreError):
         super().__init__(message, code=code)
 
 
-class GovernanceNotEnabled(CardreError):
-    """Raised when a governance-gated feature is accessed without CARDRE_GOVERNANCE=1."""
-    code = ErrorCode.GOVERNANCE_NOT_ENABLED
-    status_code = 403
-
-
 class GraphValidationError(CardreError):
     """Raised when a plan graph fails validation."""
     code = ErrorCode.GRAPH_VALIDATION_ERROR
     status_code = 500
-
-
-class PlanContainsUnavailableNodesError(CardreError):
-    """Raised before a run starts when a plan contains unavailable nodes."""
-    code = ErrorCode.PLAN_CONTAINS_UNAVAILABLE_NODES
-    status_code = 400
-
-    def __init__(self, issues: list[dict[str, Any]]) -> None:
-        self.issues = issues
-        step_ids = ", ".join(i["step_id"] for i in issues)
-        message = (
-            f"Plan contains {len(issues)} unavailable node(s): {step_ids}. "
-            "See context for details."
-        )
-        super().__init__(message, context={"issues": issues})
 
 
 class PlanVersionNotCommittedError(CardreError):
@@ -308,12 +241,6 @@ class ArtifactWriteError(CardreError):
     status_code = 500
 
 
-class NodeNotAvailableForLaunch(CardreError):
-    """Raised when a deferred node is instantiated in launch mode."""
-    code = ErrorCode.NODE_NOT_AVAILABLE_FOR_LAUNCH
-    status_code = 400
-
-
 class NodeVersionMismatchError(CardreError):
     """Raised when a persisted step's node_version differs from the running node's version."""
     code = ErrorCode.NODE_VERSION_MISMATCH
@@ -362,57 +289,23 @@ class NodeVersionMismatchError(CardreError):
         return err
 
 
-class RunScopeNotAvailableForLaunch(CardreError):
-    """Raised when a run scope is disabled for launch (e.g. ``to_node``)."""
-    code = ErrorCode.RUN_SCOPE_NOT_AVAILABLE_FOR_LAUNCH
-    status_code = 400
-
-
-class BranchValidationError(CardreError):
-    """Raised when branch creation or management validation fails."""
-    code = ErrorCode.BRANCH_VALIDATION_ERROR
-    status_code = 400
-
-
-class OptionalDependencyNotInstalled(CardreError):
-    """Raised when a node's optional dependency group is not installed."""
-    code = ErrorCode.OPTIONAL_DEPENDENCY_NOT_INSTALLED
-    status_code = 400
-
-    def __init__(self, node_type: str, missing_groups: list[str]) -> None:
-        self.node_type = node_type
-        self.missing_groups = list(missing_groups)
-        hint = f"pip install -e '.[{','.join(missing_groups)}]'"
-        message = (
-            f"Node {node_type!r} requires optional dependency group(s) "
-            f"{missing_groups} which are not installed. Install with: {hint}"
-        )
-        super().__init__(message, context={"node_type": node_type, "missing_groups": list(missing_groups)})
-
-
 __all__ = [
     "ArtifactReadError",
     "ArtifactWriteError",
-    "BranchValidationError",
     "CardreError",
     "ConcurrentRunError",
     "Diagnostic",
     "ErrorCode",
-    "GovernanceNotEnabled",
     "GraphValidationError",
     "INTERNAL_ERROR_CODES",
     "MissingInputArtifactError",
     "NodeRoleAccessViolation",
-    "NodeNotAvailableForLaunch",
     "NodeVersionMismatchError",
-    "OptionalDependencyNotInstalled",
     "ParameterValidationError",
-    "PlanContainsUnavailableNodesError",
     "PlanVersionNotCommittedError",
     "RunLifecycleError",
     "RunNotFoundError",
     "RunNotRunningError",
     "RunPlanVersionMismatchError",
-    "RunScopeNotAvailableForLaunch",
     "SchemaVersionError",
 ]

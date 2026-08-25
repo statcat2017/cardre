@@ -10,21 +10,6 @@ from typing import Any
 
 from pydantic import BaseModel, Field, computed_field
 
-from cardre.application.reporting.contracts import ReportMode
-
-# ---------------------------------------------------------------------------
-# Source step reference — tracks exact vs inherited resolution
-# ---------------------------------------------------------------------------
-
-
-class ResolvedStepRef(BaseModel):
-    requested_branch_id: str
-    resolved_branch_id: str
-    canonical_step_id: str
-    step_id: str
-    resolution: str = "exact"
-
-
 # ---------------------------------------------------------------------------
 # Source / run manifest
 # ---------------------------------------------------------------------------
@@ -71,52 +56,14 @@ class DatasetRole(BaseModel):
 class PathwayStep(BaseModel):
     canonical_step_id: str
     step_id: str
-    branch_id: str = ""
     step_type: str = ""
     status: str = ""
     config_hash: str = ""
-    resolution: str = "exact"
 
 
 class PathwaySummary(BaseModel):
     pathway_id: str = ""
     steps: list[PathwayStep] = Field(default_factory=list)
-
-
-# ---------------------------------------------------------------------------
-# Branch info
-# ---------------------------------------------------------------------------
-
-
-class BranchInfo(BaseModel):
-    branch_id: str
-    name: str = ""
-    parent_branch_id: str | None = None
-    created_from_canonical_step_id: str | None = None
-    is_target_branch: bool = False
-    is_champion: bool = False
-    status: str = ""
-
-
-class BranchSummary(BaseModel):
-    branching_model: str = ""
-    target_branch_id: str = ""
-    branches: list[BranchInfo] = Field(default_factory=list)
-
-
-# ---------------------------------------------------------------------------
-# Champion
-# ---------------------------------------------------------------------------
-
-
-class ChampionInfo(BaseModel):
-    champion_status: str = "not_available"
-    assignment_id: str | None = None
-    champion_branch_id: str | None = None
-    comparison_artifact_id: str | None = None
-    rationale: str | None = None
-    selected_at: str | None = None
-    target_branch_is_champion: bool = False
 
 
 # ---------------------------------------------------------------------------
@@ -160,14 +107,12 @@ class VariableBin(BaseModel):
 class VariableInfo(BaseModel):
     variable_name: str
     role: str = "included"
-    branch_id: str = ""
     type: str = ""
     final_bin_count: int = 0
     iv: float = 0.0
     monotonicity_status: str = ""
     manual_edits: bool = False
     woe_smoothing: WoeSmoothingInfo = Field(default_factory=WoeSmoothingInfo)
-    source_step_refs: list[ResolvedStepRef] = Field(default_factory=list)
     bins: list[VariableBin] = Field(default_factory=list)
     affected_bins: list[AffectedBinDetail] = Field(default_factory=list)
     artifacts: list[str] = Field(default_factory=list)
@@ -181,21 +126,14 @@ class VariableInfo(BaseModel):
 class ModelFeature(BaseModel):
     variable_name: str
     coefficient: float = 0.0
-    standard_error: float | None = None
-    p_value: float | None = None
     included: bool = True
 
 
 class ModelInfo(BaseModel):
     model_type: str = "logistic_regression_scorecard"
-    branch_id: str = ""
     target: str = ""
     features: list[ModelFeature] = Field(default_factory=list)
     intercept: float = 0.0
-    regularisation: dict[str, Any] | None = None
-    fit_dataset_role: str = "train"
-    fitting_config_hash: str = ""
-    source_step_refs: list[ResolvedStepRef] = Field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -213,7 +151,6 @@ class ScoreScalingInfo(BaseModel):
     rounding: str = "nearest_integer"
     min_score: int = 0
     max_score: int = 0
-    source_step_refs: list[ResolvedStepRef] = Field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -245,7 +182,6 @@ class StabilityInfo(BaseModel):
 class ValidationInfo(BaseModel):
     metrics_by_role: list[MetricsByRole] = Field(default_factory=list)
     stability: StabilityInfo = Field(default_factory=StabilityInfo)
-    source_step_refs: list[ResolvedStepRef] = Field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -273,7 +209,6 @@ class SelectedCutoff(BaseModel):
 class CutoffInfo(BaseModel):
     cutoff_tables: list[CutoffTable] = Field(default_factory=list)
     selected_cutoff: SelectedCutoff = Field(default_factory=SelectedCutoff)
-    source_step_refs: list[ResolvedStepRef] = Field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -283,7 +218,6 @@ class CutoffInfo(BaseModel):
 
 class ManualIntervention(BaseModel):
     intervention_id: str
-    branch_id: str = ""
     canonical_step_id: str = ""
     step_id: str = ""
     type: str = ""
@@ -409,9 +343,6 @@ class ReportSummary(BaseModel):
     observation_level: str = ""
     development_sample: str = "train"
     validation_samples: list[str] = Field(default_factory=list)
-    candidate_branch_count: int = 0
-    target_branch_id: str = ""
-    champion_branch_id: str = ""
     final_variable_count: int = 0
     excluded_variable_count: int = 0
 
@@ -434,11 +365,6 @@ class RunStatusInfo(BaseModel):
     status: str = ""
     started_at: str = ""
     finished_at: str | None = None
-    execution_mode: str = "unknown"
-    short_circuit: bool = False
-    short_circuit_run_id: str | None = None
-    target_step_id: str | None = None
-    in_scope_step_ids: list[str] = Field(default_factory=list)
     diagnostics: list[DiagnosticEntry] = Field(default_factory=list)
 
 
@@ -457,7 +383,6 @@ class ExclusionSummaryInfo(BaseModel):
     rows_before: int = 0
     rows_after: int = 0
     rules: list[ExclusionRuleInfo] = Field(default_factory=list)
-    source_step_refs: list[ResolvedStepRef] = Field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -469,7 +394,6 @@ class SampleDefinitionInfo(BaseModel):
     sample_method: str = ""
     sample_domain: str = ""
     sample_description: str = ""
-    source_step_refs: list[ResolvedStepRef] = Field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -481,7 +405,6 @@ class VariableSelectionInfo(BaseModel):
     selected_variables: list[str] = Field(default_factory=list)
     rejected_variables: list[str] = Field(default_factory=list)
     min_iv: float = 0.0
-    source_step_refs: list[ResolvedStepRef] = Field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -547,7 +470,6 @@ class ModelDiagnosticsInfo(BaseModel):
     separation_diagnostics: list[SeparationEntry] = Field(default_factory=list)
     vif_diagnostics: list[VifEntry] = Field(default_factory=list)
     calibration_diagnostics: dict[str, CalibrationRole] = Field(default_factory=dict)
-    source_step_refs: list[ResolvedStepRef] = Field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -566,7 +488,6 @@ class ImplementationArtifactsInfo(BaseModel):
     scorecard_table: ImplementationArtifactInfo | None = None
     scoring_export_python: ImplementationArtifactInfo | None = None
     scoring_export_sql: ImplementationArtifactInfo | None = None
-    source_step_refs: list[ResolvedStepRef] = Field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -582,16 +503,12 @@ class ReportBundle(BaseModel):
     schema_version: str = "cardre.report_bundle.v1"
     project_id: str = ""
     run_id: str = ""
-    target_branch_id: str = ""
-    report_mode: ReportMode = "branch"
     generated_at: str = ""
     generated_by: GeneratedBy = Field(default_factory=GeneratedBy)
     source: ReportSource = Field(default_factory=ReportSource)
     summary: ReportSummary = Field(default_factory=ReportSummary)
     dataset_roles: list[DatasetRole] = Field(default_factory=list)
     pathway: PathwaySummary = Field(default_factory=PathwaySummary)
-    branches: BranchSummary = Field(default_factory=BranchSummary)
-    champion: ChampionInfo = Field(default_factory=ChampionInfo)
     variables: list[VariableInfo] = Field(default_factory=list)
     model: ModelInfo = Field(default_factory=ModelInfo)
     score_scaling: ScoreScalingInfo = Field(default_factory=ScoreScalingInfo)

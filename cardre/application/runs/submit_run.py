@@ -12,7 +12,6 @@ from cardre.application.ports.run_dispatcher import RunDispatcherPort, RunReques
 class SubmitRunCommand:
     plan_version_id: str
     run_scope: str = "full_plan"
-    branch_id: str | None = None
     force: bool = False
     sync: bool = False
 
@@ -30,7 +29,6 @@ class SubmitRun:
         dispatcher: RunDispatcherPort,
         execute_run: Any,
         finalize_run: Any,
-        governance_enabled: bool = True,
         project_id: str | None = None,
         stale_heartbeat_seconds: int = 300,
     ) -> None:
@@ -38,12 +36,11 @@ class SubmitRun:
         self._dispatcher = dispatcher
         self._execute_run = execute_run
         self._finalize_run = finalize_run
-        self._governance_enabled = governance_enabled
         self._project_id = project_id
         self._stale_heartbeat_seconds = stale_heartbeat_seconds
 
     def __call__(self, command: SubmitRunCommand) -> SubmitRunResult:
-        scope = self._validate_command(command)
+        self._validate_command(command)
         uow = self._uow_factory()
         try:
             pv = uow.plans.get_version(command.plan_version_id)
@@ -65,9 +62,6 @@ class SubmitRun:
                 context={"plan_version_id": command.plan_version_id},
             )
 
-        if scope.value == "branch":
-            self._validate_branch_scope(command, pv.plan_id)
-
         self._sweep_stale()
 
         # Atomic concurrent-run guard: check + insert happen in one BEGIN
@@ -81,7 +75,6 @@ class SubmitRun:
             run_id = uow3.runs.create_if_no_active_run(
                 command.plan_version_id,
                 run_scope=command.run_scope,
-                branch_id=command.branch_id,
                 force=command.force,
             )
             if run_id is None:
@@ -141,48 +134,7 @@ class SubmitRun:
                 code=ErrorCode.RUN_SCOPE_INVALID,
                 context={"run_scope": command.run_scope},
             ) from None
-        if scope is RunScope.BRANCH and not command.branch_id:
-            raise CardreError(
-                "branch scope requires a branch_id",
-                code=ErrorCode.BRANCH_VALIDATION_ERROR,
-                context={"run_scope": command.run_scope},
-            )
-        if scope is RunScope.FULL_PLAN and command.branch_id is not None:
-            raise CardreError(
-                "full_plan scope must not specify a branch_id",
-                code=ErrorCode.BRANCH_VALIDATION_ERROR,
-                context={"run_scope": command.run_scope, "branch_id": command.branch_id},
-            )
         return scope
-
-    def _validate_branch_scope(self, command: SubmitRunCommand, plan_id: str) -> None:
-        from cardre.domain.errors import CardreError, ErrorCode, GovernanceNotEnabled
-
-        if not self._governance_enabled:
-            raise GovernanceNotEnabled()
-        uow = self._uow_factory()
-        try:
-            branch = uow.branches.get_branch(command.branch_id)
-        finally:
-            uow.close()
-        if branch is None:
-            raise CardreError(
-                f"Branch {command.branch_id!r} not found",
-                code=ErrorCode.BRANCH_NOT_FOUND,
-                context={"branch_id": command.branch_id},
-            )
-        if branch["project_id"] != self._project_id or branch["plan_id"] != plan_id:
-            raise CardreError(
-                "Branch does not belong to the requested plan version.",
-                code=ErrorCode.BRANCH_SCOPE_MISMATCH,
-                context={"branch_id": command.branch_id, "plan_version_id": command.plan_version_id},
-            )
-        if branch["head_plan_version_id"] != command.plan_version_id:
-            raise CardreError(
-                "Branch head does not match the requested plan version.",
-                code=ErrorCode.BRANCH_PLAN_VERSION_MISMATCH,
-                context={"branch_id": command.branch_id, "plan_version_id": command.plan_version_id},
-            )
 
     def _sweep_stale(self) -> None:
         from datetime import UTC, datetime

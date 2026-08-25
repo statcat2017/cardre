@@ -31,7 +31,7 @@ class EvidenceReader:
         # 1) Find evidence within a mixed list (Node input_artifacts):
         reader.find(artifacts, EvidenceKind.BIN_DEFINITION)
 
-        # 2) Read a known artifact by ID (reporting/comparison):
+        # 2) Read a known artifact by ID (reporting):
         reader.read(artifact_id, EvidenceKind.WOE_IV_EVIDENCE)
     """
 
@@ -129,7 +129,7 @@ class EvidenceReader:
             raise ValueError(
                 f"{node_type} requires model artifact {model_art.artifact_id!r} to be readable as MODEL_ARTIFACT evidence"
             ) from exc
-        if model_typed is None or not model_typed.model_family:
+        if model_typed is None:
             raise ValueError(
                 f"{node_type} requires model artifact {model_art.artifact_id!r} to be readable as MODEL_ARTIFACT evidence"
             )

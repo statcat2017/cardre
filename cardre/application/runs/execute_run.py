@@ -106,7 +106,6 @@ class _RunSummaryHook:
                 step_id=run_step.step_id,
                 artifact_id=sr.artifact_id,
                 direction="input",
-                branch_id=run.branch_id if hasattr(run, "branch_id") else None,
             )
 
 
@@ -185,19 +184,6 @@ class ExecuteRun:
     # -- orchestration helpers ------------------------------------------------
 
     def _assert_nodes_available(self, steps: list[Any]) -> None:
-        unavailable = []
-        for step in steps:
-            av = self._node_catalogue.availability(step.node_type)
-            if not av.available:
-                unavailable.append(step.step_id)
-        if unavailable:
-            from cardre.domain.errors import PlanContainsUnavailableNodesError
-
-            raise PlanContainsUnavailableNodesError(
-                [{"step_id": sid, "node_type": "", "node_version": "", "reason": "Node is unavailable."}
-                 for sid in unavailable]
-            )
-
         mismatches: list[dict[str, str]] = []
         for step in steps:
             current = self._node_catalogue.resolve(step.node_type).node_definition().version
@@ -395,7 +381,6 @@ class ExecuteRun:
                     step_id=step.step_id,
                     artifact_id=art_ref.artifact_id,
                     direction="output",
-                    branch_id=run.branch_id if hasattr(run, "branch_id") else None,
                 )
                 staged = staged_by_artifact.get(art_ref.artifact_id)
                 if staged is not None:
@@ -421,7 +406,6 @@ class ExecuteRun:
                             step_id=step.step_id,
                             artifact_id=parent_art.artifact_id,
                             direction="input",
-                            branch_id=run.branch_id if hasattr(run, "branch_id") else None,
                         )
 
             self._write_evidence_edges(

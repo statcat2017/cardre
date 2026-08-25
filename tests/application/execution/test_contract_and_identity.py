@@ -486,7 +486,6 @@ def test_catalogue_contracts_are_machine_checkable():
                 continue
             if defn is None:
                 continue
-            tier = "deferred" if getattr(obj, "_deferred", False) else getattr(obj, "tier", "launch")
             for which in ("input_contract", "output_contract"):
                 contract = getattr(defn, which, None)
                 if contract is None:
@@ -502,7 +501,7 @@ def test_catalogue_contracts_are_machine_checkable():
                             problems.append(
                                 f"{obj.node_type} {which} role={spec.role} kind={k!r} untyped"
                             )
-                    if which == "output_contract" and tier == "launch" and kinds:
+                    if which == "output_contract" and kinds:
                         if getattr(spec, "schema_versions", None) is None:
                             problems.append(
                                 f"{obj.node_type} {which} role={spec.role} (launch) "
