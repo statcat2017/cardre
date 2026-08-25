@@ -239,8 +239,6 @@ class ReportCollector:
                     ModelFeature(
                         variable_name=item.variable_name,
                         coefficient=item.coefficient,
-                        standard_error=item.standard_error,
-                        p_value=item.p_value,
                     )
                     for item in evidence.coefficients
                 ],

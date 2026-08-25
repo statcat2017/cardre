@@ -12,7 +12,6 @@ from pathlib import Path
 import pytest
 
 from cardre.bootstrap.node_catalogue import build_default_catalogue
-from cardre.bootstrap.settings import Settings
 from cardre.domain.plans.scorecard_pathway import build_canonical_scorecard_steps
 
 _EXPECTED_NODE_TYPES: frozenset[str] = frozenset({
@@ -50,7 +49,7 @@ _EXPECTED_NODE_TYPES: frozenset[str] = frozenset({
 
 
 def test_catalogue_keys_are_current_supported_set():
-    cat = build_default_catalogue(Settings())
+    cat = build_default_catalogue()
     keys = set(cat.list_types())
     assert keys == _EXPECTED_NODE_TYPES, (
         "Catalogue key set drifted from the current supported node set. "
@@ -60,7 +59,7 @@ def test_catalogue_keys_are_current_supported_set():
 
 
 def test_canonical_plan_steps_match_current_node_versions():
-    cat = build_default_catalogue(Settings())
+    cat = build_default_catalogue()
     steps = build_canonical_scorecard_steps("dummy.csv", cat.resolve)
     for step in steps:
         node = cat.resolve(step.node_type)
@@ -72,7 +71,7 @@ def test_canonical_plan_steps_match_current_node_versions():
 
 
 def test_every_node_has_complete_definition():
-    cat = build_default_catalogue(Settings())
+    cat = build_default_catalogue()
     for node_type in cat.list_types():
         cls = cat.resolve(node_type)
         assert "__definition__" in cls.__dict__, node_type
@@ -85,7 +84,7 @@ def test_every_node_has_complete_definition():
 
 
 def test_manual_binning_distinct_node():
-    cat = build_default_catalogue(Settings())
+    cat = build_default_catalogue()
     manual = cat.resolve("cardre.manual_binning")
     assert manual.category == "refinement"
     assert manual.node_type == "cardre.manual_binning"
@@ -109,7 +108,7 @@ def test_every_evidence_profile_has_single_canonical_identity():
 
 
 def test_canonical_automatic_binning_has_explicit_method():
-    cat = build_default_catalogue(Settings())
+    cat = build_default_catalogue()
     steps = build_canonical_scorecard_steps("dummy.csv", cat.resolve)
     auto_step = next(s for s in steps if s.step_id == "automatic-binning")
     assert "method" not in auto_step.params, (

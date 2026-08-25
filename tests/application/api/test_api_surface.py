@@ -373,7 +373,6 @@ def test_patch_null_indeterminate_values_rejected(app_env, tmp_path):
         CreateCanonicalScorecardVersionCommand,
     )
     from cardre.bootstrap.node_catalogue import build_default_catalogue
-    from cardre.bootstrap.settings import Settings
 
     client, container = app_env
     pid, _ = provision(container, tmp_path)
@@ -384,7 +383,7 @@ def test_patch_null_indeterminate_values_rejected(app_env, tmp_path):
         "x": [1, 2],
         "outcome": ["good", "bad"],
     }).write_parquet(parquet_path)
-    cat = build_default_catalogue(Settings())
+    cat = build_default_catalogue()
     create = CreateCanonicalScorecardVersion(
         lambda: container.uow_factory.for_project(pid), cat,
     )

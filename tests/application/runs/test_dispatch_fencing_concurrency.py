@@ -304,9 +304,6 @@ def test_cancellation_during_final_node_ends_cancelled(provisioned_project):
             )
 
     class _NoopCatalogue:
-        def availability(self, node_type):
-            return type("Av", (), {"available": True})()
-
         def resolve(self, node_type):
             return _fake_node("1")
 
@@ -378,9 +375,6 @@ def test_lost_lease_blocks_output_persistence(provisioned_project):
             )
 
     class _NoopCatalogue:
-        def availability(self, node_type):
-            return type("Av", (), {"available": True})()
-
         def resolve(self, node_type):
             return _fake_node("1")
 
@@ -543,9 +537,6 @@ def test_run_summary_not_published_after_stale_recovery(provisioned_project):
             )
 
     class _NoopCatalogue:
-        def availability(self, node_type):
-            return type("Av", (), {"available": True})()
-
         def resolve(self, node_type):
             return _fake_node("1")
 
@@ -642,9 +633,6 @@ def test_run_summary_not_published_after_cancellation(provisioned_project):
             )
 
     class _NoopCatalogue:
-        def availability(self, node_type):
-            return type("Av", (), {"available": True})()
-
         def resolve(self, node_type):
             return _fake_node("1")
 
@@ -705,14 +693,14 @@ def test_cancelled_created_run_stays_cancelled_through_execute(provisioned_proje
 
     CancelRun(lambda: uow_factory.for_project(project_id))(CancelRunCommand(run_id=run_id))
 
-    class _UnavailableCatalogue:
-        def availability(self, node_type):
-            return type("Av", (), {"available": False})()
+    class _UnresolvableCatalogue:
+        def resolve(self, node_type):
+            raise KeyError(f"Unknown node type {node_type!r}")
 
     executor = ExecuteRun(
         lambda: uow_factory.for_project(project_id),
         lambda: uow_factory.read_only(project_id),
-        _UnavailableCatalogue(),
+        _UnresolvableCatalogue(),
         None,
         None,
         lambda: FsArtifactStore(root),

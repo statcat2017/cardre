@@ -1,9 +1,4 @@
-"""Evidence adapter registry, factory, and matching helpers.
-
-Combines the adapter table and matching logic previously split across
-``cardre/_evidence/adapters/__init__.py`` and ``_base.py``.  Uses
-``ArtifactReader`` instead of a legacy persistence store.
-"""
+"""Evidence adapter registry, factory, and matching helpers."""
 
 from __future__ import annotations
 
@@ -25,13 +20,13 @@ from cardre.domain.evidence.models.binning import (
     ManualBinningOverrides,
     SelectionDefinition,
 )
+from cardre.domain.evidence.models.clustering import VariableClusteringEvidence
 from cardre.domain.evidence.models.diagnostics import (
     CalibrationDiagnostics,
     CoefficientSignDiagnostics,
     SeparationDiagnostics,
     VifDiagnostics,
 )
-from cardre.domain.evidence.models.governance import VariableClusteringEvidence
 from cardre.domain.evidence.models.manifest import (
     ReportBundleEvidence,
     TechnicalManifestIndex,

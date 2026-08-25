@@ -1,8 +1,4 @@
-"""ExplainStaleness — explain staleness for a single step.
-
-Port of StalenessService.explain_step from cardre/services/staleness_service.py.
-Uses UnitOfWork ports instead of direct store access.
-"""
+"""Explain staleness for a single step using unit-of-work ports."""
 
 from __future__ import annotations
 

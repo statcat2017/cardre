@@ -73,11 +73,9 @@ class RunManifest:
     started_at: str = ""
     finished_at: str | None = None
     status: str = ""
-    execution_mode: str = "unknown"
     cardre_version: str = ""
     pathway_hash: str = ""
     artifact_root: str = ""
-    in_scope_step_ids: list[str] = field(default_factory=list)
     steps: list[RunManifestStep] = field(default_factory=list)
     diagnostics: list[JsonDict] = field(default_factory=list)
 
@@ -92,11 +90,9 @@ class RunManifest:
             "started_at": self.started_at,
             "finished_at": self.finished_at,
             "status": self.status,
-            "execution_mode": self.execution_mode,
             "cardre_version": self.cardre_version,
             "pathway_hash": self.pathway_hash,
             "artifact_root": self.artifact_root,
-            "in_scope_step_ids": list(self.in_scope_step_ids),
             "steps": [s.to_dict() for s in self.steps],
             "diagnostics": list(self.diagnostics),
         }

@@ -30,8 +30,8 @@ cd frontend && npm install && npm run dev
 │                        │                                │
 │  ┌─────────────────────▼─────────────────────────────┐  │
 │  │              execution/                           │  │
-│  │  RunCoordinator, PlanExecutor, EvidenceLocator    │  │
-│  │  StalenessService, RunLifecycle, Worker           │  │
+│  │  RunCoordinator, PlanExecutor, evidence resolver  │  │
+│  │  staleness checks, RunLifecycle, Worker            │  │
 │  └───────────────────────────────────────────────────┘  │
 └──────────────────────────┬──────────────────────────────┘
                            │

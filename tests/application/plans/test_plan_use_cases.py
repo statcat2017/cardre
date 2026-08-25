@@ -17,7 +17,6 @@ from cardre.application.plans.list_plans import ListPlans, ListPlansCommand
 from cardre.application.plans.update_plan_version import UpdatePlanVersion, UpdatePlanVersionCommand
 from cardre.application.plans.update_step_params import UpdateStepParams, UpdateStepParamsCommand
 from cardre.bootstrap.node_catalogue import build_default_catalogue
-from cardre.bootstrap.settings import Settings
 from cardre.domain.errors import CardreError
 
 from ..conftest import make_branchable_steps
@@ -30,7 +29,7 @@ def _factory(uow_factory, project_id):
 
 
 def _catalogue():
-    return build_default_catalogue(Settings())
+    return build_default_catalogue()
 
 
 class TestCreatePlan:

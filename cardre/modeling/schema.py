@@ -133,8 +133,6 @@ class TrainingMetadata:
 class ModelCoefficient:
     variable_name: str
     coefficient: float = 0.0
-    standard_error: float | None = None
-    p_value: float | None = None
 
 
 # ---------------------------------------------------------------------------

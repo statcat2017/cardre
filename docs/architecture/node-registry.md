@@ -8,9 +8,8 @@ The catalogue is built from the current production node classes:
 
 ```python
 from cardre.bootstrap.node_catalogue import build_default_catalogue
-from cardre.bootstrap.settings import Settings
 
-cat = build_default_catalogue(Settings())
+cat = build_default_catalogue()
 cat.list_types()          # returns all registered node type strings
 cat.resolve("cardre.logistic_regression")  # node class
 ```

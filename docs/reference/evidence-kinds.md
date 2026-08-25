@@ -74,6 +74,6 @@ added during the thermo-nuclear quality sprint (PR2).
   evidence collection resolve a persisted step's canonical ID to the canonical
   set in `contracts.py`. `StepSpec` requires it to be non-empty but the current
   pre-execution validation does not compare it to a canonical identity — it
-  validates topology, node availability, and `node_version`. An obsolete
+  validates topology and `node_version`. An obsolete
   canonical ID on a current-version step therefore surfaces as missing report
   evidence, not as a pre-execution rejection.

@@ -78,15 +78,13 @@ def _render_model(data: dict[str, Any]) -> str:
     parts = [_kv_list([
         ("Type", m["model_type"]), ("Target", m["target"]),
         ("Intercept", _fmt(m["intercept"])),
-        ("Fit dataset", m["fit_dataset_role"]),
     ])]
     rows = [
         [_esc(f["variable_name"]), _fmt(f["coefficient"]),
-         _fmt(f.get("standard_error")), _fmt(f.get("p_value")),
          "yes" if f.get("included", True) else "no"]
         for f in m["features"]
     ]
-    parts.append(_table(["Feature", "Coefficient", "Std Error", "P-value", "Included"], rows))
+    parts.append(_table(["Feature", "Coefficient", "Included"], rows))
     return "".join(parts)
 
 
@@ -224,7 +222,6 @@ def _render_run_status(data: dict[str, Any]) -> str:
         ("Run ID", r["run_id"]), ("Status", r["status"]),
         ("Started at", r.get("started_at") or "—"),
         ("Finished at", r.get("finished_at") or "—"),
-        ("Execution mode", r.get("execution_mode", "—")),
     ])]
     if r.get("diagnostics"):
         rows = [

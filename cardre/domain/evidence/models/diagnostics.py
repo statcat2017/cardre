@@ -212,7 +212,6 @@ class CalibrationRole:
 class CalibrationDiagnostics:
     roles: list[CalibrationRole] = field(default_factory=list)
     target_column: str = ""
-    model_family: str = ""
     conventions: JsonDict = field(default_factory=dict)
     summary: JsonDict = field(default_factory=dict)
     schema_version: str = ""
@@ -234,7 +233,6 @@ class CalibrationDiagnostics:
         return cls(
             roles=roles,
             target_column=data.get("target_column", ""),
-            model_family=data.get("model_family", ""),
             conventions=dict(data.get("conventions", {})),
             summary=dict(data.get("summary", {})),
             schema_version=data.get("schema_version", ""),

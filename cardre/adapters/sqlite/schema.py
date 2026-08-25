@@ -1,7 +1,7 @@
 """SQLite schema for the Cardre hexagonal architecture.
 
 The store retains one schema identifier and rejects incompatible project
-stores. No migration chain is provided (ADR-0003); projects are recreated.
+stores. No migration chain is provided (ADR-0015); projects are recreated.
 """
 
 STORE_SCHEMA_FAMILY = "cardre-v3"

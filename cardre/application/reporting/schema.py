@@ -126,8 +126,6 @@ class VariableInfo(BaseModel):
 class ModelFeature(BaseModel):
     variable_name: str
     coefficient: float = 0.0
-    standard_error: float | None = None
-    p_value: float | None = None
     included: bool = True
 
 
@@ -136,9 +134,6 @@ class ModelInfo(BaseModel):
     target: str = ""
     features: list[ModelFeature] = Field(default_factory=list)
     intercept: float = 0.0
-    regularisation: dict[str, Any] | None = None
-    fit_dataset_role: str = "train"
-    fitting_config_hash: str = ""
 
 
 # ---------------------------------------------------------------------------
@@ -370,11 +365,6 @@ class RunStatusInfo(BaseModel):
     status: str = ""
     started_at: str = ""
     finished_at: str | None = None
-    execution_mode: str = "unknown"
-    short_circuit: bool = False
-    short_circuit_run_id: str | None = None
-    target_step_id: str | None = None
-    in_scope_step_ids: list[str] = Field(default_factory=list)
     diagnostics: list[DiagnosticEntry] = Field(default_factory=list)
 
 

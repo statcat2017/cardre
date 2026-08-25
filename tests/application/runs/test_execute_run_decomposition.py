@@ -365,9 +365,6 @@ def test_initial_reads_and_cancellation_use_read_only_uow(tmp_path):
             })()
 
     class _NoopCatalogue:
-        def availability(self, node_type):
-            return type("Av", (), {"available": True})()
-
         def resolve(self, node_type):
             return _fake_node("1")
 

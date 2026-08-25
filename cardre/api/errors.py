@@ -105,8 +105,6 @@ _DOMAIN_ERROR_MAP: dict[ErrorCode, tuple[ErrorCode, int]] = {
     # 404 — not found
     # 409 — state conflict / not ready
     ErrorCode.EXPORT_RUN_NOT_FOUND: (ErrorCode.EXPORT_RUN_NOT_FOUND, 409),
-    ErrorCode.STALE_HEAD_VERSION: (ErrorCode.STALE_HEAD_VERSION, 409),
-    ErrorCode.STALE_BASE_VERSION: (ErrorCode.STALE_BASE_VERSION, 409),
     ErrorCode.REPORT_BLOCKED: (ErrorCode.REPORT_BLOCKED, 409),
     ErrorCode.CANONICAL_MANIFEST_MISSING: (ErrorCode.CANONICAL_MANIFEST_MISSING, 404),
     # 500 — infrastructure

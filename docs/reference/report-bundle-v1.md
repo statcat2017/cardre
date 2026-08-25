@@ -33,7 +33,7 @@ The report bundle is a Pydantic model (`cardre/application/reporting/schema.py`)
 
 ### ModelInfo
 - `features`: list of `ModelFeature`
-- `target`, `intercept`, `fit_dataset_role`, `fitting_config_hash`
+- `target`, `intercept`
 
 ### ValidationInfo
 - `metrics_by_role`: `MetricsByRole` (train, test, oot)

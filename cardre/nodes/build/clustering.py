@@ -116,13 +116,6 @@ class VariableClusteringNode(NodeType):
 
     def validate_params(self, params: dict[str, Any]) -> list[str]:
         errors: list[str] = []
-        method = params.get("method", "correlation_threshold")
-
-        valid_methods = {"correlation_threshold"}
-        if method not in valid_methods:
-            errors.append(f"Unknown method: {method!r}")
-            return errors
-
         candidate_limit = params.get("candidate_limit", 50)
         try:
             if int(candidate_limit) < 1:
@@ -134,7 +127,7 @@ class VariableClusteringNode(NodeType):
         if similarity_metric not in ("pearson", "spearman"):
             errors.append(f"Unknown similarity_metric: {similarity_metric!r}")
 
-        threshold = params.get("threshold", params.get("correlation_threshold", 0.7))
+        threshold = params.get("threshold", 0.7)
         try:
             if not (0 < float(threshold) < 1):
                 errors.append("threshold must be between 0 and 1 (exclusive)")
@@ -180,7 +173,7 @@ class VariableClusteringNode(NodeType):
 
     def _compute_correlation_matrix(
         self, df: pl.DataFrame, columns: list[str],
-        method: str, missing_handling: str,
+        similarity_metric: str, missing_handling: str,
         absolute: bool, minimum_pair_count: int = 30,
     ) -> tuple[pl.DataFrame, list[dict[str, Any]]]:
         import numpy as np
@@ -214,7 +207,7 @@ class VariableClusteringNode(NodeType):
                     "variable_b": "",
                     "message": f"Complete-case rows ({mat.shape[0]}) below minimum pair count ({minimum_pair_count})",
                 })
-            if method == "spearman":
+            if similarity_metric == "spearman":
                 ranks = np.apply_along_axis(self._tie_aware_rank, 0, mat)
                 corr_mat = np.corrcoef(ranks.T)
             else:
@@ -257,7 +250,7 @@ class VariableClusteringNode(NodeType):
                         })
                     xi = col_i[valid]
                     xj = col_j[valid]
-                    if method == "spearman":
+                    if similarity_metric == "spearman":
                         xi = self._tie_aware_rank(xi)
                         xj = self._tie_aware_rank(xj)
                     corr_val = np.corrcoef(xi, xj)[0, 1]
@@ -363,7 +356,6 @@ class VariableClusteringNode(NodeType):
     def run(self, context: NodeContext) -> NodeResult:
         params = context.params
 
-        method = str(params.get("method", "correlation_threshold"))
         similarity_metric = str(params.get("similarity_metric", "pearson"))
         absolute_correlation = bool(params.get("absolute_correlation", True))
         candidate_limit = int(params.get("candidate_limit", 50))
@@ -371,7 +363,7 @@ class VariableClusteringNode(NodeType):
         representative_rule = str(params.get("representative_rule", "highest_iv"))
         minimum_pair_count = int(params.get("minimum_pair_count", 30))
 
-        threshold = float(cast(Any, params.get("threshold", params.get("correlation_threshold", 0.7))))
+        threshold = float(cast(Any, params.get("threshold", 0.7)))
 
         input_representation = params.get("input_representation", "raw_train")
 
@@ -388,13 +380,13 @@ class VariableClusteringNode(NodeType):
 
         clusters_out, singleton_variables, warnings_list = self._cluster_candidates(
             df, candidates, bin_def, woe_table, iv_map, missing_map,
-            input_representation, method, similarity_metric, missing_handling,
+            input_representation, similarity_metric, missing_handling,
             absolute_correlation, minimum_pair_count, threshold, representative_rule, candidate_limit,
         )
 
         clustering_report = {
             "schema_version": SCHEMA_VARIABLE_CLUSTERING_EVIDENCE,
-            "method": method,
+            "method": "correlation_threshold",
             "input_representation": input_representation,
             "similarity_metric": similarity_metric,
             "absolute_correlation": absolute_correlation,
@@ -477,7 +469,7 @@ class VariableClusteringNode(NodeType):
     def _cluster_candidates(
         self, df: pl.DataFrame, candidates: list[str], bin_def: Any, woe_table: Any,
         iv_map: dict[str, float], missing_map: dict[str, float],
-        input_representation: str, method: str, similarity_metric: str,
+        input_representation: str, similarity_metric: str,
         missing_handling: str, absolute_correlation: bool, minimum_pair_count: int,
         threshold: float, representative_rule: str, candidate_limit: int,
     ) -> tuple[list[dict[str, Any]], list[str], list[dict[str, Any]]]:

@@ -71,7 +71,7 @@ def build_container(settings: Settings) -> Container:
     registry = JsonProjectRegistry(settings.registry_path)
     provisioner = SqliteProjectProvisioner()
     uow_factory = SqliteUnitOfWorkFactory(registry)
-    node_catalogue = build_default_catalogue(settings)
+    node_catalogue = build_default_catalogue()
     clock = SystemClock()
     id_generator = UuidGenerator()
     capability_probe = FilesystemCapabilityProbe()
@@ -234,9 +234,6 @@ def build_container(settings: Settings) -> Container:
             capability_probe=capability_probe,
         )
 
-    # Governance use cases were removed with the governance purge; the API
-    # layer only depends on the application/use-case surface and never imports
-    # adapters directly.
     from cardre.application.reporting.report_queries import GetRunManifest, ListExports, ListReports
     list_reports = ListReports(uow_factory, manifest_publisher_factory)
     list_exports = ListExports(uow_factory)

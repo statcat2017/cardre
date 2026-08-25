@@ -1,5 +1,12 @@
 # Evidence Locator — Implement ADR-0005 §3
 
+> **Status: Superseded by [ADR-0017](0017-one-product-purge-enforcement.md).**
+> ADR-0017 records the one-product purge, which removed branch evidence
+> resolution with branch execution. Evidence resolution is now a single
+> full-plan pathway with no branch fallback chain, so the branch-aware locator
+> described here no longer describes the current product. Retained as a
+> historical record of the earlier branch evidence-locator design.
+
 ## Status
 
 Superseded

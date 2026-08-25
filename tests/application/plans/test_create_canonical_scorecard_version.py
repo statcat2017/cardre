@@ -17,7 +17,6 @@ from cardre.application.plans.create_canonical_scorecard_version import (
     CreateCanonicalScorecardVersionCommand,
 )
 from cardre.bootstrap.node_catalogue import build_default_catalogue
-from cardre.bootstrap.settings import Settings
 from cardre.domain.errors import CardreError
 from cardre.domain.plans.scorecard_pathway import canonical_scorecard_step_ids
 
@@ -40,7 +39,7 @@ class TestCreateCanonicalScorecardVersion:
         with uow_factory.for_project(project_id) as uow:
             plan_id = uow.plans.create_plan(project_id, "P")
             uow.commit()
-        catalogue = build_default_catalogue(Settings())
+        catalogue = build_default_catalogue()
         uc = CreateCanonicalScorecardVersion(_factory(uow_factory, project_id), catalogue)
         csv_path = _write_parquet(tmp_path / "in.parquet")
         pv = uc(CreateCanonicalScorecardVersionCommand(
@@ -58,7 +57,7 @@ class TestCreateCanonicalScorecardVersion:
         with uow_factory.for_project(project_id) as uow:
             plan_id = uow.plans.create_plan(project_id, "P")
             uow.commit()
-        catalogue = build_default_catalogue(Settings())
+        catalogue = build_default_catalogue()
         uc = CreateCanonicalScorecardVersion(_factory(uow_factory, project_id), catalogue)
         csv_path = _write_parquet(tmp_path / "in.parquet")
         pv = uc(CreateCanonicalScorecardVersionCommand(
@@ -83,7 +82,7 @@ class TestCreateCanonicalScorecardVersion:
         with uow_factory.for_project(project_id) as uow:
             plan_id = uow.plans.create_plan(project_id, "P")
             uow.commit()
-        catalogue = build_default_catalogue(Settings())
+        catalogue = build_default_catalogue()
         uc = CreateCanonicalScorecardVersion(_factory(uow_factory, project_id), catalogue)
         csv_path = _write_parquet(tmp_path / "in.parquet")
         pv = uc(CreateCanonicalScorecardVersionCommand(
@@ -104,7 +103,7 @@ class TestCreateCanonicalScorecardVersion:
         with uow_factory.for_project(project_id) as uow:
             plan_id = uow.plans.create_plan(project_id, "P")
             uow.commit()
-        catalogue = build_default_catalogue(Settings())
+        catalogue = build_default_catalogue()
         uc = CreateCanonicalScorecardVersion(_factory(uow_factory, project_id), catalogue)
         csv_path = _write_parquet(tmp_path / "in.parquet")
         pv = uc(CreateCanonicalScorecardVersionCommand(
@@ -123,7 +122,7 @@ class TestCreateCanonicalScorecardVersion:
 
     def test_raises_on_unknown_plan(self, provisioned_project):
         project_id, uow_factory, _, _ = provisioned_project
-        catalogue = build_default_catalogue(Settings())
+        catalogue = build_default_catalogue()
         uc = CreateCanonicalScorecardVersion(_factory(uow_factory, project_id), catalogue)
         with pytest.raises(CardreError, match="not found"):
             uc(CreateCanonicalScorecardVersionCommand(plan_id="nope", source_path="x.csv"))

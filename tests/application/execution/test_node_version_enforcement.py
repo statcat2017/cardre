@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from cardre.application.execution.step_runner import StepRunner
 from cardre.bootstrap.node_catalogue import build_default_catalogue
-from cardre.bootstrap.settings import Settings
 from cardre.domain.artifacts import json_logical_hash
 from cardre.domain.errors import NodeVersionMismatchError
 from cardre.domain.run import RunStepStatus
@@ -26,11 +25,11 @@ def _spec(step_id: str, node_type: str, version: str) -> StepSpec:
 
 class TestNodeVersionEnforcement:
     def test_import_dataset_node_is_version_1(self):
-        cat = build_default_catalogue(Settings())
+        cat = build_default_catalogue()
         assert cat.resolve("cardre.import_dataset").node_definition().version == "1"
 
     def test_mismatched_version_fails_step_before_execution(self):
-        cat = build_default_catalogue(Settings())
+        cat = build_default_catalogue()
         runner = StepRunner(cat, lambda: None, lambda: (None, None))
         bad_spec = _spec("s1", "cardre.import_dataset", "99")
         result = runner.run_step("pv-1", "run-1", bad_spec, {}, {})

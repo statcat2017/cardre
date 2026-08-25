@@ -54,7 +54,21 @@ class ModellingMetadata:
         )
 
     def to_dict(self) -> JsonDict:
-        return dict(self._raw)
+        """Serialize to the canonical modelling-metadata JSON shape.
+
+        Emits only the typed current fields (plus any explicit ``extra``
+        values), never the raw input passthrough. The ``_raw`` snapshot is
+        retained for debugging but is not emitted.
+        """
+        payload: JsonDict = {
+            "schema_version": self.schema_version,
+            "target_column": self.target_column,
+            "good_values": list(self.good_values),
+            "bad_values": list(self.bad_values),
+            "indeterminate_values": list(self.indeterminate_values),
+        }
+        payload.update(self.extra)
+        return payload
 
 
 @dataclass(frozen=True)

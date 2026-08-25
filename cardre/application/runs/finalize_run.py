@@ -276,8 +276,6 @@ class FinalizeRun:
         ):
             diagnostics.append({"code": diagnostic.code, "message": diagnostic.message})
 
-        step_ids = [s["step_id"] for s in steps]
-
         manifest = RunManifest(
             manifest_version=MANIFEST_VERSION,
             run_id=run_id,
@@ -287,9 +285,7 @@ class FinalizeRun:
             started_at=started_at,
             finished_at=self._clock.now_iso(),
             status=status,
-            execution_mode="full_plan",
             cardre_version=__version__,
-            in_scope_step_ids=step_ids,
             steps=[RunManifestStep(**s) for s in steps],
             diagnostics=diagnostics,
         )

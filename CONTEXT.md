@@ -117,10 +117,12 @@ These are two different node types: `impute_missing` (data transform) and the `m
 - For definition artifacts (bin maps, model coefficients): JSON-sorted-keys canonical serialization, then hash.
 - The artifact store deduplicates by `physical_hash`. Audit/reproducibility compares by `logical_hash`.
 
-## Estimator Reference
+## Model Artifact
 
-A fitted model is published as **two** Artifacts sharing one descriptor family: a parseable JSON `model` artifact and a joblib-serialized `estimator` binary. The JSON model carries an **estimator reference** — the binary's `provisional_artifact_id` (a descriptor id computed *before* the binary is staged) plus its `physical_hash` and `logical_hash`. This lets the model JSON cite the binary before the binary exists on disk.
-
-The **publish ordering invariant** is load-bearing: the JSON model is published **first**, the estimator bytes **second**, both under the same descriptor id. Downstream `require("model")` / `first("model")` consumers select by role and must receive the parseable JSON, not the joblib blob (which the MODEL_ARTIFACT evidence profile rejects on media type). A node that reverses the order silently breaks every downstream model consumer.
-
-Loading the binary is the inverse: resolve the reference via `InputCollection.artifact_ref`, `read_bytes`, **verify the hash** (the published `logical_hash` against the bytes' SHA-256) and **require `creating_run_id` metadata** before deserialising. Refusing to load untrusted binaries is the trust policy; there is no "unverified" load path.
+The fitted model is published as a single strict JSON `model` artifact
+(`cardre.model_artifact.v1`): a WOE feature contract, an intercept,
+per-feature coefficients, and training provenance. There is no serialized
+joblib estimator, no estimator reference, and no binary twin. The model
+payload is parsed by the strict logistic schema in `cardre/modeling/schema.py`,
+which rejects unknown top-level fields and requires the complete current
+payload (see ADR 0017).

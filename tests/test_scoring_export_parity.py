@@ -15,7 +15,6 @@ import polars as pl
 import pytest
 
 from cardre.bootstrap.node_catalogue import build_default_catalogue
-from cardre.bootstrap.settings import Settings
 from cardre.domain.evidence.schemas import SCHEMA_SCORING_EXPORT_PYTHON, SCHEMA_SCORING_EXPORT_SQL
 from tests.acceptance.fixture_pathway import build_acceptance_fixture_steps
 
@@ -49,7 +48,7 @@ def test_scoring_export_parity(api_client, tmp_path):
     plan_id = resp.json()["plan_id"]
 
     container = api_client.app.state.container
-    cat = build_default_catalogue(Settings())
+    cat = build_default_catalogue()
     steps = build_acceptance_fixture_steps(parquet_path, cat)
 
     with container.uow_factory.for_project(project_id) as uow:

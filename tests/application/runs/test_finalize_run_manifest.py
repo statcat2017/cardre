@@ -147,7 +147,6 @@ class TestFinalizeRunManifest:
         assert manifest["pathway_hash"] != ""
         assert manifest["plan_id"] != ""
         assert manifest["project_id"] != ""
-        assert manifest["execution_mode"] == "full_plan"
         assert len(manifest["steps"]) == 1
         assert manifest["steps"][0]["step_id"] == "step-1"
         assert "art-1" in manifest["steps"][0]["output_artifact_ids"]

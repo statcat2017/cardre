@@ -49,7 +49,7 @@ def audit_run(tmp_path):
     registry.register(project_id, root)
 
     parquet_path = _write_input_parquet(tmp_path / "input.parquet")
-    cat = build_default_catalogue(Settings())
+    cat = build_default_catalogue()
     steps = build_acceptance_fixture_steps(parquet_path, cat)
 
     with uow_factory.for_project(project_id) as uow:

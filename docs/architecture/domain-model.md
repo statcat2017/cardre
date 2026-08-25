@@ -66,7 +66,7 @@ These are two different node types: `impute_missing` (data transform) and the `m
 
 ## Run Status
 
-Run-level status (distinct from per-step status) is modelled by the `RunStatus(StrEnum)` in `cardre/domain/run.py`: `submitted`, `running`, `succeeded`, `failed`, `interrupted`, `cancelled`. Terminal statuses are written exclusively through `RunRepository.transition(run_id, to_status, *, expected_from=...)`, which atomically guards on the current status. `RunScope` (also a `StrEnum`) discriminates the execution scope; only `full_plan` is supported at launch.
+Run-level status (distinct from per-step status) is modelled by the `RunStatus(StrEnum)` in `cardre/domain/run.py`: `submitted`, `running`, `succeeded`, `failed`, `interrupted`, `cancelled`. Terminal statuses are written exclusively through `RunRepository.transition(run_id, to_status, *, expected_from=...)`, which atomically guards on the current status. `RunScope` (also a `StrEnum`) discriminates the execution scope; `full_plan` is the only supported scope.
 
 ## Dataset vs Artifact vs Snapshot
 

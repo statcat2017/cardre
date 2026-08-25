@@ -1,30 +1,19 @@
 """Node catalogue for Cardre pipeline nodes.
 
-Built from ``Settings`` + a list of node classes, replacing the old
-``NodeRegistry.with_defaults()`` pattern.
+Built from a list of node classes, replacing the old ``NodeRegistry.with_defaults()``
+pattern.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-
-from cardre.bootstrap.settings import Settings
 from cardre.nodes.contracts import NodeType
-
-
-@dataclass(frozen=True)
-class NodeAvailability:
-    available: bool
-    disabled_reason: str | None = None
 
 
 class NodeCatalogue:
     def __init__(
         self,
-        settings: Settings,
         node_classes: list[type[NodeType]],
     ) -> None:
-        self._settings = settings
         self._nodes: dict[str, type[NodeType]] = {}
         for cls in node_classes:
             node_type = getattr(cls, "node_type", None)
@@ -43,24 +32,12 @@ class NodeCatalogue:
     def list_types(self) -> list[str]:
         return list(self._nodes.keys())
 
-    def availability(self, node_type: str) -> NodeAvailability:
-        cls = self._nodes.get(node_type)
-        if cls is None:
-            return NodeAvailability(
-                available=False,
-                disabled_reason=f"Unknown node type {node_type!r}.",
-            )
-        return NodeAvailability(available=True)
-
-    def is_available(self, node_type: str) -> bool:
-        return self.availability(node_type).available
-
     def instantiate(self, node_type: str) -> NodeType:
         cls = self.resolve(node_type)
         return cls()
 
 
-def build_default_catalogue(settings: Settings) -> NodeCatalogue:
+def build_default_catalogue() -> NodeCatalogue:
     from cardre.nodes.build import (
         AutomaticBinningNode,
         BuildSummaryReportNode,
@@ -131,4 +108,4 @@ def build_default_catalogue(settings: Settings) -> NodeCatalogue:
         CutoffAnalysisNode,
     ]
 
-    return NodeCatalogue(settings, node_classes)
+    return NodeCatalogue(node_classes)

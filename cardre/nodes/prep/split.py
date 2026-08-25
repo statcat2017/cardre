@@ -198,7 +198,7 @@ class SplitTrainTestOotNode(NodeType):
     def run(self, context: NodeContext) -> NodeResult:
         dataset_artifact = context.inputs.first("input")
         params = context.params
-        method = params.get("method", "random_stratified")
+        method = "random_stratified"
         train_frac = float(params.get("train_fraction", 0.6))
         test_frac = float(params.get("test_fraction", 0.2))
         oot_frac = float(params.get("oot_fraction", 0.2))

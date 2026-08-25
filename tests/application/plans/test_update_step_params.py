@@ -15,7 +15,6 @@ from cardre.application.plans.update_step_params import (
     UpdateStepParamsCommand,
 )
 from cardre.bootstrap.node_catalogue import build_default_catalogue
-from cardre.bootstrap.settings import Settings
 from cardre.domain.artifacts import json_logical_hash
 from cardre.domain.errors import CardreError
 
@@ -27,7 +26,7 @@ def _factory(uow_factory, project_id):
 
 
 def _catalogue():
-    return build_default_catalogue(Settings())
+    return build_default_catalogue()
 
 
 class TestUpdateStepParams:

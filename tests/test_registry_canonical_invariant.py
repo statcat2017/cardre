@@ -9,7 +9,6 @@ node type in the pathway must resolve through the catalogue.
 from __future__ import annotations
 
 from cardre.bootstrap.node_catalogue import build_default_catalogue
-from cardre.bootstrap.settings import Settings
 from cardre.domain.plans.scorecard_pathway import _CANONICAL_SCORECARD_STEPS
 
 
@@ -18,7 +17,7 @@ def _canonical_node_types() -> set[str]:
 
 
 def test_flat_registry_matches_canonical_pathway_node_types():
-    cat = build_default_catalogue(Settings())
+    cat = build_default_catalogue()
     registered = set(cat.list_types())
     canonical = _canonical_node_types()
 
@@ -31,7 +30,7 @@ def test_flat_registry_matches_canonical_pathway_node_types():
 
 
 def test_canonical_pathway_node_types_distinct_and_registered():
-    cat = build_default_catalogue(Settings())
+    cat = build_default_catalogue()
     canonical = _canonical_node_types()
     assert len(canonical) == len(set(canonical)), "canonical node types must be distinct"
     for node_type in canonical:
