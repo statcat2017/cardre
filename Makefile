@@ -1,9 +1,5 @@
 .PHONY: test test-cov test-fail-fast test-evidence test-python-ci typecheck typecheck-python lint lint-line-counts lint-artifact-reads audit-artifact-reads arch-check preflight
 
-# Coverage threshold. Restored to 60% after Batch 05 closeout composed
-# execution-path tests landed (SubmitRun → ExecuteRun → FinalizeRun).
-PYTEST_COV_FAIL_UNDER ?= 60
-
 test:
 	python3 -m pytest tests/ -q --tb=short
 
@@ -11,7 +7,8 @@ test-cov:
 	python3 -m pytest tests/ --cov=cardre --cov=sidecar --cov-report=html
 
 test-python-ci:
-	python3 -m pytest tests/ -q --tb=short --cov-fail-under=$(PYTEST_COV_FAIL_UNDER)
+	python3 -m pytest tests/ -q --tb=short --cov-report=json
+	python3 scripts/check-coverage-thresholds.py
 
 test-fail-fast:
 	python3 -m pytest tests/ -x --tb=long
@@ -37,10 +34,12 @@ preflight:
 	python3 scripts/check_doc_references.py
 	python3 scripts/check-sidecar-naming.py
 	$(MAKE) arch-check
-	python3 -m pytest tests/ -q --tb=short --cov-fail-under=$(PYTEST_COV_FAIL_UNDER)
+	python3 -m pytest tests/ -q --tb=short --cov-report=json
+	python3 scripts/check-coverage-thresholds.py
 	$(MAKE) lint-artifact-reads
 	# Frontend checks — full gates restored for Batch 07b closeout.
-	cd frontend && npm ci && npm run lint && npm run format:check && npm test
+	# `npm run test:coverage` runs the full-suite 60/60/60/50 coverage gate.
+	cd frontend && npm ci && npm run lint && npm run format:check && npm run test:coverage
 	cd frontend && npm run build && npx tsc --noEmit
 	python3 scripts/generate-openapi-types.py
 	git diff --exit-code -- frontend/src/api/openapi.json frontend/src/api/schema.d.ts

@@ -222,30 +222,46 @@ class TestManualBinningOverridesRoundTrip:
             assert override.variable == raw.get("variable", "")
             assert override.action == raw.get("action", "")
 
-    def test_has_expected_schema(self):
+    def test_parsed_actions_cover_merge_and_reject_paths(self, tmp_path):
+        """Parsed ManualBinningOverrides must still represent merge_bins and reject_variable paths.
+
+        This is the application-backed replacement for the removed fixture-only
+        representative-override assertion: it parses through the production
+        adapter so the merged/rejected pathways stay covered end-to-end.
+        """
         data = _load_fixture("golden_manual_binning_overrides.json")
-        assert data.get("schema_version") == "cardre.manual_binning_overrides.v1"
-        assert "overrides" in data
 
-    def test_has_representative_overrides(self):
-        data = _load_fixture("golden_manual_binning_overrides.json")
-        overrides = data["overrides"]
-        assert len(overrides) >= 2, "Fixture should have at least 2 representative overrides"
+        fixture_path = tmp_path / "overrides.json"
+        with open(fixture_path, "w") as f:
+            json.dump(data, f)
 
-        actions = {o["action"] for o in overrides}
-        assert "merge_bins" in actions, "Fixture should include a merge_bins override"
-        assert "reject_variable" in actions, "Fixture should include a reject_variable override"
+        art = ArtifactRef(
+            artifact_id="test-overrides",
+            artifact_type="definition",
+            role="definition",
+            path=str(fixture_path),
+            physical_hash="ph",
+            logical_hash="lh",
+            media_type="application/json",
+            metadata={"schema_version": "cardre.manual_binning_overrides.v1"},
+        )
 
-        for override in overrides:
-            assert "variable" in override, "Each override must have a variable"
-            assert "action" in override, "Each override must have an action"
-            assert "reason" in override, "Each override must have a reason"
-            assert "source_bin_ids" in override, "Each override must have source_bin_ids"
+        spec = get_adapter(EvidenceKind.MANUAL_BINNING_OVERRIDES)
+        parsed = spec.parse(fixture_path, art, _ResolveOnlyReader())
 
-    def test_json_round_trip(self):
-        data = _load_fixture("golden_manual_binning_overrides.json")
-        re_serialized = json.loads(json.dumps(data))
-        assert re_serialized == data, "Manual binning overrides round-trip changed data"
+        actions = {o.action for o in parsed.overrides}
+        assert "merge_bins" in actions, f"Parsed overrides must include merge_bins, got {sorted(actions)}"
+        assert "reject_variable" in actions, f"Parsed overrides must include reject_variable, got {sorted(actions)}"
+
+        # Each parsed override must preserve its variable and reason from the fixture.
+        raw_by_variable = {o.get("variable", ""): o for o in data.get("overrides", [])}
+        assert len(parsed.overrides) == len(raw_by_variable)
+        for override in parsed.overrides:
+            raw = raw_by_variable[override.variable]
+            assert override.action == raw.get("action", "")
+            assert override.reason == raw.get("reason", ""), (
+                f"reason lost for {override.variable!r}: parsed {override.reason!r} != raw {raw.get('reason')!r}"
+            )
 
 
 class TestApplyOverrides:

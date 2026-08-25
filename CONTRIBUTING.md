@@ -22,11 +22,39 @@ python3 -m pytest tests/ -q
 cd frontend && npm test
 ```
 
+The canonical commands that CI enforces are `make test-python-ci` (backend)
+and `npm run test:coverage` (frontend). Use `npm test` for focused local
+frontend runs; it does not enforce coverage thresholds over unrun files.
+
+## Test Architecture
+
+The suite is organized around a small set of deliberate patterns recorded in
+[ADR 0018](docs/adr/0018-test-architecture-layered-suite.md). Canonical
+locations and commands:
+
+- **Backend**
+  - `make test-python-ci` — full suite + global 60% floor + per-package
+    floors (via `scripts/check-coverage-thresholds.py`).
+  - `tests/domain/` — pure invariant tests (no I/O). See `test_invariants.py`.
+  - `tests/ports/` — port contract tests parametrized over the real adapter
+    and an in-memory fake. See `test_artifact_store_contract.py`.
+  - `tests/test_golden_fixtures_roundtrip.py` and `tests/test_golden_report_bundle.py`
+    — golden round-trip / structural comparator tests against fixtures in
+    `tests/fixtures/`.
+- **Frontend**
+  - Unit tests are colocated with source under `frontend/src/components/__tests__/`
+    and `frontend/src/hooks/__tests__/`, plus `frontend/src/App.test.tsx`.
+  - `npm run test:coverage` — full-suite 60/60/60/50 (lines/statements/
+    functions/branches) coverage gate used by CI and `make preflight`.
+
 ### Coverage Policy
 
 - Python coverage must not decrease.
-- The global coverage floor is **60%** (enforced via `make preflight` and CI).
-- New or materially changed execution, evidence, governance, API, and model-node
+- The global coverage floor is **60%** (enforced via `make test-python-ci`,
+  `make preflight`, and CI). Per-package floors are enforced by
+  `scripts/check-coverage-thresholds.py`.
+- Frontend coverage must meet the 60/60/60/50 gate in CI and `make preflight`.
+- New or materially changed execution, evidence, network, API, and model-node
   code must include behavior tests — not just trivial getter or import tests.
 - Coverage increases should prioritize launch-relevant behavior over trivial
   line coverage.

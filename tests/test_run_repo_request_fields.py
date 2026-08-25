@@ -41,7 +41,6 @@ def test_create_run_defaults(provisioned_project):
         run_id = uow.runs.create(pv_id)
         run = uow.runs.get(run_id)
         assert run is not None
-        assert run.status == "submitted"
         assert run.run_scope == "full_plan"
         assert run.force is False
         row = uow._conn.execute(

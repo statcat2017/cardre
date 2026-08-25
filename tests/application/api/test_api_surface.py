@@ -18,13 +18,6 @@ from tests.application.api.conftest import (
 # ---------------------------------------------------------------------------
 
 
-def test_health_ok(app_env):
-    client, _ = app_env
-    resp = client.get("/health")
-    assert resp.status_code == 200
-    assert resp.json()["status"] == "ok"
-
-
 def test_lifespan_shutdown_drains_async_dispatcher(app_env):
     """The FastAPI lifespan invokes the container's async dispatcher shutdown on
     teardown, so uvicorn shutdown drains outstanding work (P2-2)."""

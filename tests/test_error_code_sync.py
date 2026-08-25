@@ -41,23 +41,18 @@ def _parse_ts_server_codes() -> set[str]:
 
 
 class TestErrorCodeSync:
-    def test_ts_server_codes_are_subset_of_python(self):
-        ts_codes = _parse_ts_server_codes()
-        py_codes = {e.value for e in ErrorCode} - {e.value for e in INTERNAL_ERROR_CODES}
-        extra = ts_codes - py_codes
-        assert not extra, (
-            f"errorCodes.ts has server codes not in cardre/domain/errors.py: "
-            f"{sorted(extra)}. Add them to ErrorCode in errors.py or remove "
-            f"them from errorCodes.ts."
-        )
+    def _python_codes(self) -> set[str]:
+        """Server-side Python codes (internal codes excluded)."""
+        return {e.value for e in ErrorCode} - {e.value for e in INTERNAL_ERROR_CODES}
 
-    def test_python_codes_have_ts_counterpart(self):
+    def test_ts_server_codes_match_python(self):
+        """errorCodes.ts server codes must equal the Python ErrorCode set."""
         ts_codes = _parse_ts_server_codes()
-        py_codes = {e.value for e in ErrorCode} - {e.value for e in INTERNAL_ERROR_CODES}
-        missing = py_codes - ts_codes
-        assert not missing, (
-            f"cardre/domain/errors.py has codes not in errorCodes.ts: "
-            f"{sorted(missing)}. Add them to errorCodes.ts."
+        py_codes = self._python_codes()
+        assert ts_codes == py_codes, (
+            f"errorCodes.ts and cardre/domain/errors.py have diverged.\n"
+            f"errorCodes.ts has codes not in Python: {sorted(ts_codes - py_codes)}\n"
+            f"Python has codes not in errorCodes.ts: {sorted(py_codes - ts_codes)}"
         )
 
     def test_internal_codes_excluded_from_ts(self):

@@ -31,14 +31,14 @@ _FIXTURE_SMOOTHING: dict[str, Any] = {
 }
 
 
-def build_acceptance_fixture_steps(csv_path, cat):
+def build_acceptance_fixture_steps(source_path, cat):
     """Build the canonical pathway configured for the acceptance fixture.
 
     Returns the same 31-step canonical pathway, with the fixture's specific
     decisions applied (smoothing, automated-bin acceptance, business
-    metadata). The import step's ``source_path`` is set to ``csv_path``.
+    metadata). The import step's ``source_path`` is set to ``source_path``.
     """
-    steps = build_canonical_scorecard_steps(csv_path, cat.resolve)
+    steps = build_canonical_scorecard_steps(source_path, cat.resolve)
     return configure_canonical_scorecard(
         steps,
         product="term_loan",

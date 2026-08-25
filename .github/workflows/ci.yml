@@ -163,7 +163,9 @@ jobs:
       - uses: ./.github/actions/setup-frontend
         with:
           node-version: ${{ env.NODE_VERSION }}
-      - run: npm test
+      # Full-suite coverage gate (60/60/60/50). Ordinary `npm test` remains
+      # available for targeted local runs.
+      - run: npm run test:coverage
 
   build-sidecar:
     needs: detect-changes
@@ -217,6 +219,9 @@ jobs:
       - name: cargo clippy
         working-directory: frontend/src-tauri
         run: cargo clippy --all-targets -- -D warnings
+      - name: cargo test (binary unit tests)
+        working-directory: frontend/src-tauri
+        run: cargo test --bin cardre -- --nocapture
 
   smoke-test-packaged-sidecar:
     needs: [detect-changes, build-sidecar]
@@ -239,7 +244,13 @@ jobs:
         run: chmod +x frontend/src-tauri/binaries/cardre-api-*
       - name: Verify naming + resolution contract
         working-directory: frontend/src-tauri
-        run: cargo test --test sidecar_resolution -- --nocapture
+        env:
+          # Require the packaged sidecar binaries dir to be present, so absence
+          # fails CI rather than skipping.
+          CARDRE_CI_REQUIRE_BINARIES: "1"
+        # Run the full suite (including main.rs unit tests) with --nocapture so
+        # the sidecar resolution logs are visible on failure.
+        run: cargo test -- --nocapture
       - name: Naming guard
         run: python3 scripts/check-sidecar-naming.py
       - name: Assert resource path compiles (cargo check with artifact present)

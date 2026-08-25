@@ -63,6 +63,16 @@ fn main_rs_defines_sidecar_name_constant() {
 fn binaries_dir_contains_expected_file_when_built() {
     let bin_dir = std::path::Path::new("binaries");
     if !bin_dir.exists() {
+        // Developer-friendly: locally we may not have built the sidecar. But in
+        // CI the sidecar artifact is downloaded before this test runs, so a
+        // missing binaries/ dir there is a real failure.
+        if std::env::var_os("CARDRE_CI_REQUIRE_BINARIES").is_some() {
+            panic!(
+                "binaries/ directory not found: expected the packaged sidecar \
+                 artifact to be present (CARDRE_CI_REQUIRE_BINARIES set). \
+                 Ensure the build-sidecar artifact is downloaded before the test."
+            );
+        }
         eprintln!("skipped: binaries/ not present (no sidecar built in this env)");
         return;
     }

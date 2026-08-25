@@ -92,23 +92,10 @@ def test_class_level_codes_in_enum() -> None:
 
 def test_domain_error_map_codes_in_enum() -> None:
     """Every key and value-code in _DOMAIN_ERROR_MAP is an ErrorCode member."""
-    for key, (code, _status) in _DOMAIN_ERROR_MAP.items():
+    for key, (code, status) in _DOMAIN_ERROR_MAP.items():
         assert key in ErrorCode, f"Map key {key!r} is not an ErrorCode member."
         assert code in ErrorCode, f"Map value-code {code!r} is not an ErrorCode member."
-
-
-def test_domain_error_map_statuses_are_int() -> None:
-    """Every map status is an int, and the key/value codes are ErrorCode."""
-    for key, (code, status) in _DOMAIN_ERROR_MAP.items():
         assert isinstance(status, int), f"Map status for {key!r} is not an int: {status!r}."
-        assert isinstance(code, ErrorCode), f"Map value-code for {key!r} is not an ErrorCode."
-        assert isinstance(key, ErrorCode), f"Map key {key!r} is not an ErrorCode."
-
-
-def test_internal_error_codes_are_enum_members() -> None:
-    """Every member of INTERNAL_ERROR_CODES is a real ErrorCode member."""
-    for code in INTERNAL_ERROR_CODES:
-        assert code in ErrorCode, f"{code!r} in INTERNAL_ERROR_CODES is not an ErrorCode member."
 
 
 def test_internal_error_codes_not_in_domain_map() -> None:

@@ -13,6 +13,8 @@ const queryClient = new QueryClient({
   },
 });
 
+export { queryClient };
+
 function AppContent() {
   const [projectId, setProjectId] = useState<string | null>(null);
 
