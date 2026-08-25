@@ -129,7 +129,7 @@ class EvidenceReader:
             raise ValueError(
                 f"{node_type} requires model artifact {model_art.artifact_id!r} to be readable as MODEL_ARTIFACT evidence"
             ) from exc
-        if model_typed is None or not model_typed.model_family:
+        if model_typed is None:
             raise ValueError(
                 f"{node_type} requires model artifact {model_art.artifact_id!r} to be readable as MODEL_ARTIFACT evidence"
             )

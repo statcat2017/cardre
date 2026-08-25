@@ -7,6 +7,7 @@ import polars as pl
 from cardre.domain.diagnostics import JsonDict
 from cardre.domain.evidence.kinds import EvidenceKind
 from cardre.domain.evidence.schemas import SCHEMA_CUTOFF_ANALYSIS
+from cardre.modeling.target import TargetSpec
 from cardre.nodes._samples import sample_bundle
 from cardre.nodes.contracts import (
     ArtifactContract,
@@ -81,10 +82,10 @@ class CutoffAnalysisNode(NodeType):
         if band_count < 2:
             raise ValueError(f"band_count must be at least 2, got {band_count}")
 
-        meta = context.inputs.target_metadata()
-        target_col = meta.target_column if meta is not None else ""
-        good = meta.good_values if meta is not None else frozenset()
-        bad = meta.bad_values if meta is not None else frozenset()
+        target_spec = TargetSpec.from_metadata(context.inputs.target_metadata())
+        target_col = target_spec.target_column
+        good = target_spec.good_values
+        bad = target_spec.bad_values
         bad_list = list(bad)
 
         data_arts = sample_bundle(context.inputs)
@@ -192,13 +193,13 @@ __definition__ = NodeDefinition(
     category=CutoffAnalysisNode.category,
     description="Analyse approval rate, bad rate, and capture rate across score bands / cutoffs",
     input_contract=ArtifactContract(
-        # No role is hard-required: the node analyses whichever datasets are
-        # supplied (train/test/oot) and tolerates missing target metadata.
+        # Data roles are optional, but modelling metadata is required for target
+        # semantics before any supplied dataset is analysed.
         roles=(
             ArtifactRoleSpec("train", required=False),
             ArtifactRoleSpec("test", required=False),
             ArtifactRoleSpec("oot", required=False),
-            ArtifactRoleSpec("definition", required=False),
+            ArtifactRoleSpec("definition", required=True, kinds=(EvidenceKind.MODELLING_METADATA,)),
         ),
     ),
     output_contract=ArtifactContract(

@@ -224,17 +224,27 @@ def test_model_artifact_rejects_list_coefficients():
         ModelArtifactV1.from_dict(
             {
                 "schema_version": "cardre.model_artifact.v1",
-                "model_family": "logistic_regression",
                 "target_column": "bad_flag",
                 "target_event_value": "bad",
                 "class_mapping": {"0": "good", "1": "bad"},
-                "feature_contract": {"features": ["age_woe"]},
+                "probability_column_index": 1,
+                "feature_contract": {
+                    "features": ["age_woe"],
+                    "transformation_strategy": "woe",
+                    "order_hash": "h",
+                    "missing_policy": "error",
+                    "unknown_category_policy": "error",
+                },
                 "model_payload": {
                     "intercept": -0.4,
                     "coefficients": [
                         {"variable_name": "age_woe", "coefficient": 0.8},
                     ],
                 },
+                "training": {"row_count": 100},
+                "source_variables": ["age"],
+                "bad_class_label": "bad",
+                "warnings": [],
             }
         )
 
@@ -253,35 +263,40 @@ def test_cutoff_analysis_rejects_legacy_score_key():
         CutoffAnalysis.from_json({"cutoff_tables": {"train": [{"score": 100}]}})
 
 
-def test_model_artifact_requires_schema_version():
-    from cardre.modeling.schema import ModelArtifactV1
-    payload = {
-        "model_family": "logistic_regression",
+def _strict_model_payload() -> dict:
+    return {
+        "schema_version": "cardre.model_artifact.v1",
         "target_column": "y",
         "target_event_value": "bad",
         "class_mapping": {"good": "good", "bad": "bad"},
         "probability_column_index": 1,
-        "feature_contract": {"features": ["x"]},
+        "feature_contract": {
+            "features": ["x"],
+            "transformation_strategy": "woe",
+            "order_hash": "h",
+            "missing_policy": "error",
+            "unknown_category_policy": "error",
+        },
         "model_payload": {"intercept": 0.0, "coefficients": {"x": 1.0}},
         "training": {"row_count": 100},
+        "source_variables": ["x_src"],
+        "bad_class_label": "bad",
+        "warnings": [],
     }
+
+
+def test_model_artifact_requires_schema_version():
+    from cardre.modeling.schema import ModelArtifactV1
+    payload = _strict_model_payload()
+    del payload["schema_version"]
     with pytest.raises(ValueError, match="requires schema_version"):
         ModelArtifactV1.from_dict(payload)
 
 
 def test_model_artifact_rejects_wrong_schema_version():
     from cardre.modeling.schema import ModelArtifactV1
-    payload = {
-        "schema_version": "cardre.model_artifact.v2",
-        "model_family": "logistic_regression",
-        "target_column": "y",
-        "target_event_value": "bad",
-        "class_mapping": {"good": "good", "bad": "bad"},
-        "probability_column_index": 1,
-        "feature_contract": {"features": ["x"]},
-        "model_payload": {"intercept": 0.0, "coefficients": {"x": 1.0}},
-        "training": {"row_count": 100},
-    }
+    payload = _strict_model_payload()
+    payload["schema_version"] = "cardre.model_artifact.v2"
     with pytest.raises(ValueError, match="requires schema_version"):
         ModelArtifactV1.from_dict(payload)
 

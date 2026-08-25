@@ -137,7 +137,7 @@ EVIDENCE_PROFILES: dict[EvidenceKind, _Profile] = {
         expected_roles={"model"},
         expected_artifact_types={"model_artifact"},
         schema_version=SCHEMA_MODEL_ARTIFACT,
-        required_keys={"model_family"},
+        required_keys={"target_column", "feature_contract", "model_payload"},
     ),
     EvidenceKind.SCORE_SCALING: _Profile(
         expected_roles={"scorecard"},

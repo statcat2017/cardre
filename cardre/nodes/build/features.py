@@ -121,9 +121,9 @@ class CalculateWoeIvNode(NodeType):
         meta_def = context.inputs.target_metadata()
 
         from cardre.modeling.target import TargetSpec
-        target_spec = TargetSpec.from_metadata(meta_def)
-        if target_spec is None:
+        if meta_def is None:
             raise ValueError("WOE/IV requires target metadata")
+        target_spec = TargetSpec.from_metadata(meta_def)
 
         df = context.inputs.read_dataframe(train_artifact)
 

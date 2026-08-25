@@ -14,6 +14,7 @@ from cardre.domain.diagnostics import JsonDict
 from cardre.domain.errors import NodeFailedWithArtifacts
 from cardre.domain.evidence.kinds import EvidenceKind
 from cardre.domain.evidence.schemas import SCHEMA_VALIDATION_METRICS
+from cardre.modeling.target import TargetSpec
 from cardre.nodes._samples import sample_bundle
 from cardre.nodes.contracts import (
     ArtifactContract,
@@ -63,7 +64,7 @@ class ValidationMetricsNode(NodeType):
                 ArtifactRoleSpec("train", required=False),
                 ArtifactRoleSpec("test", required=False),
                 ArtifactRoleSpec("oot", required=False),
-                ArtifactRoleSpec("definition", required=False),
+                ArtifactRoleSpec("definition", required=True, kinds=(EvidenceKind.MODELLING_METADATA,)),
                 ArtifactRoleSpec("report", required=False),
             ),
         ),
@@ -151,10 +152,10 @@ class ValidationMetricsNode(NodeType):
         )
 
     def run(self, context: NodeContext) -> NodeResult:
-        meta = context.inputs.target_metadata()
-        target_col = meta.target_column if meta is not None else ""
-        good = meta.good_values if meta is not None else frozenset()
-        bad = meta.bad_values if meta is not None else frozenset()
+        target_spec = TargetSpec.from_metadata(context.inputs.target_metadata())
+        target_col = target_spec.target_column
+        good = target_spec.good_values
+        bad = target_spec.bad_values
         bad_list = list(bad)
 
         params = context.params
@@ -451,4 +452,3 @@ class ValidationMetricsNode(NodeType):
         if score_evidence_art is not None:
             payload["score_application_evidence_artifact_id"] = score_evidence_art.source_artifact_id
         return payload
-

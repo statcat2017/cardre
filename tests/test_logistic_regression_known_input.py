@@ -116,6 +116,7 @@ def train_parquet(fixture_dir: Path) -> Path:
 def modelling_metadata_payload() -> dict:
     """A minimal modelling-metadata JSON payload."""
     return {
+        "schema_version": SCHEMA_MODELLING_METADATA,
         "target_column": "default_flag",
         "good_values": ["good"],
         "bad_values": ["bad"],
@@ -222,7 +223,6 @@ def test_logistic_regression_model_artifact_shape(
 
     # --- Verify model artifact shape ---
     assert raw["schema_version"] == "cardre.model_artifact.v1"
-    assert raw["model_family"] == "logistic_regression"
     assert raw["target_column"] == "default_flag"
 
     # Features: the two WOE columns (in feature_contract)
@@ -253,7 +253,6 @@ def test_logistic_regression_model_artifact_shape(
     assert raw["feature_contract"]["missing_policy"] == "error"
     assert raw["feature_contract"]["unknown_category_policy"] == "error"
     assert "order_hash" in raw["feature_contract"]
-    assert raw["feature_order_hash"] == raw["feature_contract"]["order_hash"]
 
     # Training block
     assert raw["training"]["row_count"] == 5

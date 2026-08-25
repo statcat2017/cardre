@@ -306,14 +306,22 @@ class TestRefreshComparison:
         def canonical_model(coefficient):
             return {
                 "schema_version": MODEL_ARTIFACT_SCHEMA_VERSION,
-                "model_family": "logistic_regression",
                 "target_column": "defaulted",
                 "target_event_value": "1",
                 "class_mapping": {"0": "0", "1": "1"},
                 "probability_column_index": 1,
-                "feature_contract": {"features": ["income"]},
-                "training": {"row_count": 10},
-                "model_payload": {"coefficients": {"income": coefficient}, "intercept": -0.2},
+                "feature_contract": {
+                    "features": ["income_woe"],
+                    "transformation_strategy": "woe",
+                    "order_hash": "h",
+                    "missing_policy": "error",
+                    "unknown_category_policy": "error",
+                },
+                "training": {"row_count": 10, "converged": True, "iterations": 5, "params": {}},
+                "model_payload": {"coefficients": {"income_woe": coefficient}, "intercept": -0.2},
+                "source_variables": ["income"],
+                "bad_class_label": "1",
+                "warnings": [],
             }
 
         baseline_path = root / "baseline-model.json"

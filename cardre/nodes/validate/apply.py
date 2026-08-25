@@ -294,8 +294,13 @@ class ApplyModelNode(NodeType):
 
     def run(self, context: NodeContext) -> NodeResult:
         model_art = context.inputs.require("model", self.node_type)
-        typed_model = context.inputs.read(model_art, EvidenceKind.MODEL_ARTIFACT)
-        model = typed_model.to_dict()
+        model = context.inputs.read(model_art, EvidenceKind.MODEL_ARTIFACT)
+
+        if model.feature_contract.transformation_strategy != "woe":
+            raise ValueError(
+                f"apply_model requires a WOE feature contract, got "
+                f"transformation_strategy={model.feature_contract.transformation_strategy!r}"
+            )
 
         scorecard_arts = context.inputs.by_role("scorecard")
         scorecard_evidence = None
@@ -340,18 +345,15 @@ class ApplyModelNode(NodeType):
             df = context.inputs.read_dataframe(data_art)
             role = data_art.role
 
-            fc = model.get("feature_contract", {})
-            features = fc.get("features", [])
-            mp = model.get("model_payload", {})
-            intercept = float(mp.get("intercept", 0))
-            coefficients = mp.get("coefficients", {})
+            features = list(model.features)
+            intercept = float(model.intercept)
+            coefficients = model.coefficients_dict
 
             has_scorecard = scorecard_evidence is not None
             if has_scorecard:
-                scorecard_parsed = scorecard_evidence.to_dict() if hasattr(scorecard_evidence, 'to_dict') else scorecard_evidence
-                offset = float(scorecard_parsed.get("offset", 0))
-                factor_val = float(scorecard_parsed.get("factor", 1))
-                direction = -1.0 if scorecard_parsed.get("score_direction", "higher_is_lower_risk") == "higher_is_lower_risk" else 1.0
+                offset = float(scorecard_evidence.offset)
+                factor_val = float(scorecard_evidence.factor)
+                direction = -1.0 if scorecard_evidence.score_direction == "higher_is_lower_risk" else 1.0
             else:
                 offset, factor_val, direction = 0.0, 1.0, -1.0
 

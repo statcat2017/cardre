@@ -41,9 +41,7 @@ class TestModelArtifactRoundTrip:
         data = _load_fixture("golden_model_artifact.json")
         obj = ModelArtifactV1.from_dict(data)
         re_serialized = obj.to_dict()
-        # to_dict() adds synthetic top-level keys (features, coefficients,
-        # intercept) derived from feature_contract/model_payload.  Every
-        # original key must be preserved.
+        # Every original key must be preserved exactly.
         for k, v in data.items():
             assert k in re_serialized, (
                 f"ModelArtifactV1 round-trip dropped key {k!r}.\n"
@@ -65,68 +63,60 @@ class TestModelArtifactRoundTrip:
         assert obj.features == data["feature_contract"]["features"]
         assert obj.target_column == data["target_column"]
         assert obj.target_event_value == data["target_event_value"]
-        assert obj.model_family == data["model_family"]
-        assert obj.score_direction == data["score_direction"]
-
-        raw_base_odds = data.get("base_odds")
-        if raw_base_odds is not None:
-            if isinstance(raw_base_odds, str) and ":" in raw_base_odds:
-                parts = raw_base_odds.split(":", 1)
-                expected = float(parts[0]) / float(parts[1])
-            else:
-                expected = float(raw_base_odds)
-            assert obj.base_odds == expected
-        else:
-            assert obj.base_odds == 50.0
-
-        assert obj.bad_class_label == str(data.get("bad_class_label", ""))
+        assert obj.source_variables == data["source_variables"]
+        assert obj.bad_class_label == data["bad_class_label"]
 
     def test_from_dict_rejects_empty(self):
         import pytest
-        with pytest.raises(ValueError, match="requires a non-empty 'model_family'"):
+        with pytest.raises(ValueError, match="schema_version"):
             ModelArtifactV1.from_dict({})
 
     def test_from_dict_requires_feature_contract_features(self):
         import pytest
-        payload = {
-            "schema_version": "cardre.model_artifact.v1",
-            "model_family": "logistic_regression",
-            "target_column": "y",
-            "target_event_value": "bad",
-            "class_mapping": {"good": "good", "bad": "bad"},
-            "feature_contract": {},
-            "model_payload": {"intercept": 0.0, "coefficients": {}},
-            "training": {"row_count": 100},
-        }
-        with pytest.raises(ValueError, match="features"):
+        payload = _load_fixture("golden_model_artifact.json")
+        payload["feature_contract"]["features"] = []
+        with pytest.raises(ValueError, match="non-empty 'features'"):
             ModelArtifactV1.from_dict(payload)
 
     def test_from_dict_requires_training_row_count(self):
         import pytest
-        payload = {
-            "schema_version": "cardre.model_artifact.v1",
-            "model_family": "logistic_regression",
-            "target_column": "y",
-            "target_event_value": "bad",
-            "class_mapping": {"good": "good", "bad": "bad"},
-            "probability_column_index": 1,
-            "feature_contract": {"features": ["x"]},
-            "model_payload": {"intercept": 0.0, "coefficients": {"x": 1.0}},
-            "training": {"row_count": 0},
-        }
+        payload = _load_fixture("golden_model_artifact.json")
+        payload["training"]["row_count"] = 0
         with pytest.raises(ValueError, match="row_count"):
+            ModelArtifactV1.from_dict(payload)
+
+    def test_from_dict_rejects_unknown_top_level_key(self):
+        import pytest
+        payload = _load_fixture("golden_model_artifact.json")
+        payload["model_family"] = "random_forest"
+        with pytest.raises(ValueError, match="unknown key"):
+            ModelArtifactV1.from_dict(payload)
+
+    def test_from_dict_rejects_missing_required_key(self):
+        import pytest
+        payload = _load_fixture("golden_model_artifact.json")
+        del payload["training"]
+        with pytest.raises(ValueError, match="requires the following key"):
+            ModelArtifactV1.from_dict(payload)
+
+    def test_from_dict_rejects_legacy_historical_keys(self):
+        import pytest
+        payload = _load_fixture("golden_model_artifact.json")
+        payload["estimator_reference"] = {"artifact_id": "x"}
+        with pytest.raises(ValueError, match="unknown key"):
             ModelArtifactV1.from_dict(payload)
 
     def test_to_dict_round_trip_minimal(self):
         obj = ModelArtifactV1(
-            model_family="test_family",
             target_column="y",
             target_event_value="bad",
             class_mapping={"good": "good", "bad": "bad"},
             probability_column_index=1,
             feature_contract=FeatureContract(features=["x"]),
-            model_payload={"coefficients": {"x": 1.0}},
+            model_payload={"intercept": 0.0, "coefficients": {"x": 1.0}},
             training=TrainingMetadata(row_count=100),
+            source_variables=["x_src"],
+            bad_class_label="bad",
         )
         d = obj.to_dict()
         obj2 = ModelArtifactV1.from_dict(d)

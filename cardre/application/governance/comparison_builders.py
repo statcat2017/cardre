@@ -116,83 +116,55 @@ def build_model(
     if not lr_b or not lr_c:
         return {"variables": [], "branch_level": {}}
 
-    from cardre.modeling.families import require as require_family
-
-    b_family = lr_b.get("model_family", "logistic_regression")
-    c_family = lr_c.get("model_family", "logistic_regression")
     b_model_payload = lr_b.get("model_payload", {})
     c_model_payload = lr_c.get("model_payload", {})
     if not isinstance(b_model_payload, dict):
         b_model_payload = {}
     if not isinstance(c_model_payload, dict):
         c_model_payload = {}
-    b_features = lr_b.get("feature_contract", {}).get("features", lr_b.get("features", []))
-    c_features = lr_c.get("feature_contract", {}).get("features", lr_c.get("features", []))
-    b_spec = require_family(b_family)
-    c_spec = require_family(c_family)
+    b_features = lr_b.get("feature_contract", {}).get("features", [])
+    c_features = lr_c.get("feature_contract", {}).get("features", [])
+
+    b_coeffs_value = b_model_payload.get("coefficients", {})
+    c_coeffs_value = c_model_payload.get("coefficients", {})
+    b_coeffs = b_coeffs_value if isinstance(b_coeffs_value, dict) else {}
+    c_coeffs = c_coeffs_value if isinstance(c_coeffs_value, dict) else {}
 
     result: dict[str, Any] = {
         "branch_level": {
             "baseline": {
-                "model_family": b_family,
+                "model_family": "logistic_regression",
                 "feature_count": len(b_features),
-                "intercept": b_model_payload.get("intercept", lr_b.get("intercept")),
+                "intercept": b_model_payload.get("intercept", 0.0),
                 "warnings": lr_b.get("warnings", []),
             },
             branch_id_challenger: {
-                "model_family": c_family,
+                "model_family": "logistic_regression",
                 "feature_count": len(c_features),
-                "intercept": c_model_payload.get("intercept", lr_c.get("intercept")),
+                "intercept": c_model_payload.get("intercept", 0.0),
                 "warnings": lr_c.get("warnings", []),
             },
         },
     }
 
-    if b_spec.has_coefficients and c_spec.has_coefficients:
-        b_coeffs_value = b_model_payload.get("coefficients", lr_b.get("coefficients", []))
-        c_coeffs_value = c_model_payload.get("coefficients", lr_c.get("coefficients", []))
-        b_coeffs = {}
-        c_coeffs = {}
-        if isinstance(b_coeffs_value, dict):
-            b_coeffs = b_coeffs_value
-        else:
-            for c in b_coeffs_value:
-                if isinstance(c, dict) and "variable" in c:
-                    b_coeffs[c["variable"]] = c
-        if isinstance(c_coeffs_value, dict):
-            c_coeffs = c_coeffs_value
-        else:
-            for c in c_coeffs_value:
-                if isinstance(c, dict) and "variable" in c:
-                    c_coeffs[c["variable"]] = c
-
-        model_vars = []
-        for var_name in sorted(set(b_coeffs) | set(c_coeffs)):
-            b_val = (
-                b_coeffs.get(var_name, 0) if isinstance(b_coeffs.get(var_name), (int, float))
-                else b_coeffs.get(var_name, {}).get("coefficient", 0)
-            )
-            c_val = (
-                c_coeffs.get(var_name, 0) if isinstance(c_coeffs.get(var_name), (int, float))
-                else c_coeffs.get(var_name, {}).get("coefficient", 0)
-            )
-            model_vars.append({
-                "variable": var_name,
-                "baseline": {"included": var_name in b_coeffs, "coefficient": b_val, "points_range": 0},
-                "challengers": {branch_id_challenger: {"included": var_name in c_coeffs, "coefficient": c_val, "points_range": 0}},
-                "difference": {"coefficient_delta_vs_baseline": c_val - b_val},
-            })
-        result["variables"] = model_vars
-    else:
-        b_interp = lr_b.get("interpretability", {})
-        c_interp = lr_c.get("interpretability", {})
-        result["generic_comparison"] = {
-            "baseline": {"model_family": b_family, "features": b_features, "interpretability": b_interp},
-            "challenger": {"model_family": c_family, "features": c_features, "interpretability": c_interp},
-            "feature_overlap": len(set(b_features) & set(c_features)),
-            "baseline_only_features": [f for f in b_features if f not in c_features],
-            "challenger_only_features": [f for f in c_features if f not in b_features],
-        }
+    model_vars = []
+    for var_name in sorted(set(b_coeffs) | set(c_coeffs)):
+        b_val = b_coeffs.get(var_name, 0)
+        c_val = c_coeffs.get(var_name, 0)
+        if (
+            isinstance(b_val, bool)
+            or not isinstance(b_val, (int, float))
+            or isinstance(c_val, bool)
+            or not isinstance(c_val, (int, float))
+        ):
+            raise ValueError(f"Model coefficient for {var_name!r} must be numeric")
+        model_vars.append({
+            "variable": var_name,
+            "baseline": {"included": var_name in b_coeffs, "coefficient": b_val, "points_range": 0},
+            "challengers": {branch_id_challenger: {"included": var_name in c_coeffs, "coefficient": c_val, "points_range": 0}},
+            "difference": {"coefficient_delta_vs_baseline": c_val - b_val},
+        })
+    result["variables"] = model_vars
 
     return result
 

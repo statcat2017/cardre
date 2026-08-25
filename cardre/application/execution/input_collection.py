@@ -82,12 +82,15 @@ class StepInputCollection:
         meta = self._reader.find_optional(self._input_artifacts, EvidenceKind.MODELLING_METADATA)
         if meta is None:
             return None
+        good = frozenset(str(v) for v in meta.good_values)
+        bad = frozenset(str(v) for v in meta.bad_values)
+        indet = frozenset(str(v) for v in meta.indeterminate_values)
         return TargetMeta(
             target_column=meta.target_column,
-            good_values=frozenset(str(v) for v in meta.good_values),
-            bad_values=frozenset(str(v) for v in meta.bad_values),
-            indeterminate_values=frozenset(str(v) for v in meta.indeterminate_values) if hasattr(meta, "indeterminate_values") else frozenset(),
-            all_known=frozenset(str(v) for v in meta.all_known) if hasattr(meta, "all_known") else frozenset(),
+            good_values=good,
+            bad_values=bad,
+            indeterminate_values=indet,
+            all_known=good | bad | indet,
         )
 
     def find_frozen_bundle(self) -> Any | None:

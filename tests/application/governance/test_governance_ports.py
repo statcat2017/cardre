@@ -595,11 +595,8 @@ def test_build_woe_iv_pure():
 def test_build_model_pure_with_coefficients():
     payload = {
         "model-fit": {
-            "model_family": "logistic_regression",
-            "model_payload": {"intercept": 0.1, "coefficients": [
-                {"variable": "age", "coefficient": 0.2},
-            ]},
-            "feature_contract": {"features": ["age"]},
+            "model_payload": {"intercept": 0.1, "coefficients": {"age_woe": 0.2}},
+            "feature_contract": {"features": ["age_woe"]},
         },
     }
     out = build_model(
@@ -607,7 +604,7 @@ def test_build_model_pure_with_coefficients():
         "pv-b", "pv-c", "challenger-1", {"include_model": True},
     )
     assert out["branch_level"]["baseline"]["model_family"] == "logistic_regression"
-    assert out["variables"][0]["variable"] == "age"
+    assert out["variables"][0]["variable"] == "age_woe"
     assert out["variables"][0]["difference"]["coefficient_delta_vs_baseline"] == 0
 
 

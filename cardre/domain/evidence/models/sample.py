@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from cardre.domain.diagnostics import JsonDict
+from cardre.domain.evidence.schemas import SCHEMA_MODELLING_METADATA
 
 
 @dataclass(frozen=True)
@@ -17,19 +18,39 @@ class ModellingMetadata:
     extra: JsonDict = field(default_factory=dict)
     _raw: JsonDict = field(default_factory=dict, repr=False)
     source_artifact_id: str = ""
+    schema_version: str = ""
 
     @classmethod
     def from_json(cls, data: JsonDict, artifact_id: str = "") -> ModellingMetadata:
+        if not isinstance(data, dict):
+            raise ValueError("MODELLING_METADATA requires an object payload")
+        if data.get("schema_version") != SCHEMA_MODELLING_METADATA:
+            raise ValueError(
+                f"ModellingMetadata requires schema_version {SCHEMA_MODELLING_METADATA!r}"
+            )
+        # Require the current target fields; no legacy-null fallback.
+        target_column = data.get("target_column", "")
+        if not isinstance(target_column, str) or not target_column:
+            raise ValueError("ModellingMetadata requires a non-empty target_column")
+        good_values = data.get("good_values")
+        bad_values = data.get("bad_values")
+        if not isinstance(good_values, list) or not isinstance(bad_values, list):
+            raise ValueError("ModellingMetadata requires good_values and bad_values lists")
+        if not good_values or not bad_values:
+            raise ValueError("ModellingMetadata requires non-empty good_values and bad_values")
         indeterminate = data.get("indeterminate_values")
+        if not isinstance(indeterminate, list):
+            raise ValueError("ModellingMetadata requires indeterminate_values list")
         return cls(
-            target_column=data.get("target_column", ""),
-            good_values=list(data.get("good_values") or []),
-            bad_values=list(data.get("bad_values") or []),
-            indeterminate_values=list(indeterminate) if indeterminate is not None else [],
+            target_column=target_column,
+            good_values=list(good_values),
+            bad_values=list(bad_values),
+            indeterminate_values=list(indeterminate),
             extra={k: v for k, v in data.items()
                    if k not in ("target_column", "good_values", "bad_values", "indeterminate_values")},
             _raw=data,
             source_artifact_id=artifact_id,
+            schema_version=str(data.get("schema_version", "")),
         )
 
     def to_dict(self) -> JsonDict:

@@ -215,9 +215,9 @@ class LogisticRegressionNode(NodeType):
 
         meta = context.inputs.target_metadata()
         from cardre.modeling.target import TargetSpec
-        target_spec = TargetSpec.from_metadata(meta)
-        if target_spec is None:
+        if meta is None:
             raise ValueError("Target metadata is required for logistic regression")
+        target_spec = TargetSpec.from_metadata(meta)
 
         sel_def_list = context.inputs.by_kind(EvidenceKind.SELECTION_DEFINITION)  # type: ignore[arg-type]
         sel_def = sel_def_list[0] if sel_def_list else None
@@ -297,7 +297,6 @@ class LogisticRegressionNode(NodeType):
 
         model = {
             "schema_version": SCHEMA_MODEL_ARTIFACT,
-            "model_family": "logistic_regression",
             "target_column": target_column,
             "source_variables": source_variables,
             "class_mapping": class_mapping,
@@ -311,7 +310,6 @@ class LogisticRegressionNode(NodeType):
                 "missing_policy": "error",
                 "unknown_category_policy": "error",
             },
-            "feature_order_hash": feature_order_hash,
             "model_payload": {
                 "intercept": round(float(lr.intercept_[0]), COEF_ROUND),
                 "coefficients": coefficients,
@@ -436,18 +434,6 @@ class ScoreScalingNode(NodeType):
                 candidate_artifact_ids=[],
             )
         model = context.inputs.read(model_arts[0], EvidenceKind.MODEL_ARTIFACT)
-
-        calibration = model.calibration
-        if calibration:
-            application_mode = calibration.get("application_mode", "")
-            score_scaling_compatible = bool(calibration.get("score_scaling_compatible", False))
-            if application_mode != "folded_linear_log_odds" or not score_scaling_compatible:
-                raise ValueError(
-                    "Score scaling requires calibration.application_mode="
-                    "'folded_linear_log_odds'. Runtime probability calibration "
-                    "(including isotonic and CV Platt ensembles) is not compatible "
-                    "with additive scorecard points."
-                )
 
         bin_def_list = context.inputs.by_kind(EvidenceKind.BIN_DEFINITION)
         if not bin_def_list:
