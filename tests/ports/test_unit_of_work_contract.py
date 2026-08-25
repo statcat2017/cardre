@@ -10,6 +10,8 @@ not bypass the behaviour under test.
 
 from __future__ import annotations
 
+import sqlite3
+
 import pytest
 
 from cardre.adapters.sqlite.connection import SqliteUnitOfWorkFactory
@@ -31,6 +33,24 @@ class _FakeProjects:
 
     def list_all(self) -> list[str]:
         return list(self._storage.values())
+
+
+class _FakeReadOnlyProjects:
+    """Read-only project surface exposing only the read methods.
+
+    Intentionally has no ``create`` (or any mutation method) so a read-only
+    use case cannot accidentally persist. This is the structural side of the
+    fake's read-only boundary: the mutation simply does not exist.
+    """
+
+    def __init__(self, committed: dict[str, str]) -> None:
+        self._committed = committed
+
+    def get(self, project_id: str) -> str | None:
+        return self._committed.get(project_id)
+
+    def list_all(self) -> list[str]:
+        return list(self._committed.values())
 
 
 class _FakeTransaction:
@@ -82,6 +102,35 @@ class _FakeTransaction:
         self.close()
 
 
+class _FakeReadOnlyTransaction:
+    """Minimal read-only UoW: observes committed state only, never mutates.
+
+    Exposes only read methods and ``close()``; there is no ``commit`` or
+    ``rollback`` because a read-only boundary has no transaction to end.
+    Reads go straight to the shared durable snapshot, which only the write
+    UoW can advance.
+    """
+
+    def __init__(self, committed: dict[str, str]) -> None:
+        self._committed = committed
+        self._closed = False
+
+    @property
+    def projects(self) -> _FakeReadOnlyProjects:
+        if self._closed:
+            raise RuntimeError("UnitOfWork is closed")
+        return _FakeReadOnlyProjects(self._committed)
+
+    def close(self) -> None:
+        self._closed = True
+
+    def __enter__(self) -> _FakeReadOnlyTransaction:
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        self.close()
+
+
 class FakeFactory:
     """In-memory factory mirroring ``SqliteUnitOfWorkFactory`` (write + read)."""
 
@@ -91,8 +140,8 @@ class FakeFactory:
     def for_project(self, project_id: str) -> _FakeTransaction:
         return _FakeTransaction(self._committed)
 
-    def read_only(self, project_id: str) -> _FakeTransaction:
-        return _FakeTransaction(self._committed)
+    def read_only(self, project_id: str) -> _FakeReadOnlyTransaction:
+        return _FakeReadOnlyTransaction(self._committed)
 
 
 def _real_factory(tmp_path) -> tuple[str, SqliteUnitOfWorkFactory]:
@@ -136,6 +185,29 @@ def _project_names(projects) -> list[str]:
     working against both without weakening the real contract.
     """
     return [p.name if hasattr(p, "name") else p for p in projects.list_all()]
+
+
+def _assert_read_only_mutation_blocked(projects) -> None:
+    """A mutation attempt through the read-only project surface must fail.
+
+    The two adapters expose this boundary differently, and we assert both
+    without weakening the shared requirement that a mutation must never land:
+
+    * Fake — the read-only surface has no ``create`` method at all, so the
+      attempt fails with ``AttributeError`` before touching storage.
+    * Real SQLite — the repo exposes ``create`` structurally (a shared repo
+      class), but the connection is opened in ``mode=ro``, so the INSERT is
+      rejected with a SQLite *readonly* ``OperationalError``.
+
+    This is an adapter-boundary implementation detail; what matters is that
+    neither adapter accepts the write.
+    """
+    if not hasattr(projects, "create"):
+        with pytest.raises(AttributeError):
+            projects.create("should-not-persist")  # type: ignore[attr-defined]
+        return
+    with pytest.raises(sqlite3.OperationalError, match="readonly"):
+        projects.create("should-not-persist")
 
 
 def test_context_manager_commits_on_success(contract):
@@ -202,6 +274,31 @@ def test_read_only_exposes_committed_state(contract):
     ro = factory.read_only(project_id)
     try:
         assert "Persisted" in _project_names(ro.projects)
+    finally:
+        ro.close()
+
+
+def test_read_only_observes_committed_state_and_rejects_mutation(contract):
+    """Shared read-only contract: observe committed state, never mutate it.
+
+    Exercises both the fake and the real read-only UoW against the same
+    assertions: it must surface committed data, must refuse to mutate through
+    its project surface, and must leave the committed state untouched.
+    """
+    factory, project_id = contract
+    uow = factory.for_project(project_id)
+    try:
+        uow.projects.create("Persisted")
+        uow.commit()
+    finally:
+        uow.close()
+
+    ro = factory.read_only(project_id)
+    try:
+        assert "Persisted" in _project_names(ro.projects)
+        before = _project_names(ro.projects)
+        _assert_read_only_mutation_blocked(ro.projects)
+        assert _project_names(ro.projects) == before
     finally:
         ro.close()
 

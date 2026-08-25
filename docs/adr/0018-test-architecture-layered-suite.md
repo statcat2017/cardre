@@ -72,6 +72,16 @@ domain/application/adapters/api/nodes/modeling/bootstrap/sidecar respectively,
 with a global 60% backstop. These are recorded in
 `scripts/check-coverage-thresholds.py`.
 
+**Branch coverage.** The backend measures branch coverage via `--cov-branch`
+in `make test-python-ci`, `make preflight`, and `make test-cov`. A single
+**global 60% branch floor** is enforced by
+`scripts/check-coverage-thresholds.py` alongside the existing statement
+floors. The measured baseline at adoption was ~62.1% global branch coverage, so
+the 60.0% floor acts as a conservative regression guard. **Per-package branch
+floors are explicitly deferred** this sprint; only a single global branch floor
+is enforced. A future change should not add per-package branch floors without
+reopening this ADR.
+
 ## Consequences
 
 ### Easier
@@ -82,7 +92,8 @@ with a global 60% backstop. These are recorded in
   non-deterministic hashes, so golden tests are stable across scheduling
   changes.
 - **Real coverage enforcement.** The frontend 60/60/60/50 gate is wired into CI
-  and `make preflight`, and the backend per-package floors are enforced by
+  and `make preflight`, and the backend per-package statement floors plus the
+  global statement and branch floors are enforced by
   `scripts/check-coverage-thresholds.py` in `make test-python-ci` and
   `preflight`.
 - **Port contracts documented in code.** The parametrized contract tests make

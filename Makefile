@@ -4,10 +4,10 @@ test:
 	python3 -m pytest tests/ -q --tb=short
 
 test-cov:
-	python3 -m pytest tests/ --cov=cardre --cov=sidecar --cov-report=html
+	python3 -m pytest tests/ --cov=cardre --cov=sidecar --cov-branch --cov-report=html
 
 test-python-ci:
-	python3 -m pytest tests/ -q --tb=short --cov-report=json
+	python3 -m pytest tests/ -q --tb=short --cov-branch --cov-report=json
 	python3 scripts/check-coverage-thresholds.py
 
 test-fail-fast:
@@ -34,7 +34,7 @@ preflight:
 	python3 scripts/check_doc_references.py
 	python3 scripts/check-sidecar-naming.py
 	$(MAKE) arch-check
-	python3 -m pytest tests/ -q --tb=short --cov-report=json
+	python3 -m pytest tests/ -q --tb=short --cov-branch --cov-report=json
 	python3 scripts/check-coverage-thresholds.py
 	$(MAKE) lint-artifact-reads
 	# Frontend checks — full gates restored for Batch 07b closeout.

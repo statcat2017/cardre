@@ -33,8 +33,9 @@ The suite is organized around a small set of deliberate patterns recorded in
 locations and commands:
 
 - **Backend**
-  - `make test-python-ci` — full suite + global 60% floor + per-package
-    floors (via `scripts/check-coverage-thresholds.py`).
+  - `make test-python-ci` — full suite + global 60% statement floor +
+    global 60% branch floor + per-package statement floors (via
+    `scripts/check-coverage-thresholds.py`).
   - `tests/domain/` — pure invariant tests (no I/O). See `test_invariants.py`.
   - `tests/ports/` — port contract tests parametrized over the real adapter
     and an in-memory fake. See `test_artifact_store_contract.py`.
@@ -50,9 +51,13 @@ locations and commands:
 ### Coverage Policy
 
 - Python coverage must not decrease.
-- The global coverage floor is **60%** (enforced via `make test-python-ci`,
-  `make preflight`, and CI). Per-package floors are enforced by
-  `scripts/check-coverage-thresholds.py`.
+- The global statement coverage floor is **60%** (enforced via `make
+  test-python-ci`, `make preflight`, and CI). Per-package statement floors are
+  enforced by `scripts/check-coverage-thresholds.py`.
+- Branch coverage is measured on the backend via `--cov-branch`, with a
+  **global 60% branch floor** enforced by `scripts/check-coverage-thresholds.py`
+  in `make test-python-ci` and `make preflight`. Per-package branch floors are
+  explicitly deferred this sprint (see ADR 0018).
 - Frontend coverage must meet the 60/60/60/50 gate in CI and `make preflight`.
 - New or materially changed execution, evidence, network, API, and model-node
   code must include behavior tests — not just trivial getter or import tests.
