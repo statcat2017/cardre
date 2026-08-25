@@ -294,7 +294,7 @@ describe("useProjectWorkspace", () => {
     });
 
     act(() => {
-      result.current.setSourcePath("/tmp/in.csv");
+      result.current.setSourcePath("/tmp/in.parquet");
     });
 
     await act(async () => {
@@ -302,7 +302,7 @@ describe("useProjectWorkspace", () => {
     });
 
     expect(mockScoped.createCanonicalVersion).toHaveBeenCalledWith("pl-1", {
-      source_path: "/tmp/in.csv",
+      source_path: "/tmp/in.parquet",
     });
     expect(result.current.effectiveSelectedVersionId).toBe("v-new");
   });

@@ -4,7 +4,7 @@ The store retains one schema identifier and rejects incompatible project
 stores. No migration chain is provided (ADR-0015); projects are recreated.
 """
 
-STORE_SCHEMA_FAMILY = "cardre-v3"
+STORE_SCHEMA_FAMILY = "cardre-v4"
 STORE_SCHEMA_VERSION = 1
 
 SCHEMA_SQL = """

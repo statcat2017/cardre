@@ -130,12 +130,28 @@ def test_create_canonical_version_populates_steps(app_env, tmp_path):
     assert steps.json()[0]["canonical_step_id"] == "import"
 
 
+def test_create_canonical_version_rejects_csv_source(app_env, tmp_path):
+    """A CSV source_path must be rejected with PARAMETER_VALIDATION_ERROR."""
+    client, container = app_env
+    pid, _ = provision(container, tmp_path)
+    plan_resp = client.post(f"/projects/{pid}/plans", json={"name": "P"})
+    assert plan_resp.status_code == 201, plan_resp.text
+    plan_id = plan_resp.json()["plan_id"]
+
+    resp = client.post(
+        f"/projects/{pid}/plans/{plan_id}/canonical-version",
+        json={"source_path": str(tmp_path / "in.csv")},
+    )
+    assert resp.status_code == 400, resp.text
+    assert resp.json()["detail"]["code"] == "PARAMETER_VALIDATION_ERROR"
+
+
 def test_create_canonical_version_unknown_plan_404(app_env, tmp_path):
     client, container = app_env
     pid, _ = provision(container, tmp_path)
     resp = client.post(
         f"/projects/{pid}/plans/nonexistent/canonical-version",
-        json={"source_path": "x.csv"},
+        json={"source_path": "x.parquet"},
     )
     assert resp.status_code == 404
     assert resp.json()["detail"]["code"] == "PLAN_NOT_FOUND"

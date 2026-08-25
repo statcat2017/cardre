@@ -60,7 +60,7 @@ def test_catalogue_keys_are_current_supported_set():
 
 def test_canonical_plan_steps_match_current_node_versions():
     cat = build_default_catalogue()
-    steps = build_canonical_scorecard_steps("dummy.csv", cat.resolve)
+    steps = build_canonical_scorecard_steps("dummy.parquet", cat.resolve)
     for step in steps:
         node = cat.resolve(step.node_type)
         current = node.node_definition().version
@@ -109,7 +109,7 @@ def test_every_evidence_profile_has_single_canonical_identity():
 
 def test_canonical_automatic_binning_has_explicit_method():
     cat = build_default_catalogue()
-    steps = build_canonical_scorecard_steps("dummy.csv", cat.resolve)
+    steps = build_canonical_scorecard_steps("dummy.parquet", cat.resolve)
     auto_step = next(s for s in steps if s.step_id == "automatic-binning")
     assert "method" not in auto_step.params, (
         "automatic-binning step must not declare a method param after the "

@@ -41,9 +41,9 @@ class TestCreateCanonicalScorecardVersion:
             uow.commit()
         catalogue = build_default_catalogue()
         uc = CreateCanonicalScorecardVersion(_factory(uow_factory, project_id), catalogue)
-        csv_path = _write_parquet(tmp_path / "in.parquet")
+        parquet_path = _write_parquet(tmp_path / "in.parquet")
         pv = uc(CreateCanonicalScorecardVersionCommand(
-            plan_id=plan_id, source_path=str(csv_path),
+            plan_id=plan_id, source_path=str(parquet_path),
         ))
         assert pv is not None
         assert pv.is_committed is False
@@ -59,9 +59,9 @@ class TestCreateCanonicalScorecardVersion:
             uow.commit()
         catalogue = build_default_catalogue()
         uc = CreateCanonicalScorecardVersion(_factory(uow_factory, project_id), catalogue)
-        csv_path = _write_parquet(tmp_path / "in.parquet")
+        parquet_path = _write_parquet(tmp_path / "in.parquet")
         pv = uc(CreateCanonicalScorecardVersionCommand(
-            plan_id=plan_id, source_path=str(csv_path),
+            plan_id=plan_id, source_path=str(parquet_path),
             target_column="y", good_values=["good"], bad_values=["bad"],
         ))
         with uow_factory.for_project(project_id) as uow:
@@ -71,7 +71,7 @@ class TestCreateCanonicalScorecardVersion:
         assert meta.params["good_values"] == ["good"]
         assert meta.params["bad_values"] == ["bad"]
         imp = next(s for s in steps if s.canonical_step_id == "import")
-        assert imp.params["source_path"] == str(csv_path)
+        assert imp.params["source_path"] == str(parquet_path)
 
     def test_target_propagates_to_all_target_dependent_steps(self, provisioned_project, tmp_path):
         """A custom target must reach define-metadata, validate-target AND
@@ -84,9 +84,9 @@ class TestCreateCanonicalScorecardVersion:
             uow.commit()
         catalogue = build_default_catalogue()
         uc = CreateCanonicalScorecardVersion(_factory(uow_factory, project_id), catalogue)
-        csv_path = _write_parquet(tmp_path / "in.parquet")
+        parquet_path = _write_parquet(tmp_path / "in.parquet")
         pv = uc(CreateCanonicalScorecardVersionCommand(
-            plan_id=plan_id, source_path=str(csv_path), target_column="outcome",
+            plan_id=plan_id, source_path=str(parquet_path), target_column="outcome",
         ))
         with uow_factory.for_project(project_id) as uow:
             steps = uow.plans.get_version_steps(pv.plan_version_id)
@@ -105,9 +105,9 @@ class TestCreateCanonicalScorecardVersion:
             uow.commit()
         catalogue = build_default_catalogue()
         uc = CreateCanonicalScorecardVersion(_factory(uow_factory, project_id), catalogue)
-        csv_path = _write_parquet(tmp_path / "in.parquet")
+        parquet_path = _write_parquet(tmp_path / "in.parquet")
         pv = uc(CreateCanonicalScorecardVersionCommand(
-            plan_id=plan_id, source_path=str(csv_path),
+            plan_id=plan_id, source_path=str(parquet_path),
         ))
         with uow_factory.for_project(project_id) as uow:
             steps = uow.plans.get_version_steps(pv.plan_version_id)
@@ -125,4 +125,38 @@ class TestCreateCanonicalScorecardVersion:
         catalogue = build_default_catalogue()
         uc = CreateCanonicalScorecardVersion(_factory(uow_factory, project_id), catalogue)
         with pytest.raises(CardreError, match="not found"):
-            uc(CreateCanonicalScorecardVersionCommand(plan_id="nope", source_path="x.csv"))
+            uc(CreateCanonicalScorecardVersionCommand(plan_id="nope", source_path="x.parquet"))
+
+    def test_rejects_non_parquet_source_path(self, provisioned_project, tmp_path):
+        """A CSV (or any non-.parquet) source_path must be rejected before a
+        draft is persisted, using the parameter-validation error convention."""
+        project_id, uow_factory, _, _ = provisioned_project
+        with uow_factory.for_project(project_id) as uow:
+            plan_id = uow.plans.create_plan(project_id, "P")
+            uow.commit()
+        catalogue = build_default_catalogue()
+        uc = CreateCanonicalScorecardVersion(_factory(uow_factory, project_id), catalogue)
+        with pytest.raises(CardreError) as excinfo:
+            uc(CreateCanonicalScorecardVersionCommand(
+                plan_id=plan_id, source_path=str(tmp_path / "in.csv"),
+            ))
+        assert excinfo.value.code == "PARAMETER_VALIDATION_ERROR"
+        assert "parquet" in excinfo.value.message.lower()
+        # No draft version may have been persisted.
+        with uow_factory.for_project(project_id) as uow:
+            assert uow.plans.list_versions(plan_id) == []
+
+    def test_accepts_parquet_source_path(self, provisioned_project, tmp_path):
+        """A .parquet source_path is accepted and persists a draft version."""
+        project_id, uow_factory, _, _ = provisioned_project
+        with uow_factory.for_project(project_id) as uow:
+            plan_id = uow.plans.create_plan(project_id, "P")
+            uow.commit()
+        catalogue = build_default_catalogue()
+        uc = CreateCanonicalScorecardVersion(_factory(uow_factory, project_id), catalogue)
+        parquet_path = _write_parquet(tmp_path / "in.parquet")
+        pv = uc(CreateCanonicalScorecardVersionCommand(
+            plan_id=plan_id, source_path=str(parquet_path),
+        ))
+        assert pv is not None
+        assert pv.is_committed is False

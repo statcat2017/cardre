@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from cardre.application.ports.node_catalogue import NodeCataloguePort
-from cardre.domain.errors import CardreError, ErrorCode
+from cardre.domain.errors import CardreError, ErrorCode, ParameterValidationError
 from cardre.domain.plans.scorecard_pathway import (
     build_canonical_scorecard_steps,
     configure_canonical_scorecard,
@@ -45,6 +45,16 @@ class CreateCanonicalScorecardVersion:
         self._node_catalogue = node_catalogue
 
     def __call__(self, command: CreateCanonicalScorecardVersionCommand) -> Any:
+        # 0. The canonical import boundary accepts Parquet only. Reject any
+        #    other source suffix before opening a transaction or persisting a
+        #    draft, so a bad path never leaves a partial version behind.
+        if Path(command.source_path).suffix.lower() != ".parquet":
+            raise ParameterValidationError(
+                f"source_path must point to a Parquet file (.parquet), got "
+                f"{command.source_path!r}.",
+                context={"source_path": command.source_path},
+            )
+
         uow = self._uow_factory()
         try:
             # 1. Plan must exist.

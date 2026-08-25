@@ -47,10 +47,13 @@ class ListProjects:
                             "message": f"Project {project_id!r} not found in store at {root_str}.",
                         })
             except Exception as exc:
+                from cardre.domain.errors import CardreError
+
+                code = exc.code if isinstance(exc, CardreError) else "PROJECT_OPEN_FAILED"
                 unavailable.append({
                     "project_id": project_id,
                     "root": root_str,
-                    "code": "PROJECT_OPEN_FAILED",
+                    "code": code,
                     "message": str(exc),
                 })
         return projects, unavailable

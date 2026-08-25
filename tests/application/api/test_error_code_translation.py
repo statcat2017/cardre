@@ -68,3 +68,11 @@ def test_unmapped_code_passthrough() -> None:
     )
     assert api_error.code == ErrorCode.BAD_REQUEST
     assert api_error.status_code == 400
+
+
+def test_store_version_incompatible_preserves_public_code() -> None:
+    api_error = translate_domain_error(
+        CardreError("recreate the project", code=ErrorCode.STORE_VERSION_INCOMPATIBLE),
+    )
+    assert api_error.code == ErrorCode.STORE_VERSION_INCOMPATIBLE
+    assert api_error.status_code == 409

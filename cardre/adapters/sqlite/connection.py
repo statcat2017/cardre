@@ -194,6 +194,54 @@ class SqliteUnitOfWorkFactory:
     def __init__(self, registry: ProjectRegistryPort) -> None:
         self._registry = registry
 
+    def _validate_store_meta(self, conn: sqlite3.Connection, db_path: Path) -> None:
+        """Verify the store's schema identity matches the app.
+
+        On a missing or mismatched ``store_meta`` the connection is closed and
+        a ``STORE_VERSION_INCOMPATIBLE`` error is raised with recreate-project
+        context. No migration chain is provided (ADR-0015); projects are
+        recreated.
+        """
+        from cardre.adapters.sqlite.schema import (
+            STORE_SCHEMA_FAMILY,
+            STORE_SCHEMA_VERSION,
+        )
+        from cardre.domain.errors import CardreError, ErrorCode
+
+        try:
+            row = conn.execute(
+                "SELECT key, value FROM store_meta "
+                "WHERE key IN ('schema_family', 'schema_version')"
+            ).fetchall()
+        except sqlite3.Error as exc:
+            conn.close()
+            raise CardreError(
+                f"Project store at {db_path} has unreadable schema metadata; "
+                "recreate the project to continue.",
+                code=ErrorCode.STORE_VERSION_INCOMPATIBLE,
+                context={"path": str(db_path), "reason": str(exc)},
+            ) from exc
+
+        meta = {r[0]: r[1] for r in row}
+        family = meta.get("schema_family")
+        version = meta.get("schema_version")
+        if family != STORE_SCHEMA_FAMILY or version != str(STORE_SCHEMA_VERSION):
+            conn.close()
+            raise CardreError(
+                f"Project store at {db_path} has schema "
+                f"family={family!r} version={version!r}, but this app requires "
+                f"family={STORE_SCHEMA_FAMILY!r} version={STORE_SCHEMA_VERSION!r}. "
+                "Recreate the project to continue.",
+                code=ErrorCode.STORE_VERSION_INCOMPATIBLE,
+                context={
+                    "path": str(db_path),
+                    "schema_family": family,
+                    "schema_version": version,
+                    "expected_family": STORE_SCHEMA_FAMILY,
+                    "expected_version": str(STORE_SCHEMA_VERSION),
+                },
+            )
+
     def _open_conn(self, project_id: str) -> sqlite3.Connection:
         root = self._registry.resolve_root(project_id)
         if root is None:
@@ -216,6 +264,7 @@ class SqliteUnitOfWorkFactory:
         conn.execute("PRAGMA foreign_keys=ON")
         conn.row_factory = sqlite3.Row
         conn.isolation_level = None
+        self._validate_store_meta(conn, db_path)
         return conn
 
     def _open_readonly_conn(self, db_path: Path) -> sqlite3.Connection:
@@ -232,6 +281,7 @@ class SqliteUnitOfWorkFactory:
         conn.execute("PRAGMA foreign_keys=ON")
         conn.row_factory = sqlite3.Row
         conn.isolation_level = None
+        self._validate_store_meta(conn, db_path)
         return conn
 
     def for_project(self, project_id: str) -> UnitOfWork:
@@ -252,6 +302,7 @@ class SqliteUnitOfWorkFactory:
         conn.execute("PRAGMA foreign_keys=ON")
         conn.row_factory = sqlite3.Row
         conn.isolation_level = None
+        self._validate_store_meta(conn, db_path)
         return SqliteUnitOfWork(conn)
 
     def read_only(self, project_id: str) -> ReadOnlyUnitOfWork:
