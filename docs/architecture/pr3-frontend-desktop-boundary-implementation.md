@@ -32,7 +32,7 @@ work, or node-parameter wiring into this PR.
 
 1. Work from a clean branch based on current `main`.
 2. Bootstrap the Python virtual environment and frontend dependencies as described in `AGENTS.md`.
-3. Read `docs/architecture/thermo-nuclear-remediation-sprint.md`, sections 5 through 7, and ADR-0006 and ADR-0011.
+3. Read ADR-0006 and ADR-0011.
 4. Keep generated files generated. Never hand-edit `frontend/src/api/openapi.json` or `frontend/src/api/schema.d.ts`.
 
 ## Recommended Delivery Sequence
