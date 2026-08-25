@@ -7,7 +7,7 @@ import polars as pl
 
 from cardre.domain.binning.diagnostics import MonotonicStatus, check_pure_bins, monotonicity_status
 from cardre.domain.binning.masks import build_bin_condition
-from cardre.domain.binning.woe import MissingWoePolicy, apply_woe_columns
+from cardre.domain.binning.woe import apply_woe_columns
 from cardre.domain.evidence.kinds import (
     AmbiguousEvidenceError,
     EvidenceKind,
@@ -485,7 +485,6 @@ class WoeTransformTrainNode(NodeType):
             df,
             selected_vars,
             lambda variable, bin_id: woe_map.get(variable, {}).get(bin_id),
-            policy=MissingWoePolicy.ZERO,
         )
         column_variable_map = [(c, c[: -len("_woe")]) for c in woe_columns]
 

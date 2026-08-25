@@ -6,7 +6,6 @@ output for every row in train/test/oot.
 """
 from __future__ import annotations
 
-import csv
 import json
 import sqlite3
 from pathlib import Path
@@ -21,7 +20,7 @@ from cardre.domain.evidence.schemas import SCHEMA_SCORING_EXPORT_PYTHON, SCHEMA_
 from tests.acceptance.fixture_pathway import build_acceptance_fixture_steps
 
 
-def _write_input_csv(path: Path) -> Path:
+def _write_input_parquet(path: Path) -> Path:
     rows = []
     for i in range(60):
         rows.append({
@@ -30,10 +29,7 @@ def _write_input_csv(path: Path) -> Path:
             "duration_months": 6 + (i % 36),
             "credit_risk_class": "good" if i % 3 != 0 else "bad",
         })
-    with open(path, "w", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=list(rows[0].keys()))
-        writer.writeheader()
-        writer.writerows(rows)
+    pl.DataFrame(rows).write_parquet(path)
     return path
 
 
@@ -43,7 +39,7 @@ def test_scoring_export_parity(api_client, tmp_path):
     assert resp.status_code == 201, resp.text
     project_id = resp.json()["project_id"]
 
-    csv_path = _write_input_csv(tmp_path / "input.csv")
+    parquet_path = _write_input_parquet(tmp_path / "input.parquet")
 
     resp = api_client.post(
         f"/projects/{project_id}/plans",
@@ -54,7 +50,7 @@ def test_scoring_export_parity(api_client, tmp_path):
 
     container = api_client.app.state.container
     cat = build_default_catalogue(Settings())
-    steps = build_acceptance_fixture_steps(csv_path, cat)
+    steps = build_acceptance_fixture_steps(parquet_path, cat)
 
     with container.uow_factory.for_project(project_id) as uow:
         plan_version_id = uow.plans.create_version(

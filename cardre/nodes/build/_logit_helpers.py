@@ -57,17 +57,13 @@ def parse_base_odds(raw: Any) -> float:
 def build_lr_params(params: dict[str, Any]) -> dict[str, Any]:
     """Prepare sklearn ``LogisticRegression`` kwargs from *params*.
 
-    Defaults: ``penalty="l2"``, ``C=1.0``, ``max_iter=1000``,
-    ``solver="lbfgs"``, ``random_state=42``.
+    Standard logit only: defaults ``max_iter=1000``, ``random_state=42``.
     """
-    penalty = params.get("penalty")
-    if penalty is None:
-        penalty = "l2"
     return {
-        "penalty": penalty,
-        "C": float(params.get("C", 1.0)),
+        "penalty": "l2",
+        "C": 1.0,
         "max_iter": int(params.get("max_iter", 1000)),
-        "solver": str(params.get("solver", "lbfgs")),
+        "solver": "lbfgs",
         "random_state": int(params.get("random_seed", 42)),
     }
 

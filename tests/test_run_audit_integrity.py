@@ -6,9 +6,9 @@ artifacts, manifest completeness, and edge provenance correctness.
 
 from __future__ import annotations
 
-import csv
 import json
 
+import polars as pl
 import pytest
 
 from cardre.adapters.sqlite.connection import SqliteUnitOfWorkFactory
@@ -21,7 +21,7 @@ from cardre.bootstrap.settings import Settings
 from tests.acceptance.fixture_pathway import build_acceptance_fixture_steps
 
 
-def _write_input_csv(path):
+def _write_input_parquet(path):
     rows = []
     for i in range(60):
         rows.append({
@@ -30,10 +30,7 @@ def _write_input_csv(path):
             "duration_months": 6 + (i % 36),
             "credit_risk_class": "good" if i % 3 != 0 else "bad",
         })
-    with open(path, "w", newline="") as f:
-        w = csv.DictWriter(f, fieldnames=list(rows[0].keys()))
-        w.writeheader()
-        w.writerows(rows)
+    pl.DataFrame(rows).write_parquet(path)
     return path
 
 
@@ -51,9 +48,9 @@ def audit_run(tmp_path):
         uow.commit()
     registry.register(project_id, root)
 
-    csv_path = _write_input_csv(tmp_path / "input.csv")
+    parquet_path = _write_input_parquet(tmp_path / "input.parquet")
     cat = build_default_catalogue(Settings())
-    steps = build_acceptance_fixture_steps(csv_path, cat)
+    steps = build_acceptance_fixture_steps(parquet_path, cat)
 
     with uow_factory.for_project(project_id) as uow:
         pv_id = uow.plans.create_version(plan_id, steps, is_committed=True)

@@ -158,7 +158,7 @@ EVIDENCE_ADAPTERS: dict[EvidenceKind, AdapterSpec] = {
     ),
     EvidenceKind.SCORE_TABLE: AdapterSpec(
         profile=EVIDENCE_PROFILES[EvidenceKind.SCORE_TABLE],
-        parse=lambda path, art, reader: read_json_payload(path),
+        parse=lambda path, art, reader: pl.scan_parquet(path),
     ),
     EvidenceKind.SCORING_EXPORT_PYTHON: AdapterSpec(
         profile=EVIDENCE_PROFILES[EvidenceKind.SCORING_EXPORT_PYTHON],

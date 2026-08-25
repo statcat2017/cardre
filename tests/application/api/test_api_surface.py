@@ -105,7 +105,7 @@ def test_plan_not_found(app_env, tmp_path):
 
 
 def test_create_canonical_version_populates_steps(app_env, tmp_path):
-    import csv
+    import polars as pl
 
     client, container = app_env
     pid, _ = provision(container, tmp_path)
@@ -113,15 +113,12 @@ def test_create_canonical_version_populates_steps(app_env, tmp_path):
     assert plan_resp.status_code == 201, plan_resp.text
     plan_id = plan_resp.json()["plan_id"]
 
-    csv_path = tmp_path / "in.csv"
-    with open(csv_path, "w", newline="") as f:
-        w = csv.DictWriter(f, fieldnames=["x", "credit_risk_class"])
-        w.writeheader()
-        w.writerow({"x": 1, "credit_risk_class": "good"})
+    parquet_path = tmp_path / "in.parquet"
+    pl.DataFrame({"x": [1], "credit_risk_class": ["good"]}).write_parquet(parquet_path)
 
     resp = client.post(
         f"/projects/{pid}/plans/{plan_id}/canonical-version",
-        json={"source_path": str(csv_path)},
+        json={"source_path": str(parquet_path)},
     )
     assert resp.status_code == 201, resp.text
     pv = resp.json()
@@ -367,8 +364,9 @@ def test_patch_unknown_step_returns_404(app_env, tmp_path):
 def test_patch_null_indeterminate_values_rejected(app_env, tmp_path):
     """The step editor accepts arbitrary JSON params; an explicit null for an
     optional target list must be rejected with a structured 422."""
-    import csv
     import json
+
+    import polars as pl
 
     from cardre.application.plans.create_canonical_scorecard_version import (
         CreateCanonicalScorecardVersion,
@@ -381,18 +379,17 @@ def test_patch_null_indeterminate_values_rejected(app_env, tmp_path):
     pid, _ = provision(container, tmp_path)
     plan_resp = client.post(f"/projects/{pid}/plans", json={"name": "P"})
     plan_id = plan_resp.json()["plan_id"]
-    csv_path = tmp_path / "in.csv"
-    with open(csv_path, "w", newline="") as f:
-        w = csv.DictWriter(f, fieldnames=["x", "outcome"])
-        w.writeheader()
-        w.writerow({"x": 1, "outcome": "good"})
-        w.writerow({"x": 2, "outcome": "bad"})
+    parquet_path = tmp_path / "in.parquet"
+    pl.DataFrame({
+        "x": [1, 2],
+        "outcome": ["good", "bad"],
+    }).write_parquet(parquet_path)
     cat = build_default_catalogue(Settings())
     create = CreateCanonicalScorecardVersion(
         lambda: container.uow_factory.for_project(pid), cat,
     )
     pv = create(CreateCanonicalScorecardVersionCommand(
-        plan_id=plan_id, source_path=str(csv_path), target_column="outcome",
+        plan_id=plan_id, source_path=str(parquet_path), target_column="outcome",
         good_values=["good"], bad_values=["bad"],
     ))
     pv_id = pv.plan_version_id

@@ -4,7 +4,7 @@ from typing import Any
 
 import polars as pl
 
-from cardre.domain.binning.woe import MissingWoePolicy, apply_woe_columns
+from cardre.domain.binning.woe import apply_woe_columns
 from cardre.domain.diagnostics import JsonDict
 from cardre.domain.evidence.kinds import EvidenceKind
 from cardre.domain.evidence.schemas import (
@@ -23,8 +23,6 @@ from cardre.nodes.contracts import (
 from cardre.nodes.parameters import (
     MethodOption,
     NodeParameterSchema,
-    ParameterConstraint,
-    ParameterDefinition,
 )
 
 
@@ -63,8 +61,6 @@ class ApplyWoeMappingNode(NodeType):
         ),
     )
 
-    VALID_UNMATCHED_POLICIES = {"fill_zero", "warn", "fail"}
-
     @classmethod
     def parameter_schema(cls) -> NodeParameterSchema:
         return NodeParameterSchema(
@@ -76,36 +72,13 @@ class ApplyWoeMappingNode(NodeType):
                     id="default",
                     label="Default",
                     status="available",
-                    params=[
-                        ParameterDefinition(
-                            name="woe_unmatched_policy",
-                            label="Unmatched Policy",
-                            kind="enum",
-                            default="fail",
-                            constraint=ParameterConstraint(enum_values=["fill_zero", "warn", "fail"]),
-                            help_text="Policy when rows do not match any WOE bin (default fail). Choose 'warn' or 'fill_zero' for permissive handling.",
-                        ),
-                    ],
+                    params=[],
                 ),
             ],
         )
 
-    def validate_params(self, params: dict[str, Any]) -> list[str]:
-        errors: list[str] = []
-        policy = params.get("woe_unmatched_policy", "fail")
-        if policy not in self.VALID_UNMATCHED_POLICIES:
-            errors.append(
-                f"woe_unmatched_policy must be one of {self.VALID_UNMATCHED_POLICIES}, got {policy!r}"
-            )
-        return errors
-
     def run(self, context: NodeContext) -> NodeResult:
-        params = context.params
-        woe_unmatched_policy = params.get("woe_unmatched_policy", "fail")
-
         bundle_art = context.inputs.find_frozen_bundle()
-        if bundle_art is not None and "woe_unmatched_policy" not in params:
-            woe_unmatched_policy = "fail"
 
         data_arts = sample_bundle(context.inputs)
 
@@ -180,7 +153,6 @@ class ApplyWoeMappingNode(NodeType):
                 df,
                 var_defs,
                 lambda var, bid: woe_map.get(var, {}).get(bid),
-                policy=MissingWoePolicy.RAISE,
             )
             variables_applied = [c[: -len("_woe")] for c in woe_columns_created]
             for woe_col in woe_columns_created:
@@ -189,12 +161,10 @@ class ApplyWoeMappingNode(NodeType):
                 if n_unmatched > 0:
                     fallback_counts[var] = n_unmatched
                     unmatched_total += n_unmatched
-                    if woe_unmatched_policy == "fail":
-                        raise ValueError(
-                            f"apply_woe_mapping: {n_unmatched} rows in role={role!r} "
-                            f"variable={var!r} did not match any bin"
-                        )
-                    df = df.with_columns(pl.col(woe_col).fill_null(0.0))
+                    raise ValueError(
+                        f"apply_woe_mapping: {n_unmatched} rows in role={role!r} "
+                        f"variable={var!r} did not match any bin"
+                    )
 
             out_art = context.outputs.publish_table(
                 role=role, kind=EvidenceKind.SCORED_DATASET,
@@ -217,7 +187,6 @@ class ApplyWoeMappingNode(NodeType):
 
         evidence: JsonDict = {
             "schema_version": SCHEMA_APPLY_WOE_EVIDENCE,
-            "policy": {"woe_unmatched_policy": woe_unmatched_policy},
             "roles": roles_evidence,
             "warnings": [],
         }
@@ -236,7 +205,6 @@ class ApplyWoeMappingNode(NodeType):
 
         context.outputs.add_metric("output_count", output_count)
         context.outputs.add_metric("unmatched_row_count", unmatched_total)
-        context.outputs.add_metric("woe_unmatched_policy", woe_unmatched_policy)
 
         return context.outputs.build_result()
 
@@ -449,4 +417,3 @@ def _role_entry_from_df(
         entry["score_max"] = round(float(score_series.max()), 2)
         entry["score_mean"] = round(float(score_series.mean()), 2)
     return entry
-

@@ -60,9 +60,6 @@ class LogisticRegressionNode(NodeType):
         ),
     )
 
-    VALID_PENALTIES = {"l1", "l2", "elasticnet", None}
-    VALID_SOLVERS = {"lbfgs", "liblinear", "newton-cg", "newton-cholesky", "sag", "saga"}
-
     @classmethod
     def parameter_schema(cls) -> NodeParameterSchema:
         return NodeParameterSchema(
@@ -75,24 +72,8 @@ class LogisticRegressionNode(NodeType):
                     id="standard_logit",
                     label="Standard Logit",
                     status="available",
-                    description="Standard logistic regression with L2 penalty (default).",
+                    description="Standard logistic regression.",
                     params=[
-                        ParameterDefinition(
-                            name="solver",
-                            label="Solver",
-                            kind="enum",
-                            default="lbfgs",
-                            help_text="Algorithm to use in the optimization problem.",
-                            constraint=ParameterConstraint(enum_values=sorted(cls.VALID_SOLVERS)),
-                        ),
-                        ParameterDefinition(
-                            name="C",
-                            label="Inverse Regularization Strength",
-                            kind="float",
-                            default=1.0,
-                            help_text="Inverse of regularization strength; must be positive.",
-                            constraint=ParameterConstraint(min_value=0.0, exclusive_min=0.0),
-                        ),
                         ParameterDefinition(
                             name="max_iter",
                             label="Max Iterations",
@@ -117,86 +98,12 @@ class LogisticRegressionNode(NodeType):
                             help_text="Raise when logistic regression does not converge. Set to false to warn only.",
                         ),
                     ],
-                ),
-                MethodOption(
-                    id="penalised_logit",
-                    label="Penalised Logit",
-                    status="available",
-                    description="Logistic regression with configurable penalty.",
-                    params=[
-                        ParameterDefinition(
-                            name="penalty",
-                            label="Penalty",
-                            kind="enum",
-                            default="l2",
-                            help_text="Norm used in the penalization.",
-                            constraint=ParameterConstraint(enum_values=["l1", "l2", "elasticnet"]),
-                        ),
-                        ParameterDefinition(
-                            name="solver",
-                            label="Solver",
-                            kind="enum",
-                            default="lbfgs",
-                            help_text="Algorithm to use in the optimization problem.",
-                            constraint=ParameterConstraint(enum_values=sorted(cls.VALID_SOLVERS)),
-                        ),
-                        ParameterDefinition(
-                            name="C",
-                            label="Inverse Regularization Strength",
-                            kind="float",
-                            default=1.0,
-                            help_text="Inverse of regularization strength; must be positive.",
-                            constraint=ParameterConstraint(min_value=0.0, exclusive_min=0.0),
-                        ),
-                        ParameterDefinition(
-                            name="max_iter",
-                            label="Max Iterations",
-                            kind="integer",
-                            default=1000,
-                            help_text="Maximum number of iterations for convergence.",
-                            constraint=ParameterConstraint(min_value=1),
-                        ),
-                        ParameterDefinition(
-                            name="random_seed",
-                            label="Random Seed",
-                            kind="integer",
-                            default=42,
-                            help_text="Random state for reproducibility.",
-                            constraint=ParameterConstraint(min_value=0),
-                        ),
-                        ParameterDefinition(
-                            name="fail_on_non_convergence",
-                            label="Fail on Non-convergence",
-                            kind="boolean",
-                            default=True,
-                            help_text="Raise when logistic regression does not converge. Set to false to warn only.",
-                        ),
-                    ],
-                ),
-                MethodOption(
-                    id="lasso_logit",
-                    label="Lasso Logit",
-                    status="coming_soon",
-                    description="L1-regularized logistic regression (LASSO).",
-                    params=[],
                 ),
             ],
         )
 
     def validate_params(self, params: dict[str, Any]) -> list[str]:
         errors: list[str] = []
-        penalty = params.get("penalty")
-        if penalty is not None and penalty not in self.VALID_PENALTIES:
-            errors.append(f"penalty must be one of {self.VALID_PENALTIES}, got '{penalty}'")
-        solver = params.get("solver", "lbfgs")
-        if solver not in self.VALID_SOLVERS:
-            errors.append(f"solver must be one of {self.VALID_SOLVERS}, got '{solver}'")
-        C = params.get("C", 1.0)
-        try:
-            if float(C) <= 0:
-                errors.append("C must be positive")
-        except (ValueError, TypeError):
-            errors.append("C must be a number")
         max_iter = params.get("max_iter", 1000)
         try:
             if int(max_iter) < 1:

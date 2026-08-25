@@ -74,15 +74,9 @@ class TestBuildLrParams:
             "random_state": 42,
         }
 
-    def test_custom_c_max_iter(self) -> None:
-        result = build_lr_params({"C": 0.5, "max_iter": 500})
-        assert result["C"] == 0.5
+    def test_custom_max_iter(self) -> None:
+        result = build_lr_params({"max_iter": 500})
         assert result["max_iter"] == 500
-
-    def test_custom_solver_and_penalty(self) -> None:
-        result = build_lr_params({"solver": "saga", "penalty": "elasticnet"})
-        assert result["solver"] == "saga"
-        assert result["penalty"] == "elasticnet"
 
     def test_custom_random_seed(self) -> None:
         result = build_lr_params({"random_seed": 123})
@@ -90,24 +84,20 @@ class TestBuildLrParams:
 
     def test_numpy_types_are_coerced(self) -> None:
         result = build_lr_params({
-            "C": np.float64(0.5),
             "max_iter": np.int64(200),
             "random_seed": np.int32(99),
         })
-        assert isinstance(result["C"], float)
         assert isinstance(result["max_iter"], int)
         assert isinstance(result["random_state"], int)
-        assert result["C"] == 0.5
         assert result["max_iter"] == 200
         assert result["random_state"] == 99
 
-    def test_penalty_none_defaults_to_l2(self) -> None:
-        result = build_lr_params({"penalty": None})
+    def test_removed_params_are_ignored(self) -> None:
+        """penalty, C, and solver are fixed to standard-logit defaults."""
+        result = build_lr_params({"penalty": "l1", "C": 0.1, "solver": "saga"})
         assert result["penalty"] == "l2"
-
-    def test_penalty_explicit_l1(self) -> None:
-        result = build_lr_params({"penalty": "l1"})
-        assert result["penalty"] == "l1"
+        assert result["C"] == 1.0
+        assert result["solver"] == "lbfgs"
 
 
 # ------------------------------------------------------------------

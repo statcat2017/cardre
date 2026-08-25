@@ -171,7 +171,7 @@ EVIDENCE_PROFILES: dict[EvidenceKind, _Profile] = {
         expected_roles={"report"},
         expected_artifact_types={"apply_woe_evidence"},
         schema_version=SCHEMA_APPLY_WOE_EVIDENCE,
-        required_keys={"roles", "policy"},
+        required_keys={"roles"},
     ),
     EvidenceKind.APPLY_MODEL_EVIDENCE: _Profile(
         expected_roles={"report"},
@@ -225,7 +225,8 @@ EVIDENCE_PROFILES: dict[EvidenceKind, _Profile] = {
         expected_roles={"report"},
         expected_artifact_types={"scorecard_table"},
         schema_version=SCHEMA_SCORE_TABLE,
-        required_keys={"rows"},
+        expected_media_types={"application/vnd.apache.parquet"},
+        required_columns={"variable", "bin_id", "woe", "coefficient", "points"},
     ),
     EvidenceKind.SCORING_EXPORT_PYTHON: _Profile(
         expected_roles={"report"},

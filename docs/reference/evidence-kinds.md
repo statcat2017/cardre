@@ -57,7 +57,7 @@ the most commonly used kinds; the full enum covers all artifact types in the eng
 | `CALIBRATION_DIAGNOSTICS` | `cardre.calibration_diagnostics.v1` | `CalibrationDiagnostics` |
 | `CUTOFF_ANALYSIS` | `cardre.cutoff_analysis.v1` | `CutoffAnalysis` |
 | `VALIDATION_METRICS` | `cardre.validation_metrics.v1` | `ValidationMetrics` |
-| `SCORE_TABLE` | `cardre.scorecard_table.v1` | (raw dict) |
+| `SCORE_TABLE` | `cardre.scorecard_table.v1` | tabular Parquet |
 | `SCORING_EXPORT_PYTHON` | `cardre.scoring_export_python.v1` | (raw dict) |
 | `SCORING_EXPORT_SQL` | `cardre.scoring_export_sql.v1` | (raw dict) |
 

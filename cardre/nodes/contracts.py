@@ -116,7 +116,6 @@ class NodeType(ABC):
     version: str = ""
     category: str = ""
     description: str = ""
-    optional_dependencies: list[str] | None = None
 
     @classmethod
     def node_definition(cls) -> NodeDefinition:

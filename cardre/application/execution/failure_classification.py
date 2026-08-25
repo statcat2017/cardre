@@ -15,7 +15,6 @@ from cardre.domain.errors import (
     GraphValidationError,
     NodeRoleAccessViolation,
     NodeVersionMismatchError,
-    OptionalDependencyNotInstalled,
     ParameterValidationError,
 )
 
@@ -27,7 +26,6 @@ _CATEGORY_MAP: tuple[tuple[type[CardreError], str], ...] = (
     (ArtifactWriteError, "ArtifactWriteError"),
     (NodeRoleAccessViolation, "NodeRoleAccessViolation"),
     (NodeVersionMismatchError, "NodeVersionMismatchError"),
-    (OptionalDependencyNotInstalled, "OptionalDependencyNotInstalled"),
     (CardreError, "CardreError"),
 )
 
@@ -38,7 +36,6 @@ _CODE_MAP: dict[str, str] = {
     "ArtifactWriteError": "ARTIFACT_WRITE_ERROR",
     "NodeRoleAccessViolation": "NODE_ROLE_ACCESS_VIOLATION",
     "NodeVersionMismatchError": "NODE_VERSION_MISMATCH",
-    "OptionalDependencyNotInstalled": "OPTIONAL_DEPENDENCY_NOT_INSTALLED",
     "CardreError": "CARDRE_ERROR",
 }
 

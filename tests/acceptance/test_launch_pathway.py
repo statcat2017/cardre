@@ -15,7 +15,6 @@ Supersedes the pre-Batch-05 ``test_launch_pathway.py`` and
 
 from __future__ import annotations
 
-import csv
 import hashlib
 import json
 from pathlib import Path
@@ -37,7 +36,7 @@ from cardre.domain.evidence.schemas import (
 )
 
 
-def _write_input_csv(path: Path) -> Path:
+def _write_input_parquet(path: Path) -> Path:
     rows = []
     for i in range(60):
         rows.append({
@@ -49,10 +48,7 @@ def _write_input_csv(path: Path) -> Path:
             # not hardcode "credit_risk_class".
             "outcome": "good" if i % 3 != 0 else "bad",
         })
-    with open(path, "w", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=list(rows[0].keys()))
-        writer.writeheader()
-        writer.writerows(rows)
+    pl.DataFrame(rows).write_parquet(path)
     return path
 
 
@@ -79,8 +75,8 @@ def acceptance_env(tmp_path):
     assert resp.status_code == 201, resp.text
     project_id = resp.json()["project_id"]
 
-    # 2. Import a supported dataset (the run's import step points at the CSV).
-    csv_path = _write_input_csv(tmp_path / "input.csv")
+    # 2. Import a supported dataset (the run's import step points at the Parquet file).
+    parquet_path = _write_input_parquet(tmp_path / "input.parquet")
 
     # 4. Create a plan through the API.
     resp = client.post(f"/projects/{project_id}/plans", json={"name": "Acceptance Plan"})
@@ -93,7 +89,7 @@ def acceptance_env(tmp_path):
     resp = client.post(
         f"/projects/{project_id}/plans/{plan_id}/canonical-version",
         json={
-            "source_path": str(csv_path),
+            "source_path": str(parquet_path),
             "target_column": "outcome",
             "good_values": ["good"],
             "bad_values": ["bad"],

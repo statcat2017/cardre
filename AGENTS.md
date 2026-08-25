@@ -81,7 +81,6 @@ Canonical API error codes (from `frontend/src/api/client.ts`):
 - `HTML_ERROR_RESPONSE` — non-2xx with HTML body
 - `NON_JSON_ERROR_RESPONSE` — non-2xx with non-JSON body
 - Server codes (e.g. `RUN_EXECUTION_FAILED`) — from `detail.code`
-- `OPTIONAL_DEPENDENCY_NOT_INSTALLED` — node's optional dep group missing
 
 Test commands:
 - `npm run test -- src/api src/hooks src/components/__tests__/ProjectView.test.tsx` — frontend robustness tests

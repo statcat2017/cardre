@@ -111,7 +111,7 @@ class TestUpdateStepParams:
         """Editing the target on any target-dependent step must reach all
         three (define-metadata, validate-target, split) atomically — the
         desktop editor only exposes some of them."""
-        import csv
+        import polars as pl
 
         from cardre.application.plans.create_canonical_scorecard_version import (
             CreateCanonicalScorecardVersion,
@@ -119,19 +119,18 @@ class TestUpdateStepParams:
         )
 
         project_id, uow_factory, _, _ = provisioned_project
-        csv_path = tmp_path / "in.csv"
-        with open(csv_path, "w", newline="") as f:
-            w = csv.DictWriter(f, fieldnames=["x", "outcome"])
-            w.writeheader()
-            for i in range(6):
-                w.writerow({"x": i, "outcome": "good" if i % 2 else "bad"})
+        parquet_path = tmp_path / "in.parquet"
+        pl.DataFrame({
+            "x": list(range(6)),
+            "outcome": ["good" if i % 2 else "bad" for i in range(6)],
+        }).write_parquet(parquet_path)
         cat = _catalogue()
         create = CreateCanonicalScorecardVersion(_factory(uow_factory, project_id), cat)
         with uow_factory.for_project(project_id) as uow:
             plan_id = uow.plans.create_plan(project_id, "P")
             uow.commit()
         pv = create(CreateCanonicalScorecardVersionCommand(
-            plan_id=plan_id, source_path=str(csv_path), target_column="outcome",
+            plan_id=plan_id, source_path=str(parquet_path), target_column="outcome",
         ))
         pv_id = pv.plan_version_id
 

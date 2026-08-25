@@ -6,8 +6,7 @@ Built from ``Settings`` + a list of node classes, replacing the old
 
 from __future__ import annotations
 
-import importlib.util
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from cardre.bootstrap.settings import Settings
 from cardre.nodes.contracts import NodeType
@@ -17,19 +16,6 @@ from cardre.nodes.contracts import NodeType
 class NodeAvailability:
     available: bool
     disabled_reason: str | None = None
-    missing_optional_dependencies: list[str] = field(default_factory=list)
-
-
-_OPTIONAL_DEP_MODULES: dict[str, tuple[str, ...]] = {
-    "optimal-binning": ("optbinning",),
-}
-
-
-def _probe_optional_dep(group: str) -> bool:
-    for mod in _OPTIONAL_DEP_MODULES.get(group, ()):
-        if importlib.util.find_spec(mod) is None:
-            return False
-    return True
 
 
 class NodeCatalogue:
@@ -64,21 +50,6 @@ class NodeCatalogue:
                 available=False,
                 disabled_reason=f"Unknown node type {node_type!r}.",
             )
-
-        dep_groups = getattr(cls, "optional_dependencies", None) or ()
-        missing = [g for g in dep_groups if not _probe_optional_dep(g)]
-
-        if missing:
-            return NodeAvailability(
-                available=False,
-                disabled_reason=(
-                    f"Optional dependency group(s) not installed: "
-                    f"{', '.join(missing)}. "
-                    f"Install with: pip install -e '.[{','.join(missing)}]'"
-                ),
-                missing_optional_dependencies=missing,
-            )
-
         return NodeAvailability(available=True)
 
     def is_available(self, node_type: str) -> bool:
@@ -86,14 +57,6 @@ class NodeCatalogue:
 
     def instantiate(self, node_type: str) -> NodeType:
         cls = self.resolve(node_type)
-        av = self.availability(node_type)
-        if not av.available:
-            if av.missing_optional_dependencies:
-                from cardre.domain.errors import OptionalDependencyNotInstalled
-                raise OptionalDependencyNotInstalled(
-                    node_type=node_type,
-                    missing_groups=av.missing_optional_dependencies,
-                )
         return cls()
 
 

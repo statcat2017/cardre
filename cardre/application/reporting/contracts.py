@@ -20,7 +20,6 @@ EVIDENCE_KIND_BY_STEP = {
     "cutoff-analysis": EvidenceKind.CUTOFF_ANALYSIS,
     "freeze-scorecard-bundle": EvidenceKind.FROZEN_SCORECARD_BUNDLE,
     "apply-model": EvidenceKind.APPLY_MODEL_EVIDENCE,
-    "scorecard-table-export": EvidenceKind.SCORE_TABLE,
     "scoring-export-python": EvidenceKind.SCORING_EXPORT_PYTHON,
     "scoring-export-sql": EvidenceKind.SCORING_EXPORT_SQL,
 }

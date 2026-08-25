@@ -1,15 +1,15 @@
 """Characterization tests for CreateCanonicalScorecardVersion.
 
 Exercises the launch on-ramp: generating the full canonical scorecard
-pathway from a CSV path through the use case, without direct repository
+pathway from a Parquet path through the use case, without direct repository
 access to build the step set.
 """
 
 from __future__ import annotations
 
-import csv
 from pathlib import Path
 
+import polars as pl
 import pytest
 
 from cardre.application.plans.create_canonical_scorecard_version import (
@@ -22,12 +22,11 @@ from cardre.domain.errors import CardreError
 from cardre.domain.plans.scorecard_pathway import canonical_scorecard_step_ids
 
 
-def _write_csv(path: Path) -> Path:
-    with open(path, "w", newline="") as f:
-        w = csv.DictWriter(f, fieldnames=["x", "credit_risk_class"])
-        w.writeheader()
-        for i in range(10):
-            w.writerow({"x": i, "credit_risk_class": "good" if i % 2 else "bad"})
+def _write_parquet(path: Path) -> Path:
+    pl.DataFrame({
+        "x": list(range(10)),
+        "credit_risk_class": ["good" if i % 2 else "bad" for i in range(10)],
+    }).write_parquet(path)
     return path
 
 
@@ -43,7 +42,7 @@ class TestCreateCanonicalScorecardVersion:
             uow.commit()
         catalogue = build_default_catalogue(Settings())
         uc = CreateCanonicalScorecardVersion(_factory(uow_factory, project_id), catalogue)
-        csv_path = _write_csv(tmp_path / "in.csv")
+        csv_path = _write_parquet(tmp_path / "in.parquet")
         pv = uc(CreateCanonicalScorecardVersionCommand(
             plan_id=plan_id, source_path=str(csv_path),
         ))
@@ -61,7 +60,7 @@ class TestCreateCanonicalScorecardVersion:
             uow.commit()
         catalogue = build_default_catalogue(Settings())
         uc = CreateCanonicalScorecardVersion(_factory(uow_factory, project_id), catalogue)
-        csv_path = _write_csv(tmp_path / "in.csv")
+        csv_path = _write_parquet(tmp_path / "in.parquet")
         pv = uc(CreateCanonicalScorecardVersionCommand(
             plan_id=plan_id, source_path=str(csv_path),
             target_column="y", good_values=["good"], bad_values=["bad"],
@@ -86,7 +85,7 @@ class TestCreateCanonicalScorecardVersion:
             uow.commit()
         catalogue = build_default_catalogue(Settings())
         uc = CreateCanonicalScorecardVersion(_factory(uow_factory, project_id), catalogue)
-        csv_path = _write_csv(tmp_path / "in.csv")
+        csv_path = _write_parquet(tmp_path / "in.parquet")
         pv = uc(CreateCanonicalScorecardVersionCommand(
             plan_id=plan_id, source_path=str(csv_path), target_column="outcome",
         ))
@@ -107,7 +106,7 @@ class TestCreateCanonicalScorecardVersion:
             uow.commit()
         catalogue = build_default_catalogue(Settings())
         uc = CreateCanonicalScorecardVersion(_factory(uow_factory, project_id), catalogue)
-        csv_path = _write_csv(tmp_path / "in.csv")
+        csv_path = _write_parquet(tmp_path / "in.parquet")
         pv = uc(CreateCanonicalScorecardVersionCommand(
             plan_id=plan_id, source_path=str(csv_path),
         ))

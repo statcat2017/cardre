@@ -137,9 +137,10 @@ class TestCommitPlanVersion:
     def _canonical_draft(self, uow_factory, project_id, *, ready: bool):
         """Build a canonical pathway draft that is either commit-ready or
         missing the essential modelling decisions."""
-        import csv
         import tempfile
         from pathlib import Path
+
+        import polars as pl
 
         from cardre.application.plans.create_canonical_scorecard_version import (
             CreateCanonicalScorecardVersion,
@@ -150,16 +151,15 @@ class TestCommitPlanVersion:
             plan_id = uow.plans.create_plan(project_id, "P")
             uow.commit()
         tmp = Path(tempfile.mkdtemp())
-        csv_path = tmp / "in.csv"
-        with open(csv_path, "w", newline="") as f:
-            w = csv.DictWriter(f, fieldnames=["x", "outcome"])
-            w.writeheader()
-            for i in range(6):
-                w.writerow({"x": i, "outcome": "good" if i % 2 else "bad"})
+        parquet_path = tmp / "in.parquet"
+        pl.DataFrame({
+            "x": list(range(6)),
+            "outcome": ["good" if i % 2 else "bad" for i in range(6)],
+        }).write_parquet(parquet_path)
         cat = _catalogue()
         create = CreateCanonicalScorecardVersion(_factory(uow_factory, project_id), cat)
         pv = create(CreateCanonicalScorecardVersionCommand(
-            plan_id=plan_id, source_path=str(csv_path), target_column="outcome",
+            plan_id=plan_id, source_path=str(parquet_path), target_column="outcome",
         ))
         pv_id = pv.plan_version_id
         if ready:

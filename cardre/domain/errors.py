@@ -37,8 +37,6 @@ class ErrorCode(StrEnum):
     ARTIFACT_READ_ERROR = "ARTIFACT_READ_ERROR"
     ARTIFACT_WRITE_ERROR = "ARTIFACT_WRITE_ERROR"
     NODE_VERSION_MISMATCH = "NODE_VERSION_MISMATCH"
-    RUN_SCOPE_NOT_AVAILABLE_FOR_LAUNCH = "RUN_SCOPE_NOT_AVAILABLE_FOR_LAUNCH"
-    OPTIONAL_DEPENDENCY_NOT_INSTALLED = "OPTIONAL_DEPENDENCY_NOT_INSTALLED"
     RUN_LIFECYCLE_ERROR = "RUN_LIFECYCLE_ERROR"
     PLAN_VERSION_ALREADY_COMMITTED = "PLAN_VERSION_ALREADY_COMMITTED"
     STALE_SNAPSHOT = "STALE_SNAPSHOT"
@@ -294,28 +292,6 @@ class NodeVersionMismatchError(CardreError):
         return err
 
 
-class RunScopeNotAvailableForLaunch(CardreError):
-    """Raised when a run scope is disabled for launch (e.g. ``to_node``)."""
-    code = ErrorCode.RUN_SCOPE_NOT_AVAILABLE_FOR_LAUNCH
-    status_code = 400
-
-
-class OptionalDependencyNotInstalled(CardreError):
-    """Raised when a node's optional dependency group is not installed."""
-    code = ErrorCode.OPTIONAL_DEPENDENCY_NOT_INSTALLED
-    status_code = 400
-
-    def __init__(self, node_type: str, missing_groups: list[str]) -> None:
-        self.node_type = node_type
-        self.missing_groups = list(missing_groups)
-        hint = f"pip install -e '.[{','.join(missing_groups)}]'"
-        message = (
-            f"Node {node_type!r} requires optional dependency group(s) "
-            f"{missing_groups} which are not installed. Install with: {hint}"
-        )
-        super().__init__(message, context={"node_type": node_type, "missing_groups": list(missing_groups)})
-
-
 __all__ = [
     "ArtifactReadError",
     "ArtifactWriteError",
@@ -328,13 +304,11 @@ __all__ = [
     "MissingInputArtifactError",
     "NodeRoleAccessViolation",
     "NodeVersionMismatchError",
-    "OptionalDependencyNotInstalled",
     "ParameterValidationError",
     "PlanVersionNotCommittedError",
     "RunLifecycleError",
     "RunNotFoundError",
     "RunNotRunningError",
     "RunPlanVersionMismatchError",
-    "RunScopeNotAvailableForLaunch",
     "SchemaVersionError",
 ]

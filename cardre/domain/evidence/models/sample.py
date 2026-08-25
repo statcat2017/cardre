@@ -62,13 +62,6 @@ class SampleDefinition:
     sample_method: str = "full_population"
     sample_domain: str = "ttd"
     total_rows: int = 0
-    financed_rows: int = 0
-    non_financed_rows: int = 0
-    rejection_source: str | None = None
-    rejection_column: str | None = None
-    rejection_values: list[Any] | None = None
-    approval_column: str | None = None
-    approval_values: list[Any] = field(default_factory=list)
     weight_column: str | None = None
     sample_description: str = ""
     extra: JsonDict = field(default_factory=dict)
@@ -81,22 +74,11 @@ class SampleDefinition:
             sample_method=data.get("sample_method", "full_population"),
             sample_domain=data.get("sample_domain", "ttd"),
             total_rows=data.get("total_rows", 0),
-            financed_rows=data.get("financed_rows", 0),
-            non_financed_rows=data.get("non_financed_rows", 0),
-            rejection_source=data.get("rejection_source"),
-            rejection_column=data.get("rejection_column"),
-            rejection_values=data.get("rejection_values"),
-            approval_column=data.get("approval_column"),
-            approval_values=list(data.get("approval_values", [])),
             weight_column=data.get("weight_column"),
             sample_description=data.get("sample_description", ""),
             extra={k: v for k, v in data.items()
                    if k not in ("sample_method", "sample_domain", "total_rows",
-                                "financed_rows", "non_financed_rows",
-                                "rejection_source", "rejection_column",
-                                 "rejection_values", "approval_column",
-                                 "approval_values", "weight_column",
-                                 "sample_description")},
+                                "weight_column", "sample_description")},
             _raw=data,
             source_artifact_id=artifact_id,
         )

@@ -112,10 +112,10 @@ def test_canonical_automatic_binning_has_explicit_method():
     cat = build_default_catalogue(Settings())
     steps = build_canonical_scorecard_steps("dummy.csv", cat.resolve)
     auto_step = next(s for s in steps if s.step_id == "automatic-binning")
-    assert "method" in auto_step.params, (
-        "automatic-binning step must have an explicit method param"
+    assert "method" not in auto_step.params, (
+        "automatic-binning step must not declare a method param after the "
+        "methodology purge (fine classing is the only automatic binning method)"
     )
-    assert auto_step.params["method"] == "fine_classing"
     assert auto_step.params_hash, "params_hash must be non-empty"
     from cardre.domain.artifacts import json_logical_hash
     expected_hash = json_logical_hash(auto_step.params)

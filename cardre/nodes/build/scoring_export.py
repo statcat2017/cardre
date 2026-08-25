@@ -30,13 +30,13 @@ class ScorecardTableExportNode(NodeType):
     node_type = "cardre.scorecard_table_export"
     version = "1"
     category = "export"
-    description = "Export scorecard as a table (CSV equivalent + JSON)"
+    description = "Export scorecard as a Parquet table"
 
     __definition__ = NodeDefinition(
         node_type="cardre.scorecard_table_export",
         version="1",
         category="export",
-        description="Export scorecard as a table (CSV equivalent + JSON)",
+        description="Export scorecard as a Parquet table",
         input_contract=ArtifactContract(
             roles=(
                 ArtifactRoleSpec("scorecard", required=True),
@@ -84,26 +84,6 @@ class ScorecardTableExportNode(NodeType):
             metadata={"schema_version": SCHEMA_SCORE_TABLE, "row_count": len(table_rows)},
         )
 
-        table_payload: dict[str, Any] = {
-            "schema_version": SCHEMA_SCORE_TABLE,
-            "base_score": scorecard.base_score,
-            "base_odds": scorecard.base_odds,
-            "points_to_double_odds": scorecard.points_to_double_odds,
-            "base_points": scorecard.base_points or 0,
-            "score_direction": scorecard.score_direction,
-            "target_column": scorecard.target_column,
-            "rows": table_rows,
-        }
-
-        context.outputs.publish_json(
-            role="report",
-            kind=EvidenceKind.SCORE_TABLE,
-            payload=table_payload,
-            metadata={
-                "schema_version": SCHEMA_SCORE_TABLE,
-                "row_count": len(table_rows),
-            },
-        )
         context.outputs.add_metric("row_count", len(table_rows))
         return context.outputs.build_result()
 
