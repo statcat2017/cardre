@@ -17,7 +17,7 @@ work, or node-parameter wiring into this PR.
 | Slice | Outcome | Main files |
 | --- | --- | --- |
 | 5 | The selected Run and the Run sidebar always use the same filtered collection; active Runs refresh without a page reload. | `frontend/src/hooks/useProjectWorkspace.ts`, `PlanSidebar.tsx`, `ProjectView.tsx`, `WelcomeScreen.tsx`, `App.tsx` |
-| 6 | Every API operation uses generated OpenAPI path, request, and response types; diagnostics are typed. | `frontend/package.json`, `frontend/src/api/client.ts`, `cardre/api/schemas.py`, `cardre/api/routes/_run_mappings.py`, generated OpenAPI files |
+| 6 | Every API operation uses generated OpenAPI path, request, and response types; diagnostics are typed. | `frontend/package.json`, `frontend/src/api/client.ts`, `cardre/api/schemas.py`, `cardre/api/mappers.py`, generated OpenAPI files |
 | 7 | The Tauri shell cleans up the child sidecar and returns an observable startup error when handoff fails. | `frontend/src-tauri/src/main.rs`, Rust tests, sidecar CI smoke test |
 
 ## Non-Goals
@@ -280,7 +280,7 @@ Do not expose arbitrary diagnostic keys as first-class response fields. The
 database repository currently flattens JSON context after fetching it. The API
 mapping layer must reverse that flattening at the public boundary.
 
-In `cardre/api/routes/_run_mappings.py`, add one pure adapter used by both
+In `cardre/api/mappers.py`, add one pure adapter used by both
 Run and RunStep mappings:
 
 ```py
