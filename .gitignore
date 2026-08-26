@@ -4,6 +4,7 @@ __pycache__/
 skills-lock.json
 .coverage
 .coverage.*
+coverage.json
 *.egg-info/
 .opencode/
 opencode.json
@@ -13,6 +14,7 @@ opencode.json
 **/*.cardre/
 frontend/node_modules/
 frontend/dist/
+frontend/coverage/
 /build/
 _legacy/
 .opencode/git-credentials

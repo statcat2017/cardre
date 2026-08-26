@@ -25,7 +25,7 @@
 
 ## Architecture Decision Records
 
-ADRs are immutable decision records in [docs/adr/](adr/). They explain *why* each structural choice was made. The active product policy is [ADR 0015](adr/0015-no-compatibility-policy.md) (one current persisted shape) and its enforcement, [ADR 0017](adr/0017-one-product-purge-enforcement.md) (the one-product purge).
+ADRs are immutable decision records in [docs/adr/](adr/). They explain *why* each structural choice was made. The active product policy is [ADR 0015](adr/0015-no-compatibility-policy.md) (one current persisted shape) and its enforcement, [ADR 0017](adr/0017-one-product-purge-enforcement.md) (the one-product purge). The test suite architecture is recorded in [ADR 0018](adr/0018-test-architecture-layered-suite.md).
 
 ## Roadmap
 

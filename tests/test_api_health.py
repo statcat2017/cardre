@@ -10,8 +10,3 @@ class TestHealth:
         data = resp.json()
         assert data["status"] == "ok"
         assert "version" in data
-
-    def test_health_no_auth_required(self, api_client):
-        """Health endpoint does not require any headers."""
-        resp = api_client.get("/health")
-        assert resp.status_code == 200

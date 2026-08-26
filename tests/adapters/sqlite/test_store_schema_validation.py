@@ -182,3 +182,28 @@ def test_wrong_version_rejected_all_open_paths(tmp_path, open_store):
         else:
             uow_factory.for_root_readonly(root)
     _assert_incompatible(excinfo, root)
+
+
+# ---------------------------------------------------------------------------
+# runs table schema contract
+# ---------------------------------------------------------------------------
+
+
+def test_runs_table_has_all_required_request_columns(tmp_path):
+    """Schema contract: the runs table carries every column the request flow
+    depends on (scope, forcing, requesting identity, lifecycle timestamps,
+    active step and cancellation). Verified at schema level via PRAGMA rather
+    than the repository API so the column set itself is pinned.
+    """
+    project_id, uow_factory, _root = _provision(tmp_path)
+    with uow_factory.for_project(project_id) as uow:
+        cols = {r[1] for r in uow._conn.execute("PRAGMA table_info(runs)").fetchall()}
+    required = {
+        "run_id", "plan_version_id", "status",
+        "run_scope", "force",
+        "requested_by", "request_id",
+        "created_at", "started_at", "finished_at",
+        "heartbeat_at", "active_step_id", "cancel_requested",
+    }
+    missing = required - cols
+    assert not missing, f"runs table missing columns: {sorted(missing)}"

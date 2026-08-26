@@ -24,16 +24,3 @@ def test_importlinter_passes() -> None:
     assert result.returncode == 0, (
         f"import-linter failed:\n{result.stdout}\n{result.stderr}"
     )
-
-
-def test_new_packages_importable() -> None:
-    """Assert the new hexagonal packages can be imported."""
-    import cardre.adapters  # noqa: F401
-    import cardre.adapters.sqlite  # noqa: F401
-    import cardre.adapters.system  # noqa: F401
-    import cardre.application  # noqa: F401
-    import cardre.application.ports  # noqa: F401
-    import cardre.bootstrap  # noqa: F401
-    import cardre.bootstrap.build_app  # noqa: F401
-    import cardre.bootstrap.container  # noqa: F401
-    import cardre.bootstrap.settings  # noqa: F401

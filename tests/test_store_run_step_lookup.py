@@ -57,6 +57,7 @@ def test_project_store_get_latest_successful_run_step_returns_run_step(provision
 
         found = uow.run_steps.get_latest_successful_step(pv_id, "step-a")
         missing = uow.run_steps.get_latest_successful_step(pv_id, "missing-step")
+        missing_pv = uow.run_steps.get_latest_successful_step("nonexistent-pv", "step-a")
 
         assert found is not None
         assert isinstance(found, RunStep)
@@ -67,3 +68,4 @@ def test_project_store_get_latest_successful_run_step_returns_run_step(provision
         assert found.execution_fingerprint["params_hash"] == "hash-step-a"
 
         assert missing is None
+        assert missing_pv is None
