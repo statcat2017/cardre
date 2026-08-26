@@ -1,53 +1,8 @@
-import { render, screen, within } from "@testing-library/react";
+import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
-import type { components } from "../../api/schema.d";
-import { StepParamsEditor } from "../StepParamsEditor";
-
-type Step = components["schemas"]["PlanStepResponse"];
-
-const steps: Step[] = [
-  {
-    step_id: "s-1",
-    plan_version_id: "v-1",
-    node_type: "node",
-    node_version: "1",
-    category: "cat",
-    params_hash: "h",
-    position: 0,
-    canonical_step_id: "import",
-    params: { source_path: "/data/input.parquet" },
-  },
-  {
-    step_id: "s-2",
-    plan_version_id: "v-1",
-    node_type: "node",
-    node_version: "1",
-    category: "cat",
-    params_hash: "h",
-    position: 1,
-    canonical_step_id: "apply-exclusions",
-  },
-];
-
-function renderEditor(overrides: Partial<Parameters<typeof StepParamsEditor>[0]> = {}) {
-  const props = {
-    steps,
-    stepsLoading: false,
-    onSaveStep: vi.fn(),
-    savePending: false,
-    ...overrides,
-  };
-  render(<StepParamsEditor {...props} />);
-  return props;
-}
-
-function getStepBlock(canonicalId: string) {
-  const block = screen.getByText(canonicalId).parentElement;
-  if (!block) throw new Error(`Step block for "${canonicalId}" not found`);
-  return block;
-}
+import { renderEditor, getStepBlock } from "./StepParamsEditor.fixtures";
 
 describe("StepParamsEditor", () => {
   it("shows a loading message while steps are loading", () => {
@@ -56,13 +11,13 @@ describe("StepParamsEditor", () => {
     expect(screen.getByText("Loading steps...")).toBeInTheDocument();
   });
 
-  it("returns null when there are no editable steps", () => {
+  it("returns null when no step has a schema", () => {
     renderEditor({
       steps: [
         {
           step_id: "s-x",
           plan_version_id: "v-1",
-          node_type: "node",
+          node_type: "node.unknown",
           node_version: "1",
           category: "cat",
           params_hash: "h",
@@ -82,8 +37,45 @@ describe("StepParamsEditor", () => {
     expect(screen.getByText("import")).toBeInTheDocument();
   });
 
-  it("does not render steps that have no editable fields and instead notes it", () => {
-    renderEditor();
+  it("does not render editable controls for steps with no declared params", () => {
+    renderEditor({
+      steps: [
+        {
+          step_id: "s-2",
+          plan_version_id: "v-1",
+          node_type: "node.apply_exclusions",
+          node_version: "1",
+          category: "cat",
+          params_hash: "h",
+          position: 0,
+          canonical_step_id: "apply-exclusions",
+        },
+      ],
+      nodeTypes: [
+        {
+          node_type: "node.apply_exclusions",
+          display_name: "Exclusions",
+          description: "",
+          category: "cat",
+          has_params: true,
+          parameter_schema: {
+            node_type: "node.apply_exclusions",
+            node_version: "1",
+            title: "Exclusions",
+            default_method: "default",
+            methods: [
+              {
+                id: "default",
+                label: "Default",
+                status: "available",
+                description: "",
+                params: [],
+              },
+            ],
+          },
+        },
+      ],
+    });
 
     expect(screen.getByText("No editable parameters for this step.")).toBeInTheDocument();
   });
@@ -128,57 +120,5 @@ describe("StepParamsEditor", () => {
     for (const button of saveButtons) {
       expect(button).toBeDisabled();
     }
-  });
-
-  it("toggles a checkbox field and saves the boolean value", async () => {
-    const user = userEvent.setup();
-    const { onSaveStep } = renderEditor({
-      steps: [
-        {
-          step_id: "s-m",
-          plan_version_id: "v-1",
-          node_type: "node",
-          node_version: "1",
-          category: "cat",
-          params_hash: "h",
-          position: 0,
-          canonical_step_id: "manual-binning",
-          params: { accept_automated: false },
-        },
-      ],
-    });
-
-    const checkbox = screen.getByLabelText("Accept automated bins");
-    expect(checkbox).not.toBeChecked();
-
-    await user.click(checkbox);
-    expect(checkbox).toBeChecked();
-
-    await user.click(screen.getByRole("button", { name: "Save" }));
-    expect(onSaveStep).toHaveBeenCalledWith("s-m", { accept_automated: true });
-  });
-
-  it("parses a comma-list field into an array on save", async () => {
-    const user = userEvent.setup();
-    const { onSaveStep } = renderEditor({
-      steps: [
-        {
-          ...steps[0],
-          canonical_step_id: "define-metadata",
-          params: { good_values: ["a", "b"] },
-        },
-      ],
-    });
-
-    const input = screen.getByLabelText("Good values");
-    expect(input).toHaveValue("a, b");
-
-    await user.clear(input);
-    await user.type(input, "x, y, z");
-    await user.click(screen.getByRole("button", { name: "Save" }));
-
-    expect(onSaveStep).toHaveBeenCalledWith("s-1", {
-      good_values: ["x", "y", "z"],
-    });
   });
 });

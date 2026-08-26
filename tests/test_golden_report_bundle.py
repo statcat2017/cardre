@@ -16,7 +16,6 @@ import json
 import re
 from pathlib import Path
 
-import polars as pl
 import pytest
 
 from cardre.adapters.reporting.collector import ReportCollector
@@ -27,7 +26,7 @@ from cardre.application.runs.submit_run import SubmitRunCommand
 from cardre.bootstrap.container import build_container
 from cardre.bootstrap.node_catalogue import build_default_catalogue
 from cardre.bootstrap.settings import Settings
-from tests.acceptance.fixture_pathway import build_acceptance_fixture_steps
+from tests.acceptance.fixture_pathway import build_acceptance_fixture_steps, write_input_parquet
 
 FIXTURE_DIR = Path(__file__).parent / "fixtures"
 GOLDEN_REPORT_BUNDLE = FIXTURE_DIR / "golden_report_bundle.json"
@@ -87,19 +86,6 @@ def _is_non_deterministic_leaf(key: str, value: object) -> bool:
     return bool(isinstance(value, str) and _HASH_IN_PATH_RE.search(value))
 
 
-def _write_input_parquet(path: Path) -> Path:
-    rows = []
-    for i in range(60):
-        rows.append({
-            "credit_amount": 1000 + i * 50,
-            "age_years": 25 + (i % 30),
-            "duration_months": 6 + (i % 36),
-            "credit_risk_class": "good" if i % 3 != 0 else "bad",
-        })
-    pl.DataFrame(rows).write_parquet(path)
-    return path
-
-
 def _run_pathway(tmp_path: Path) -> dict:
     registry = JsonProjectRegistry(tmp_path / "registry.json")
     provisioner = SqliteProjectProvisioner()
@@ -113,7 +99,7 @@ def _run_pathway(tmp_path: Path) -> dict:
         uow.commit()
     registry.register(project_id, root)
 
-    parquet_path = _write_input_parquet(tmp_path / "input.parquet")
+    parquet_path = write_input_parquet(tmp_path / "input.parquet")
     cat = build_default_catalogue()
     steps = build_acceptance_fixture_steps(parquet_path, cat)
 

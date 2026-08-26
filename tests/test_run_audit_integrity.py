@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import json
 
-import polars as pl
 import pytest
 
 from cardre.adapters.sqlite.connection import SqliteUnitOfWorkFactory
@@ -18,20 +17,7 @@ from cardre.application.runs.submit_run import SubmitRunCommand
 from cardre.bootstrap.container import build_container
 from cardre.bootstrap.node_catalogue import build_default_catalogue
 from cardre.bootstrap.settings import Settings
-from tests.acceptance.fixture_pathway import build_acceptance_fixture_steps
-
-
-def _write_input_parquet(path):
-    rows = []
-    for i in range(60):
-        rows.append({
-            "credit_amount": 1000 + i * 50,
-            "age_years": 25 + (i % 30),
-            "duration_months": 6 + (i % 36),
-            "credit_risk_class": "good" if i % 3 != 0 else "bad",
-        })
-    pl.DataFrame(rows).write_parquet(path)
-    return path
+from tests.acceptance.fixture_pathway import build_acceptance_fixture_steps, write_input_parquet
 
 
 @pytest.fixture
@@ -48,7 +34,7 @@ def audit_run(tmp_path):
         uow.commit()
     registry.register(project_id, root)
 
-    parquet_path = _write_input_parquet(tmp_path / "input.parquet")
+    parquet_path = write_input_parquet(tmp_path / "input.parquet")
     cat = build_default_catalogue()
     steps = build_acceptance_fixture_steps(parquet_path, cat)
 

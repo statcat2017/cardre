@@ -323,12 +323,50 @@ class ManualBinningPreviewResponse(BaseModel):
 # Node types
 # ---------------------------------------------------------------------------
 
+class ParameterConstraintResponse(BaseModel):
+    enum_values: list[Any] | None = None
+    min_value: float | None = None
+    max_value: float | None = None
+    exclusive_min: float | None = None
+    exclusive_max: float | None = None
+    min_items: int | None = None
+    max_items: int | None = None
+    pattern: str | None = None
+
+
+class ParameterDefinitionResponse(BaseModel):
+    name: str
+    label: str = ""
+    kind: str = "string"
+    default: Any = None
+    required: bool = True
+    help_text: str = ""
+    constraint: ParameterConstraintResponse | None = None
+
+
+class MethodOptionResponse(BaseModel):
+    id: str
+    label: str = ""
+    status: str = "available"
+    description: str = ""
+    params: list[ParameterDefinitionResponse] = Field(default_factory=list)
+
+
+class NodeParameterSchemaResponse(BaseModel):
+    node_type: str
+    node_version: str
+    title: str = ""
+    default_method: str = ""
+    methods: list[MethodOptionResponse] = Field(default_factory=list)
+
+
 class NodeTypeResponse(BaseModel):
     node_type: str
     display_name: str = ""
     description: str = ""
     category: str = ""
     has_params: bool = False
+    parameter_schema: NodeParameterSchemaResponse | None = None
 
 
 class NodeTypeListResponse(BaseModel):
@@ -384,8 +422,12 @@ __all__ = [
     "ManualBinningPreviewResponse",
     "ManualBinningReviewResponse",
     "ManualBinningReviewUpdate",
+    "MethodOptionResponse",
+    "NodeParameterSchemaResponse",
     "NodeTypeListResponse",
     "NodeTypeResponse",
+    "ParameterConstraintResponse",
+    "ParameterDefinitionResponse",
     "CanonicalScorecardVersionRequest",
     "PlanCreateRequest",
     "PlanListResponse",

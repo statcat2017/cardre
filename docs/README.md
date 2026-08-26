@@ -33,6 +33,7 @@ See the [Roadmap](../README.md#roadmap) section in the root README.
 
 ## Implementation Plans
 
-- [One Cardre Purge Plan](plans/one-cardre-purge-plan.md) — implementation plan
-  for removing deferred product surface, governance, compatibility handling,
-  alternate methodologies, and duplicate representations
+- [One Cardre Purge Plan](plans/one-cardre-purge-plan.md) — **completed**
+  decision record for removing deferred product surface, governance,
+  compatibility handling, alternate methodologies, and duplicate
+  representations

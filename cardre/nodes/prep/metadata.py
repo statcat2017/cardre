@@ -13,6 +13,12 @@ from cardre.nodes.contracts import (
     NodeResult,
     NodeType,
 )
+from cardre.nodes.parameters import (
+    MethodOption,
+    NodeParameterSchema,
+    ParameterConstraint,
+    ParameterDefinition,
+)
 
 
 class DefineModellingMetadataNode(NodeType):
@@ -35,6 +41,108 @@ class DefineModellingMetadataNode(NodeType):
         "ignored",
         "documented_method",
     }
+
+    @classmethod
+    def parameter_schema(cls) -> NodeParameterSchema:
+        return NodeParameterSchema(
+            node_type=cls.node_type,
+            node_version=cls.version,
+            title="Define Modelling Metadata",
+            methods=[
+                MethodOption(
+                    id="default",
+                    label="Default",
+                    status="available",
+                    params=[
+                        ParameterDefinition(
+                            name="target_column",
+                            label="Target Column",
+                            kind="string",
+                            default="credit_risk_class",
+                            required=True,
+                            help_text="Name of the column containing the binary target",
+                        ),
+                        ParameterDefinition(
+                            name="good_values",
+                            label="Good Values",
+                            kind="list",
+                            default=["good"],
+                            required=True,
+                            help_text="Values of the target column that map to the good (non-event) class",
+                        ),
+                        ParameterDefinition(
+                            name="bad_values",
+                            label="Bad Values",
+                            kind="list",
+                            default=["bad"],
+                            required=True,
+                            help_text="Values of the target column that map to the bad (event) class",
+                        ),
+                        ParameterDefinition(
+                            name="indeterminate_values",
+                            label="Indeterminate Values",
+                            kind="list",
+                            default=[],
+                            required=False,
+                            help_text="Values of the target column that are neither good nor bad",
+                        ),
+                        ParameterDefinition(
+                            name="purpose",
+                            label="Purpose",
+                            kind="string",
+                            default="application_credit_scorecard",
+                            help_text="Purpose of the scorecard model",
+                        ),
+                        ParameterDefinition(
+                            name="population",
+                            label="Population",
+                            kind="string",
+                            default="",
+                            help_text="Description of the modelled population",
+                        ),
+                        ParameterDefinition(
+                            name="product",
+                            label="Product",
+                            kind="string",
+                            default="",
+                            help_text="Product the scorecard applies to",
+                        ),
+                        ParameterDefinition(
+                            name="segment",
+                            label="Segment",
+                            kind="string",
+                            default="",
+                            help_text="Segment the scorecard applies to",
+                        ),
+                        ParameterDefinition(
+                            name="observation_window",
+                            label="Observation Window",
+                            kind="string",
+                            default="",
+                            help_text="Observation window over which predictors are measured",
+                        ),
+                        ParameterDefinition(
+                            name="performance_window",
+                            label="Performance Window",
+                            kind="string",
+                            default="",
+                            help_text="Performance window over which the outcome is observed",
+                        ),
+                        ParameterDefinition(
+                            name="reject_inference_position",
+                            label="Reject Inference Position",
+                            kind="string",
+                            default="not_applied",
+                            required=False,
+                            constraint=ParameterConstraint(
+                                enum_values=[""] + sorted(cls.VALID_REJECT_INFERENCE_POSITIONS),
+                            ),
+                            help_text="Where reject inference is applied in the modelling process",
+                        ),
+                    ],
+                ),
+            ],
+        )
 
     def validate_params(self, params: dict[str, Any]) -> list[str]:
         # Always run the target-definition checks: they must not be skipped
@@ -135,6 +243,74 @@ class DevelopmentSampleDefinitionNode(NodeType):
         input_contract=ArtifactContract(roles=(ArtifactRoleSpec("input", required=True, kinds=(RoleKind.DATASET,)), ArtifactRoleSpec("train", required=False, kinds=(RoleKind.DATASET,)), ArtifactRoleSpec("definition", required=False, kinds=(RoleKind.DEFINITION,)))),
         output_contract=ArtifactContract(roles=(ArtifactRoleSpec("definition", required=True, kinds=(EvidenceKind.MODELLING_METADATA, EvidenceKind.SAMPLE_DEFINITION), media_types=("application/json",), schema_versions=(SCHEMA_MODELLING_METADATA, SCHEMA_SAMPLE_DEFINITION)),)),
     )
+
+    @classmethod
+    def parameter_schema(cls) -> NodeParameterSchema:
+        return NodeParameterSchema(
+            node_type=cls.node_type,
+            node_version=cls.version,
+            title="Development Sample Definition",
+            methods=[
+                MethodOption(
+                    id="default",
+                    label="Default",
+                    status="available",
+                    params=[
+                        ParameterDefinition(
+                            name="sample_method",
+                            label="Sample Method",
+                            kind="string",
+                            default="full_population",
+                            required=True,
+                            constraint=ParameterConstraint(enum_values=["full_population"]),
+                            help_text="Method used to select the development sample",
+                        ),
+                        ParameterDefinition(
+                            name="sample_domain",
+                            label="Sample Domain",
+                            kind="string",
+                            default="ttd",
+                            required=True,
+                            constraint=ParameterConstraint(enum_values=["ttd"]),
+                            help_text="Domain the development sample is drawn from",
+                        ),
+                        ParameterDefinition(
+                            name="sample_description",
+                            label="Sample Description",
+                            kind="string",
+                            default="",
+                            required=False,
+                            help_text="Free-text description of the development sample",
+                        ),
+                        ParameterDefinition(
+                            name="weight_column",
+                            label="Weight Column",
+                            kind="string",
+                            default=None,
+                            required=False,
+                            help_text="Optional numeric column used to weight rows in the sample",
+                        ),
+                        ParameterDefinition(
+                            name="population_bad_rate",
+                            label="Population Bad Rate",
+                            kind="float",
+                            default=None,
+                            required=False,
+                            constraint=ParameterConstraint(min_value=0.0, max_value=1.0),
+                            help_text="Expected bad rate of the population (null = unknown)",
+                        ),
+                        ParameterDefinition(
+                            name="prior_probability_adjustment",
+                            label="Prior Probability Adjustment",
+                            kind="object",
+                            default=None,
+                            required=False,
+                            help_text="Optional prior-probability adjustment configuration",
+                        ),
+                    ],
+                ),
+            ],
+        )
 
     def validate_params(self, params: dict[str, Any]) -> list[str]:
         errors: list[str] = []

@@ -2,7 +2,7 @@
 
 A small, famous credit-risk teaching dataset. 1000 loan applicants, 20
 features (7 numerical, 13 categorical), one binary target. Ships with a
-cost matrix that makes cost-sensitive scoring demos meaningful.
+2×2 cost matrix.
 
 - **Source**: UCI Machine Learning Repository #144
 - **URL**: https://archive.ics.uci.edu/dataset/144/statlog+german+credit+data
@@ -10,15 +10,16 @@ cost matrix that makes cost-sensitive scoring demos meaningful.
 - **Author**: Hans Hofmann, University of Hamburg (1994)
 - **License**: CC BY 4.0 (see `LICENSE.txt`)
 - **Citation**: see `CITATION.txt`
-- **File**: `german_credit.csv` (CSV, UTF-8, comma-separated, 1000 rows × 21 columns, ~83 KB)
+- **File**: `german_credit.parquet` (generated from `german_credit.csv`, UTF-8, comma-separated, 1000 rows × 21 columns, ~83 KB CSV / ~24 KB Parquet)
 
 ## Cardre on-ramp
 
 - **Target column**: `class`
 - **Good value**: `good` (700 rows, 70%)
 - **Bad value**: `bad` (300 rows, 30%)
-- The class imbalance and the cost matrix (below) make this a good
-  dataset for demonstrating threshold tuning and cost-sensitive scoring.
+- Point the import step at the committed `german_credit.parquet` file; the
+  Parquet twin is regenerated from the CSV by
+  `scripts/convert_sample_datasets_to_parquet.py`.
 
 ## Columns
 
@@ -123,8 +124,7 @@ Actual good   0    1
 
 It is 5× worse to classify a bad customer as good (extend credit to a
 defaulter) than to classify a good customer as bad (turn away a good
-applicant). This makes the dataset useful for demonstrating
-cost-sensitive threshold tuning in cardre.
+applicant).
 
 ## Changes from the original UCI distribution
 

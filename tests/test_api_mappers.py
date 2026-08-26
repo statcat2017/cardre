@@ -53,6 +53,7 @@ def test_project_and_node_type_mappers() -> None:
         "description": "",
         "category": "fit",
         "has_params": True,
+        "parameter_schema": None,
     }
 
 

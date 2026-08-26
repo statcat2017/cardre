@@ -2127,6 +2127,76 @@
         "type": "object",
         "title": "ManualBinningReviewUpdate"
       },
+      "MethodOptionResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label",
+            "default": ""
+          },
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "default": "available"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description",
+            "default": ""
+          },
+          "params": {
+            "items": {
+              "$ref": "#/components/schemas/ParameterDefinitionResponse"
+            },
+            "type": "array",
+            "title": "Params"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "title": "MethodOptionResponse"
+      },
+      "NodeParameterSchemaResponse": {
+        "properties": {
+          "node_type": {
+            "type": "string",
+            "title": "Node Type"
+          },
+          "node_version": {
+            "type": "string",
+            "title": "Node Version"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title",
+            "default": ""
+          },
+          "default_method": {
+            "type": "string",
+            "title": "Default Method",
+            "default": ""
+          },
+          "methods": {
+            "items": {
+              "$ref": "#/components/schemas/MethodOptionResponse"
+            },
+            "type": "array",
+            "title": "Methods"
+          }
+        },
+        "type": "object",
+        "required": [
+          "node_type",
+          "node_version"
+        ],
+        "title": "NodeParameterSchemaResponse"
+      },
       "NodeTypeListResponse": {
         "properties": {
           "node_types": {
@@ -2168,6 +2238,16 @@
             "type": "boolean",
             "title": "Has Params",
             "default": false
+          },
+          "parameter_schema": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NodeParameterSchemaResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
@@ -2175,6 +2255,147 @@
           "node_type"
         ],
         "title": "NodeTypeResponse"
+      },
+      "ParameterConstraintResponse": {
+        "properties": {
+          "enum_values": {
+            "anyOf": [
+              {
+                "items": {},
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Enum Values"
+          },
+          "min_value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Value"
+          },
+          "max_value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Value"
+          },
+          "exclusive_min": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exclusive Min"
+          },
+          "exclusive_max": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exclusive Max"
+          },
+          "min_items": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Items"
+          },
+          "max_items": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Items"
+          },
+          "pattern": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pattern"
+          }
+        },
+        "type": "object",
+        "title": "ParameterConstraintResponse"
+      },
+      "ParameterDefinitionResponse": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label",
+            "default": ""
+          },
+          "kind": {
+            "type": "string",
+            "title": "Kind",
+            "default": "string"
+          },
+          "default": {
+            "title": "Default"
+          },
+          "required": {
+            "type": "boolean",
+            "title": "Required",
+            "default": true
+          },
+          "help_text": {
+            "type": "string",
+            "title": "Help Text",
+            "default": ""
+          },
+          "constraint": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ParameterConstraintResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "ParameterDefinitionResponse"
       },
       "PlanCreateRequest": {
         "properties": {

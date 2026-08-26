@@ -152,6 +152,7 @@ export function ProjectView({ projectId, onBack }: Props) {
               <StepParamsEditor
                 steps={ws.stepsQuery.data ?? []}
                 stepsLoading={ws.stepsQuery.isLoading}
+                nodeTypes={ws.nodeTypesQuery.data?.node_types ?? []}
                 onSaveStep={(stepId, params) =>
                   ws.updateStepParamsMutation.mutate({ stepId, params })
                 }

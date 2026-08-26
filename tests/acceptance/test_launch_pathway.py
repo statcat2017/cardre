@@ -1,8 +1,7 @@
 """Full product acceptance pathway (Batch 07g).
 
 Drives the complete canonical scorecard workflow through the new API and
-production stack, covering the 20 product-acceptance items from
-``docs/architecture-rewrite/08-acceptance-and-test-strategy.md``.
+production stack, covering the 20 product-acceptance items.
 
 Plan creation, canonical-version generation, commitment, and run submission
 all go through the API (``POST /projects/{id}/plans``,
@@ -17,7 +16,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-from pathlib import Path
 
 import polars as pl
 import pytest
@@ -34,22 +32,7 @@ from cardre.domain.evidence.schemas import (
     SCHEMA_WOE_IV_EVIDENCE,
     SCHEMA_WOE_TABLE,
 )
-
-
-def _write_input_parquet(path: Path) -> Path:
-    rows = []
-    for i in range(60):
-        rows.append({
-            "credit_amount": 1000 + i * 50,
-            "age_years": 25 + (i % 30),
-            "duration_months": 6 + (i % 36),
-            # Non-default target column name: the canonical pathway must
-            # propagate the configured target to every target-dependent step,
-            # not hardcode "credit_risk_class".
-            "outcome": "good" if i % 3 != 0 else "bad",
-        })
-    pl.DataFrame(rows).write_parquet(path)
-    return path
+from tests.acceptance.fixture_pathway import write_input_parquet
 
 
 @pytest.fixture
@@ -76,7 +59,7 @@ def acceptance_env(tmp_path):
     project_id = resp.json()["project_id"]
 
     # 2. Import a supported dataset (the run's import step points at the Parquet file).
-    parquet_path = _write_input_parquet(tmp_path / "input.parquet")
+    parquet_path = write_input_parquet(tmp_path / "input.parquet", target_column="outcome")
 
     # 4. Create a plan through the API.
     resp = client.post(f"/projects/{project_id}/plans", json={"name": "Acceptance Plan"})
@@ -449,14 +432,3 @@ def _recompute_manifest_hash(manifest: dict) -> str:
     from cardre.domain.manifest import compute_manifest_hash
 
     return compute_manifest_hash(manifest)
-
-
-def _canonical_steps(pv_id: str, uow) -> list[dict]:
-    """Return plan-version steps as dicts for branch step-map seeding."""
-    return [
-        {
-            "step_id": s.step_id,
-            "canonical_step_id": s.canonical_step_id,
-        }
-        for s in uow.plans.get_version_steps(pv_id)
-    ]

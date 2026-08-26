@@ -700,6 +700,47 @@ export interface components {
             /** Reviewer Notes */
             reviewer_notes?: string | null;
         };
+        /** MethodOptionResponse */
+        MethodOptionResponse: {
+            /** Id */
+            id: string;
+            /**
+             * Label
+             * @default
+             */
+            label: string;
+            /**
+             * Status
+             * @default available
+             */
+            status: string;
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /** Params */
+            params?: components["schemas"]["ParameterDefinitionResponse"][];
+        };
+        /** NodeParameterSchemaResponse */
+        NodeParameterSchemaResponse: {
+            /** Node Type */
+            node_type: string;
+            /** Node Version */
+            node_version: string;
+            /**
+             * Title
+             * @default
+             */
+            title: string;
+            /**
+             * Default Method
+             * @default
+             */
+            default_method: string;
+            /** Methods */
+            methods?: components["schemas"]["MethodOptionResponse"][];
+        };
         /** NodeTypeListResponse */
         NodeTypeListResponse: {
             /** Node Types */
@@ -729,6 +770,54 @@ export interface components {
              * @default false
              */
             has_params: boolean;
+            parameter_schema?: components["schemas"]["NodeParameterSchemaResponse"] | null;
+        };
+        /** ParameterConstraintResponse */
+        ParameterConstraintResponse: {
+            /** Enum Values */
+            enum_values?: unknown[] | null;
+            /** Min Value */
+            min_value?: number | null;
+            /** Max Value */
+            max_value?: number | null;
+            /** Exclusive Min */
+            exclusive_min?: number | null;
+            /** Exclusive Max */
+            exclusive_max?: number | null;
+            /** Min Items */
+            min_items?: number | null;
+            /** Max Items */
+            max_items?: number | null;
+            /** Pattern */
+            pattern?: string | null;
+        };
+        /** ParameterDefinitionResponse */
+        ParameterDefinitionResponse: {
+            /** Name */
+            name: string;
+            /**
+             * Label
+             * @default
+             */
+            label: string;
+            /**
+             * Kind
+             * @default string
+             */
+            kind: string;
+            /** Default */
+            default?: unknown;
+            /**
+             * Required
+             * @default true
+             */
+            required: boolean;
+            /**
+             * Help Text
+             * @default
+             */
+            help_text: string;
+            constraint?: components["schemas"]["ParameterConstraintResponse"] | null;
         };
         /** PlanCreateRequest */
         PlanCreateRequest: {

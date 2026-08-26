@@ -261,6 +261,11 @@ export function useProjectWorkspace(scope: ProjectScope) {
     enabled: !!effectiveSelectedVersionId && !selectedVersion?.is_committed,
   });
 
+  const nodeTypesQuery = useQuery({
+    queryKey: ["nodeTypes", scope.projectId],
+    queryFn: () => scoped.listNodeTypes(),
+  });
+
   const queryErrorEntries: Array<{ key: string; error: Error | null }> = [
     { key: "project", error: projectQuery.error },
     { key: "plans", error: plansQuery.error },
@@ -272,6 +277,7 @@ export function useProjectWorkspace(scope: ProjectScope) {
     { key: "runReports", error: reportsQuery.error },
     { key: "runExports", error: exportsQuery.error },
     { key: "planVersionSteps", error: stepsQuery.error },
+    { key: "nodeTypes", error: nodeTypesQuery.error },
   ];
   const errored = queryErrorEntries.find((e) => e.error);
   const queryErrorMessage = errored ? `[${errored.key}] ${toErrorMessage(errored.error!)}` : null;
@@ -287,6 +293,7 @@ export function useProjectWorkspace(scope: ProjectScope) {
     reportsQuery,
     exportsQuery,
     stepsQuery,
+    nodeTypesQuery,
     effectiveSelectedPlanId,
     effectiveSelectedVersionId,
     effectiveSelectedRunId,

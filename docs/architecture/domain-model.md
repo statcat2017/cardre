@@ -15,7 +15,7 @@
 ## Plan Version vs Run
 
 - A **plan version** is created when the user explicitly saves/modifies the plan (adds/removes/reconfigures steps). It is a user-triggered snapshot of *intent*.
-- A **run** is one execution of a given plan version. The same plan version may be run multiple times (e.g. different seeds, comparison runs).
+- A **run** is one execution of a given plan version. The same plan version may be run multiple times as repeated runs; earlier iterations supported different seeds for these runs.
 - A plan version exists independently of any run. Every run references exactly one plan version.
 
 ## Build Stream vs Validate Stream

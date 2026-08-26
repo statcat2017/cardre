@@ -7,7 +7,7 @@ side effects, no I/O, and no dependencies on FastAPI or the store.
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import Any
+from typing import Any, Protocol
 
 from cardre._version import __version__
 from cardre.api.schemas import (
@@ -17,7 +17,11 @@ from cardre.api.schemas import (
     EvidenceEdgeResponse,
     ExportResponse,
     ManualBinningReviewResponse,
+    MethodOptionResponse,
+    NodeParameterSchemaResponse,
     NodeTypeResponse,
+    ParameterConstraintResponse,
+    ParameterDefinitionResponse,
     PlanResponse,
     PlanStepResponse,
     PlanVersionResponse,
@@ -37,6 +41,52 @@ from cardre.domain.run import Run, RunStep
 from cardre.domain.step import StepSpec
 
 _DIAGNOSTIC_FIELDS = {"code", "message", "severity", "source", "created_at"}
+
+
+# ---------------------------------------------------------------------------
+# Structural types for node parameter schema objects.
+#
+# These mirror the dataclass-shaped objects produced by ``cardre.nodes`` but
+# are defined locally so the API layer never imports ``cardre.nodes``.  The
+# mapper only needs attribute access; ``Any`` is used for JSON values.
+# ---------------------------------------------------------------------------
+
+
+class _ConstraintLike(Protocol):
+    enum_values: list[Any] | None
+    min_value: float | None
+    max_value: float | None
+    exclusive_min: float | None
+    exclusive_max: float | None
+    min_items: int | None
+    max_items: int | None
+    pattern: str | None
+
+
+class _ParameterDefinitionLike(Protocol):
+    name: str
+    label: str
+    kind: str
+    default: Any
+    required: bool
+    help_text: str
+    constraint: _ConstraintLike | None
+
+
+class _MethodOptionLike(Protocol):
+    id: str
+    label: str
+    status: str
+    description: str
+    params: list[_ParameterDefinitionLike]
+
+
+class _NodeParameterSchemaLike(Protocol):
+    node_type: str
+    node_version: str
+    title: str
+    default_method: str
+    methods: list[_MethodOptionLike]
 
 
 def diagnostic_to_response(value: Mapping[str, Any]) -> DiagnosticResponse:
@@ -184,12 +234,67 @@ def manual_binning_review_to_response(review: ManualBinningReview) -> ManualBinn
     )
 
 
+def node_parameter_schema_to_response(
+    schema: _NodeParameterSchemaLike,
+) -> NodeParameterSchemaResponse:
+    """Serialize a node parameter schema into its API DTO."""
+    return NodeParameterSchemaResponse(
+        node_type=schema.node_type,
+        node_version=schema.node_version,
+        title=schema.title,
+        default_method=schema.default_method,
+        methods=[_method_option_to_response(m) for m in schema.methods],
+    )
+
+
+def _method_option_to_response(method: _MethodOptionLike) -> MethodOptionResponse:
+    return MethodOptionResponse(
+        id=method.id,
+        label=method.label,
+        status=method.status,
+        description=method.description,
+        params=[_parameter_definition_to_response(p) for p in method.params],
+    )
+
+
+def _parameter_definition_to_response(
+    param: _ParameterDefinitionLike,
+) -> ParameterDefinitionResponse:
+    return ParameterDefinitionResponse(
+        name=param.name,
+        label=param.label,
+        kind=param.kind,
+        default=param.default,
+        required=param.required,
+        help_text=param.help_text,
+        constraint=_parameter_constraint_to_response(param.constraint),
+    )
+
+
+def _parameter_constraint_to_response(
+    constraint: _ConstraintLike | None,
+) -> ParameterConstraintResponse | None:
+    if constraint is None:
+        return None
+    return ParameterConstraintResponse(
+        enum_values=list(constraint.enum_values) if constraint.enum_values is not None else None,
+        min_value=constraint.min_value,
+        max_value=constraint.max_value,
+        exclusive_min=constraint.exclusive_min,
+        exclusive_max=constraint.exclusive_max,
+        min_items=constraint.min_items,
+        max_items=constraint.max_items,
+        pattern=constraint.pattern,
+    )
+
+
 def node_type_to_response(
     node_type: str,
     *,
     category: str = "",
     description: str = "",
     has_params: bool = True,
+    parameter_schema: NodeParameterSchemaResponse | None = None,
 ) -> NodeTypeResponse:
     return NodeTypeResponse(
         node_type=node_type,
@@ -197,6 +302,7 @@ def node_type_to_response(
         description=description,
         category=category,
         has_params=has_params,
+        parameter_schema=parameter_schema,
     )
 
 
@@ -292,6 +398,7 @@ __all__ = [
     "evidence_edge_to_brief_response",
     "evidence_edge_to_response",
     "manual_binning_review_to_response",
+    "node_parameter_schema_to_response",
     "node_type_to_response",
     "plan_to_response",
     "plan_version_to_response",
