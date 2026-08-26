@@ -184,6 +184,129 @@ def test_node_types_project_scoped(app_env, tmp_path):
     assert any(nt["node_type"] == "cardre.import_dataset" for nt in data["node_types"])
 
 
+def test_node_types_resolve_all_registered_nodes(app_env, tmp_path):
+    """The endpoint resolves every registered node class and reports its
+    parameter schema with matching node_type/version."""
+    from cardre.bootstrap.node_catalogue import build_default_catalogue
+
+    client, container = app_env
+    pid, _ = provision(container, tmp_path)
+    resp = client.get(f"/projects/{pid}/node-types")
+    assert resp.status_code == 200
+    node_types = resp.json()["node_types"]
+
+    catalogue = build_default_catalogue()
+    expected_types = set(catalogue.list_types())
+    assert len(node_types) == len(expected_types)
+    assert {nt["node_type"] for nt in node_types} == expected_types
+
+    for nt in node_types:
+        schema = nt["parameter_schema"]
+        if schema is not None:
+            assert schema["node_type"] == nt["node_type"]
+            assert schema["node_version"] == catalogue.resolve(nt["node_type"]).version
+            assert nt["has_params"] == any(m["params"] for m in schema["methods"])
+        else:
+            assert nt["has_params"] is False
+
+
+def test_node_types_woe_iv_schema_details(app_env, tmp_path):
+    """calculate_woe_iv exposes its nested smoothing object, enum, list and
+    boolean parameter definitions with JSON-safe defaults."""
+    import json
+
+    client, container = app_env
+    pid, _ = provision(container, tmp_path)
+    resp = client.get(f"/projects/{pid}/node-types")
+    assert resp.status_code == 200
+    node_types = resp.json()["node_types"]
+
+    woe_iv = next(nt for nt in node_types if nt["node_type"] == "cardre.calculate_woe_iv")
+    assert woe_iv["has_params"] is True
+    schema = woe_iv["parameter_schema"]
+    assert schema is not None
+    assert schema["node_type"] == "cardre.calculate_woe_iv"
+    assert schema["node_version"] == "1"
+    assert schema["title"] == "Calculate WOE & IV"
+    assert len(schema["methods"]) == 1
+    method = schema["methods"][0]
+    assert method["id"] == "default"
+    params = {p["name"]: p for p in method["params"]}
+
+    # enum with declared values
+    assert params["purpose"]["kind"] == "enum"
+    assert params["purpose"]["constraint"]["enum_values"] == ["initial", "final"]
+
+    # object kind, nullable default
+    smoothing = params["smoothing"]
+    assert smoothing["kind"] == "object"
+    assert smoothing["default"] is None
+    assert smoothing["required"] is False
+
+    # boolean kind
+    enforce = params["enforce_monotonic_woe"]
+    assert enforce["kind"] == "boolean"
+    assert enforce["default"] is False
+
+    # string kind with enum constraint
+    zero_cell = params["zero_cell_policy"]
+    assert zero_cell["kind"] == "string"
+    assert zero_cell["constraint"]["enum_values"] == ["block"]
+
+    # The entire payload must be JSON serializable (no dataclass internals).
+    json.dumps(node_types)
+
+
+def test_node_types_manual_binning_overrides_item_kind(app_env, tmp_path):
+    """ManualBinning overrides is a structured list of objects; the API DTO
+    must serialize item_kind="object" so the frontend can render it as JSON."""
+    client, container = app_env
+    pid, _ = provision(container, tmp_path)
+    resp = client.get(f"/projects/{pid}/node-types")
+    assert resp.status_code == 200
+    node_types = resp.json()["node_types"]
+
+    manual = next(nt for nt in node_types if nt["node_type"] == "cardre.manual_binning")
+    schema = manual["parameter_schema"]
+    assert schema is not None
+    params = {p["name"]: p for p in schema["methods"][0]["params"]}
+    assert params["overrides"]["kind"] == "list"
+    assert params["overrides"]["item_kind"] == "object"
+
+
+def test_node_types_schemaless_node_reports_false_null(app_env, tmp_path):
+    """A node without a declared parameter schema reports has_params=false and
+    a null parameter_schema."""
+    client, container = app_env
+    pid, _ = provision(container, tmp_path)
+    resp = client.get(f"/projects/{pid}/node-types")
+    assert resp.status_code == 200
+    node_types = resp.json()["node_types"]
+
+    apply_exclusions = next(
+        nt for nt in node_types if nt["node_type"] == "cardre.apply_exclusions"
+    )
+    assert apply_exclusions["has_params"] is False
+    assert apply_exclusions["parameter_schema"] is None
+
+
+def test_node_types_schema_without_params_reports_false(app_env, tmp_path):
+    """apply_woe_mapping declares a schema but no params -> has_params=false
+    while still exposing the (method-only) schema."""
+    client, container = app_env
+    pid, _ = provision(container, tmp_path)
+    resp = client.get(f"/projects/{pid}/node-types")
+    assert resp.status_code == 200
+    node_types = resp.json()["node_types"]
+
+    apply_woe = next(
+        nt for nt in node_types if nt["node_type"] == "cardre.apply_woe_mapping"
+    )
+    assert apply_woe["has_params"] is False
+    assert apply_woe["parameter_schema"] is not None
+    assert apply_woe["parameter_schema"]["node_type"] == "cardre.apply_woe_mapping"
+
+
 # ---------------------------------------------------------------------------
 # Runs
 # ---------------------------------------------------------------------------

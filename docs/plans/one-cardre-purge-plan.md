@@ -2,7 +2,10 @@
 
 ## Status
 
-Prepared for implementation.
+**Completed.** All batches have been implemented and merged. This document is
+retained as the decision record for how the one-product purge was executed. See
+the implementation batches, ADRs, and current architecture documentation for
+the resulting state.
 
 ## Objective
 
@@ -46,6 +49,12 @@ migrations, or historical identifier handling.
   chain is added.
 
 ## Verified Baseline
+
+> **Historical.** This baseline reflects the state of the repository *before*
+> the purge began; it is retained for reference and should not be read as
+> describing the current architecture. Several items it lists (deferred nodes,
+> launch mode, governance, model families, calibration, estimator binaries)
+> were subsequently removed by the implementation.
 
 The audit findings were checked against the repository before this plan was
 written.

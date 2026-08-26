@@ -11,15 +11,18 @@ previous payments — plus one binary target.
 - **Author**: I-Cheng Yeh (2009)
 - **License**: CC BY 4.0 (see `LICENSE.txt`)
 - **Citation**: see `CITATION.txt`
-- **File**: `taiwan_credit_default.csv` (CSV, UTF-8, comma-separated, 30000 rows × 24 columns, ~2.6 MB)
+- **File**: `taiwan_credit_default.parquet` (generated from `taiwan_credit_default.csv`, UTF-8, comma-separated, 30000 rows × 24 columns, ~2.6 MB CSV / ~1.6 MB Parquet)
 
 ## Cardre on-ramp
 
 - **Target column**: `default payment next month`
 - **Good value**: `0` (no default; 23364 rows, 77.88%)
 - **Bad value**: `1` (default; 6636 rows, 22.12%)
-- 30k rows is enough that train/test/OOT split, calibration, and fairness
-  metrics are all meaningful.
+- Point the import step at the committed `taiwan_credit_default.parquet`
+  file; the Parquet twin is regenerated from the CSV by
+  `scripts/convert_sample_datasets_to_parquet.py`.
+- 30k rows is enough that train/test/OOT split and validation metrics are
+  meaningful.
 
 ## Columns
 

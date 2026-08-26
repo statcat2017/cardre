@@ -15,12 +15,36 @@ configure final-WOE smoothing with a rationale.
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
+
+import polars as pl
 
 from cardre.domain.plans.scorecard_pathway import (
     build_canonical_scorecard_steps,
     configure_canonical_scorecard,
 )
+
+
+def write_input_parquet(path: Path, target_column: str = "credit_risk_class") -> Path:
+    """Write the tiny synthetic acceptance input sample as Parquet.
+
+    The default target column is the production ``credit_risk_class``. Pass a
+    non-default ``target_column`` (e.g. ``outcome``) to exercise the canonical
+    pathway's configured-target propagation, as the acceptance launch pathway
+    does.
+    """
+    rows = []
+    for i in range(60):
+        rows.append({
+            "credit_amount": 1000 + i * 50,
+            "age_years": 25 + (i % 30),
+            "duration_months": 6 + (i % 36),
+            target_column: "good" if i % 3 != 0 else "bad",
+        })
+    pl.DataFrame(rows).write_parquet(path)
+    return path
+
 
 # Tiny synthetic acceptance sample has sparse terminal bins; the final WOE
 # pass needs additive smoothing with a rationale to proceed.

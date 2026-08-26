@@ -40,6 +40,7 @@ describe("useProjectWorkspace", () => {
     cancelRun: vi.fn(),
     listReports: vi.fn().mockResolvedValue({ reports: [] }),
     listExports: vi.fn().mockResolvedValue({ exports: [] }),
+    listNodeTypes: vi.fn().mockResolvedValue({ node_types: [] }),
   };
 
   beforeEach(() => {

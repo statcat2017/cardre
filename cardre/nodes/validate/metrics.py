@@ -90,6 +90,7 @@ class ValidationMetricsNode(NodeType):
                             name="cutoffs",
                             label="Cutoffs",
                             kind="list",
+                            item_kind="float",
                             default=[0.5],
                             help_text="List of probability thresholds at which to compute confusion-matrix derived metrics.",
                             constraint=ParameterConstraint(min_items=1),

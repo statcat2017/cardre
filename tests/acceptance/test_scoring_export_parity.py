@@ -10,27 +10,13 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from pathlib import Path
 from typing import Any
 
 import polars as pl
 
 from cardre.bootstrap.node_catalogue import build_default_catalogue
 from cardre.domain.evidence.schemas import SCHEMA_SCORING_EXPORT_PYTHON, SCHEMA_SCORING_EXPORT_SQL
-from tests.acceptance.fixture_pathway import build_acceptance_fixture_steps
-
-
-def _write_input_parquet(path: Path) -> Path:
-    rows = []
-    for i in range(60):
-        rows.append({
-            "credit_amount": 1000 + i * 50,
-            "age_years": 25 + (i % 30),
-            "duration_months": 6 + (i % 36),
-            "credit_risk_class": "good" if i % 3 != 0 else "bad",
-        })
-    pl.DataFrame(rows).write_parquet(path)
-    return path
+from tests.acceptance.fixture_pathway import build_acceptance_fixture_steps, write_input_parquet
 
 
 def test_scoring_export_parity(api_client, tmp_path):
@@ -39,7 +25,7 @@ def test_scoring_export_parity(api_client, tmp_path):
     assert resp.status_code == 201, resp.text
     project_id = resp.json()["project_id"]
 
-    parquet_path = _write_input_parquet(tmp_path / "input.parquet")
+    parquet_path = write_input_parquet(tmp_path / "input.parquet")
 
     resp = api_client.post(
         f"/projects/{project_id}/plans",

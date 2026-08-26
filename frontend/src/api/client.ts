@@ -471,6 +471,14 @@ export const api = {
           }),
         );
       },
+      listNodeTypes: async () => {
+        const client = makeClient();
+        return requireData(
+          await client.GET("/projects/{project_id}/node-types", {
+            params: { path: { project_id: pid } },
+          }),
+        );
+      },
     };
   },
 };
