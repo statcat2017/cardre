@@ -423,4 +423,71 @@ describe("StepParamsEditor schema handling", () => {
       reject_inference_position: "after",
     });
   });
+
+  it("treats int and number aliases as numeric kinds with typed conversion", async () => {
+    const user = userEvent.setup();
+    const { onSaveStep } = renderEditor({
+      steps: [{ ...steps[0], node_type: "node.alias", params: { count: 3, ratio: 0.5 } }],
+      nodeTypes: [
+        {
+          node_type: "node.alias",
+          display_name: "Alias",
+          description: "",
+          category: "cat",
+          has_params: true,
+          parameter_schema: {
+            node_type: "node.alias",
+            node_version: "1",
+            title: "Alias",
+            default_method: "default",
+            methods: [
+              {
+                id: "default",
+                label: "Default",
+                status: "available",
+                description: "",
+                params: [
+                  {
+                    name: "count",
+                    label: "Count",
+                    kind: "int",
+                    default: 3,
+                    required: true,
+                    help_text: "",
+                    constraint: null,
+                  },
+                  {
+                    name: "ratio",
+                    label: "Ratio",
+                    kind: "number",
+                    default: 0.5,
+                    required: true,
+                    help_text: "",
+                    constraint: null,
+                  },
+                ],
+              },
+            ],
+          },
+        },
+      ],
+    });
+
+    const count = screen.getByLabelText("Count") as HTMLInputElement;
+    const ratio = screen.getByLabelText("Ratio") as HTMLInputElement;
+    expect(count.type).toBe("number");
+    expect(ratio.type).toBe("number");
+    expect(count.step).toBe("1");
+    expect(ratio.step).toBe("any");
+
+    await user.clear(count);
+    await user.type(count, "7");
+    await user.clear(ratio);
+    await user.type(ratio, "0.75");
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    expect(onSaveStep).toHaveBeenCalledWith("s-1", {
+      count: 7,
+      ratio: 0.75,
+    });
+  });
 });

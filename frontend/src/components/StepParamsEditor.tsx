@@ -33,7 +33,13 @@ function isObjectKind(kind: string): boolean {
 }
 
 function isNumberKind(kind: string): boolean {
-  return kind === "integer" || kind === "float" || kind === "numeric";
+  return (
+    kind === "integer" ||
+    kind === "int" ||
+    kind === "float" ||
+    kind === "number" ||
+    kind === "numeric"
+  );
 }
 
 function isEnumKind(kind: string): boolean {
@@ -43,6 +49,7 @@ function isEnumKind(kind: string): boolean {
 const SCALAR_ITEM_KINDS = new Set([
   "string",
   "integer",
+  "int",
   "float",
   "number",
   "numeric",
@@ -71,8 +78,13 @@ function jsonFieldError(text: string, field: FieldSpec): string | null {
   } catch {
     return isStructuredList(field) ? "Invalid JSON array." : "Invalid JSON.";
   }
-  if (isStructuredList(field) && !Array.isArray(parsed)) {
-    return "Must be a JSON array.";
+  if (isStructuredList(field)) {
+    return Array.isArray(parsed) ? null : "Must be a JSON array.";
+  }
+  if (isObjectKind(field.param.kind)) {
+    return typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)
+      ? null
+      : "Must be a JSON object.";
   }
   return null;
 }
@@ -118,7 +130,9 @@ function fromEditableValue(raw: string | boolean, field: FieldSpec): unknown {
   if (isNumberKind(kind)) {
     const text = String(raw).trim();
     if (text === "") return null;
-    return kind === "integer" ? Number.parseInt(text, 10) : Number.parseFloat(text);
+    return kind === "integer" || kind === "int"
+      ? Number.parseInt(text, 10)
+      : Number.parseFloat(text);
   }
   if (isStructuredList(field)) {
     const text = String(raw).trim();
@@ -313,7 +327,10 @@ export function StepParamsEditor({
                   const numericAttrs = isNumberKind(field.param.kind)
                     ? {
                         type: "number" as const,
-                        step: field.param.kind === "integer" ? "1" : "any",
+                        step:
+                          field.param.kind === "integer" || field.param.kind === "int"
+                            ? "1"
+                            : "any",
                       }
                     : { type: "text" as const, step: undefined };
                   const control = enumOptions.length ? (
