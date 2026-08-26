@@ -55,6 +55,7 @@ class CutoffAnalysisNode(NodeType):
                             name="cutoffs",
                             label="Cutoffs",
                             kind="list",
+                            item_kind="float",
                             default=[],
                             help_text="Explicit list of score cutoffs (overrides band_count when non-empty).",
                         ),
