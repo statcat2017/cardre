@@ -66,6 +66,42 @@ export const nodeTypes: NodeType[] = [
   },
 ];
 
+export function manualBinningNodeType(required: boolean = true): NodeType {
+  return {
+    node_type: "cardre.manual_binning",
+    display_name: "Manual Binning",
+    description: "",
+    category: "refinement",
+    has_params: true,
+    parameter_schema: {
+      node_type: "cardre.manual_binning",
+      node_version: "1",
+      title: "Manual Binning",
+      default_method: "default",
+      methods: [
+        {
+          id: "default",
+          label: "Default",
+          status: "available",
+          description: "",
+          params: [
+            {
+              name: "overrides",
+              label: "Overrides",
+              kind: "list",
+              item_kind: "object",
+              default: [],
+              required,
+              help_text: "",
+              constraint: null,
+            },
+          ],
+        },
+      ],
+    },
+  };
+}
+
 export function renderEditor(overrides: Partial<Parameters<typeof StepParamsEditor>[0]> = {}) {
   const props = {
     steps,

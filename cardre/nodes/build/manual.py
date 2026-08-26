@@ -69,7 +69,9 @@ class ManualBinningNode(NodeType):
                             name="overrides",
                             label="Overrides",
                             kind="list",
+                            item_kind="object",
                             default=[],
+                            required=True,
                             help_text=(
                                 "List of override objects. Each object requires: "
                                 "variable (str), action (one of merge_bins, group_categories, "

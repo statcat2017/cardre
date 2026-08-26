@@ -342,6 +342,7 @@ class ParameterDefinitionResponse(BaseModel):
     required: bool = True
     help_text: str = ""
     constraint: ParameterConstraintResponse | None = None
+    item_kind: str | None = None
 
 
 class MethodOptionResponse(BaseModel):

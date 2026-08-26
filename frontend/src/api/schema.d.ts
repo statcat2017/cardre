@@ -818,6 +818,8 @@ export interface components {
              */
             help_text: string;
             constraint?: components["schemas"]["ParameterConstraintResponse"] | null;
+            /** Item Kind */
+            item_kind?: string | null;
         };
         /** PlanCreateRequest */
         PlanCreateRequest: {

@@ -37,6 +37,7 @@ class ParameterDefinition:
     required: bool = True
     help_text: str = ""
     constraint: ParameterConstraint | None = None
+    item_kind: str | None = None
 
 
 @dataclass

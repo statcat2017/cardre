@@ -75,12 +75,12 @@ class VariableSelectionNode(NodeType):
                         ),
                         ParameterDefinition(
                             name="manual_includes", label="Manual Includes",
-                            kind="list", default=[], required=False,
+                            kind="list", item_kind="object", default=[], required=False,
                             help_text="List of dicts with 'variable' and 'reason' keys for forced inclusions",
                         ),
                         ParameterDefinition(
                             name="manual_excludes", label="Manual Excludes",
-                            kind="list", default=[], required=False,
+                            kind="list", item_kind="object", default=[], required=False,
                             help_text="List of dicts with 'variable' and 'reason' keys for forced exclusions",
                         ),
                         ParameterDefinition(
@@ -98,7 +98,7 @@ class VariableSelectionNode(NodeType):
                         ),
                         ParameterDefinition(
                             name="cluster_representative_overrides", label="Cluster Representative Overrides",
-                            kind="list", default=[], required=False,
+                            kind="list", item_kind="object", default=[], required=False,
                             help_text="List of dicts with 'cluster_id', 'variable', and 'reason' keys for manual override of cluster representatives",
                         ),
                     ],

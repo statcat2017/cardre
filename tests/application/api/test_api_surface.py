@@ -257,6 +257,23 @@ def test_node_types_woe_iv_schema_details(app_env, tmp_path):
     json.dumps(node_types)
 
 
+def test_node_types_manual_binning_overrides_item_kind(app_env, tmp_path):
+    """ManualBinning overrides is a structured list of objects; the API DTO
+    must serialize item_kind="object" so the frontend can render it as JSON."""
+    client, container = app_env
+    pid, _ = provision(container, tmp_path)
+    resp = client.get(f"/projects/{pid}/node-types")
+    assert resp.status_code == 200
+    node_types = resp.json()["node_types"]
+
+    manual = next(nt for nt in node_types if nt["node_type"] == "cardre.manual_binning")
+    schema = manual["parameter_schema"]
+    assert schema is not None
+    params = {p["name"]: p for p in schema["methods"][0]["params"]}
+    assert params["overrides"]["kind"] == "list"
+    assert params["overrides"]["item_kind"] == "object"
+
+
 def test_node_types_schemaless_node_reports_false_null(app_env, tmp_path):
     """A node without a declared parameter schema reports has_params=false and
     a null parameter_schema."""

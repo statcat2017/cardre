@@ -2389,6 +2389,17 @@
                 "type": "null"
               }
             ]
+          },
+          "item_kind": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Item Kind"
           }
         },
         "type": "object",

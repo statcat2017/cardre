@@ -40,6 +40,43 @@ function isEnumKind(kind: string): boolean {
   return kind === "enum" || kind === "categorical";
 }
 
+const SCALAR_ITEM_KINDS = new Set([
+  "string",
+  "integer",
+  "float",
+  "number",
+  "numeric",
+  "boolean",
+  "bool",
+]);
+
+/** A list whose items are structured objects, not scalar comma-separated values. */
+function isStructuredList(field: FieldSpec): boolean {
+  const itemKind = field.param.item_kind;
+  return field.param.kind === "list" && itemKind != null && !SCALAR_ITEM_KINDS.has(itemKind);
+}
+
+/** Fields whose editable text is a JSON value (object or structured list). */
+function isJsonField(field: FieldSpec): boolean {
+  return isObjectKind(field.param.kind) || isStructuredList(field);
+}
+
+/** Returns a validation error string for a JSON field, or null when valid/empty. */
+function jsonFieldError(text: string, field: FieldSpec): string | null {
+  const trimmed = text.trim();
+  if (trimmed === "") return null;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(trimmed);
+  } catch {
+    return isStructuredList(field) ? "Invalid JSON array." : "Invalid JSON.";
+  }
+  if (isStructuredList(field) && !Array.isArray(parsed)) {
+    return "Must be a JSON array.";
+  }
+  return null;
+}
+
 function toEditableValue(value: unknown, field: FieldSpec): string | boolean {
   // When a step omits a parameter, surface the schema default in the editor.
   // Explicit null stays empty so optional fields can be left blank.
@@ -49,6 +86,10 @@ function toEditableValue(value: unknown, field: FieldSpec): string | boolean {
   const kind = field.param.kind;
   if (isBooleanKind(kind)) {
     return value === true || value === "true" || value === 1;
+  }
+  if (isStructuredList(field)) {
+    if (value === null || value === undefined) return "";
+    return typeof value === "string" ? value : JSON.stringify(value);
   }
   if (isListKind(kind)) {
     return Array.isArray(value) ? value.join(", ") : String(value ?? "");
@@ -64,11 +105,30 @@ function toEditableValue(value: unknown, field: FieldSpec): string | boolean {
 function fromEditableValue(raw: string | boolean, field: FieldSpec): unknown {
   const kind = field.param.kind;
   if (isBooleanKind(kind)) return raw === true;
-  if (isEnumKind(kind) || kind === "string") return typeof raw === "string" ? raw : "";
+  if (isEnumKind(kind) || kind === "string") {
+    // String-kind enums stay strings (enum constraints are authoritative for
+    // kind="string"). If a schema ever carries a numeric enum, recover the
+    // original typed value rather than silently stringifying it.
+    if (typeof raw === "string" && field.param.constraint?.enum_values) {
+      const matched = field.param.constraint.enum_values.find((v) => String(v) === raw);
+      if (matched !== undefined) return matched;
+    }
+    return typeof raw === "string" ? raw : "";
+  }
   if (isNumberKind(kind)) {
     const text = String(raw).trim();
     if (text === "") return null;
     return kind === "integer" ? Number.parseInt(text, 10) : Number.parseFloat(text);
+  }
+  if (isStructuredList(field)) {
+    const text = String(raw).trim();
+    if (!text) {
+      // Clearing a structured list falls back to the schema default when that
+      // default is an array (e.g. ManualBinning overrides -> []), never null.
+      // Empty optional objects still normalize to null below.
+      return Array.isArray(field.param.default) ? field.param.default : null;
+    }
+    return JSON.parse(text);
   }
   if (isListKind(kind)) {
     return String(raw)
@@ -79,17 +139,20 @@ function fromEditableValue(raw: string | boolean, field: FieldSpec): unknown {
   if (isObjectKind(kind)) {
     const text = String(raw).trim();
     if (!text) return null;
-    try {
-      return JSON.parse(text);
-    } catch {
-      return text;
-    }
+    // Invalid JSON is blocked before save by the inline error gate, so a
+    // successful parse is guaranteed here.
+    return JSON.parse(text);
   }
   return String(raw);
 }
 
 function enumValues(field: FieldSpec): unknown[] {
-  return field.param.constraint?.enum_values ?? [];
+  // An empty string can serve as an "unset" sentinel in enum_values, which the
+  // backend rejects. Filter it out so it is never offered as a selectable
+  // option while real values (including numeric strings) are preserved.
+  return (field.param.constraint?.enum_values ?? []).filter(
+    (value) => !(typeof value === "string" && value === ""),
+  );
 }
 
 export function StepParamsEditor({
@@ -153,7 +216,12 @@ export function StepParamsEditor({
         const draft = drafts[step.step_id] ?? {};
         const current: Record<string, unknown> = { ...step.params };
         const stepJsonErrors = jsonErrors[step.step_id] ?? {};
-        const hasInvalidJson = Object.keys(stepJsonErrors).length > 0;
+        // Only JSON fields rendered by the currently selected method can block
+        // saving. Errors from a previously selected method's fields that are no
+        // longer rendered must not keep Save disabled.
+        const hasInvalidJson = fields.some(
+          (field) => isJsonField(field) && stepJsonErrors[field.param.name] != null,
+        );
 
         return (
           <div
@@ -241,7 +309,7 @@ export function StepParamsEditor({
                     );
                   }
 
-                  const enumOptions = isEnumKind(field.param.kind) ? enumValues(field) : [];
+                  const enumOptions = enumValues(field);
                   const numericAttrs = isNumberKind(field.param.kind)
                     ? {
                         type: "number" as const,
@@ -282,18 +350,14 @@ export function StepParamsEditor({
                             [name]: text,
                           },
                         }));
-                        if (isObjectKind(field.param.kind)) {
+                        if (isJsonField(field)) {
+                          const error = jsonFieldError(text, field);
                           setJsonErrors((prev) => {
                             const stepErrors = { ...(prev[step.step_id] ?? {}) };
-                            if (text.trim() === "") {
+                            if (error === null) {
                               delete stepErrors[name];
                             } else {
-                              try {
-                                JSON.parse(text);
-                                delete stepErrors[name];
-                              } catch {
-                                stepErrors[name] = "Invalid JSON.";
-                              }
+                              stepErrors[name] = error;
                             }
                             return { ...prev, [step.step_id]: stepErrors };
                           });
@@ -322,7 +386,7 @@ export function StepParamsEditor({
                         )}
                       </span>
                       {control}
-                      {isObjectKind(field.param.kind) && stepJsonErrors[name] && (
+                      {isJsonField(field) && stepJsonErrors[name] && (
                         <div style={{ gridColumn: "2", color: theme.redText, fontSize: 12 }}>
                           {stepJsonErrors[name]}
                         </div>
@@ -337,6 +401,23 @@ export function StepParamsEditor({
               type="button"
               onClick={() => {
                 if (hasInvalidJson) {
+                  return;
+                }
+                // Re-validate every drafted JSON field directly against the
+                // current draft so a stale or programmatically-populated draft
+                // cannot slip invalid JSON past the onChange-populated gate.
+                const freshErrors: Record<string, string> = {};
+                for (const field of fields) {
+                  const name = field.param.name;
+                  if (isJsonField(field) && name in draft) {
+                    const error = jsonFieldError(String(draft[name]), field);
+                    if (error !== null) {
+                      freshErrors[name] = error;
+                    }
+                  }
+                }
+                if (Object.keys(freshErrors).length > 0) {
+                  setJsonErrors((prev) => ({ ...prev, [step.step_id]: freshErrors }));
                   return;
                 }
                 const merged: Record<string, unknown> = { ...step.params };

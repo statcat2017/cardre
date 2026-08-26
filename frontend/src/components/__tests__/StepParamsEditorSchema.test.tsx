@@ -308,4 +308,119 @@ describe("StepParamsEditor schema handling", () => {
     expect(screen.getByLabelText("Min bin fraction")).toHaveAttribute("type", "number");
     expect(screen.getByLabelText("Min bin fraction")).toHaveAttribute("step", "any");
   });
+
+  it("renders a kind=string field with enum_values as a select and saves correctly", async () => {
+    const user = userEvent.setup();
+    const { onSaveStep } = renderEditor({
+      steps: [
+        {
+          ...steps[0],
+          node_type: "node.woe",
+          params: { zero_cell_policy: "block" },
+        },
+      ],
+      nodeTypes: [
+        {
+          node_type: "node.woe",
+          display_name: "WOE",
+          description: "",
+          category: "cat",
+          has_params: true,
+          parameter_schema: {
+            node_type: "node.woe",
+            node_version: "1",
+            title: "WOE",
+            default_method: "default",
+            methods: [
+              {
+                id: "default",
+                label: "Default",
+                status: "available",
+                description: "",
+                params: [
+                  {
+                    name: "zero_cell_policy",
+                    label: "Zero cell policy",
+                    kind: "string",
+                    default: "block",
+                    required: true,
+                    help_text: "",
+                    constraint: { enum_values: ["block", "bump"] },
+                  },
+                ],
+              },
+            ],
+          },
+        },
+      ],
+    });
+
+    const select = screen.getByLabelText("Zero cell policy") as HTMLSelectElement;
+    expect(select.value).toBe("block");
+
+    await user.selectOptions(select, "bump");
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    expect(onSaveStep).toHaveBeenCalledWith("s-1", { zero_cell_policy: "bump" });
+  });
+
+  it("does not render an empty-string sentinel option for a string enum", async () => {
+    const user = userEvent.setup();
+    const { onSaveStep } = renderEditor({
+      steps: [
+        {
+          ...steps[0],
+          node_type: "node.position",
+          params: { reject_inference_position: "before" },
+        },
+      ],
+      nodeTypes: [
+        {
+          node_type: "node.position",
+          display_name: "Position",
+          description: "",
+          category: "cat",
+          has_params: true,
+          parameter_schema: {
+            node_type: "node.position",
+            node_version: "1",
+            title: "Position",
+            default_method: "default",
+            methods: [
+              {
+                id: "default",
+                label: "Default",
+                status: "available",
+                description: "",
+                params: [
+                  {
+                    name: "reject_inference_position",
+                    label: "Reject inference position",
+                    kind: "string",
+                    default: "before",
+                    required: true,
+                    help_text: "",
+                    constraint: { enum_values: ["", "before", "after"] },
+                  },
+                ],
+              },
+            ],
+          },
+        },
+      ],
+    });
+
+    const select = screen.getByLabelText("Reject inference position") as HTMLSelectElement;
+
+    const optionValues = Array.from(select.options).map((option) => option.value);
+    expect(optionValues).not.toContain("");
+    expect(optionValues).toEqual(["before", "after"]);
+
+    expect(select.value).toBe("before");
+
+    await user.selectOptions(select, "after");
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    expect(onSaveStep).toHaveBeenCalledWith("s-1", {
+      reject_inference_position: "after",
+    });
+  });
 });

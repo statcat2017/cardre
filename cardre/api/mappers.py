@@ -71,6 +71,7 @@ class _ParameterDefinitionLike(Protocol):
     required: bool
     help_text: str
     constraint: _ConstraintLike | None
+    item_kind: str | None
 
 
 class _MethodOptionLike(Protocol):
@@ -268,6 +269,7 @@ def _parameter_definition_to_response(
         required=param.required,
         help_text=param.help_text,
         constraint=_parameter_constraint_to_response(param.constraint),
+        item_kind=param.item_kind,
     )
 
 

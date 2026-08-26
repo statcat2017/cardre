@@ -409,4 +409,172 @@ describe("StepParamsEditor advanced schema handling", () => {
     await user.click(saveButton);
     expect(onSaveStep).not.toHaveBeenCalled();
   });
+
+  it("clearing an optional object field saves null, not the object default", async () => {
+    const user = userEvent.setup();
+    const { onSaveStep } = renderEditor({
+      steps: [
+        { ...steps[0], node_type: "node.features", params: { smoothing: { method: "log" } } },
+      ],
+      nodeTypes: [
+        {
+          node_type: "node.features",
+          display_name: "Features",
+          description: "",
+          category: "cat",
+          has_params: true,
+          parameter_schema: {
+            node_type: "node.features",
+            node_version: "1",
+            title: "Features",
+            default_method: "default",
+            methods: [
+              {
+                id: "default",
+                label: "Default",
+                status: "available",
+                description: "",
+                params: [
+                  {
+                    name: "smoothing",
+                    label: "Smoothing",
+                    kind: "object",
+                    default: { method: "log" },
+                    required: false,
+                    help_text: "",
+                    constraint: null,
+                  },
+                ],
+              },
+            ],
+          },
+        },
+      ],
+    });
+
+    const input = screen.getByLabelText("Smoothing");
+    await user.clear(input);
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    expect(onSaveStep).toHaveBeenCalledWith("s-1", { smoothing: null });
+  });
+
+  it("re-enables save after switching to a method whose invalid-JSON field is not rendered", async () => {
+    const user = userEvent.setup();
+    const { onSaveStep } = renderEditor({
+      steps: [{ ...steps[0], node_type: "node.split", params: {} }],
+      nodeTypes: [
+        {
+          node_type: "node.split",
+          display_name: "Split",
+          description: "",
+          category: "cat",
+          has_params: true,
+          parameter_schema: {
+            node_type: "node.split",
+            node_version: "1",
+            title: "Split",
+            default_method: "first",
+            methods: [
+              {
+                id: "first",
+                label: "First",
+                status: "available",
+                description: "",
+                params: [
+                  {
+                    name: "config",
+                    label: "Config",
+                    kind: "object",
+                    default: null,
+                    required: false,
+                    help_text: "",
+                    constraint: null,
+                  },
+                ],
+              },
+              {
+                id: "second",
+                label: "Second",
+                status: "available",
+                description: "",
+                params: [
+                  {
+                    name: "seed",
+                    label: "Seed",
+                    kind: "integer",
+                    default: 1,
+                    required: true,
+                    help_text: "",
+                    constraint: null,
+                  },
+                ],
+              },
+            ],
+          },
+        },
+      ],
+    });
+
+    // Enter invalid JSON on the first method's object field -> Save blocked.
+    fireEvent.change(screen.getByLabelText("Config"), { target: { value: "{ not valid json" } });
+    expect(screen.getByText("Invalid JSON.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+
+    // Switch to the second method, which does not render the Config field.
+    await user.selectOptions(screen.getByLabelText("Method"), "second");
+    expect(screen.queryByText("Invalid JSON.")).not.toBeInTheDocument();
+
+    const saveButton = screen.getByRole("button", { name: "Save" });
+    expect(saveButton).toBeEnabled();
+    await user.click(saveButton);
+    expect(onSaveStep).toHaveBeenCalledWith("s-1", { method: "second" });
+  });
+
+  it("recovers typed numeric enum values instead of stringifying them", async () => {
+    const user = userEvent.setup();
+    const { onSaveStep } = renderEditor({
+      steps: [{ ...steps[0], node_type: "node.rank", params: { tier: 2 } }],
+      nodeTypes: [
+        {
+          node_type: "node.rank",
+          display_name: "Rank",
+          description: "",
+          category: "cat",
+          has_params: true,
+          parameter_schema: {
+            node_type: "node.rank",
+            node_version: "1",
+            title: "Rank",
+            default_method: "default",
+            methods: [
+              {
+                id: "default",
+                label: "Default",
+                status: "available",
+                description: "",
+                params: [
+                  {
+                    name: "tier",
+                    label: "Tier",
+                    kind: "enum",
+                    default: 2,
+                    required: true,
+                    help_text: "",
+                    constraint: { enum_values: [1, 2, 3] },
+                  },
+                ],
+              },
+            ],
+          },
+        },
+      ],
+    });
+
+    const select = screen.getByLabelText("Tier") as HTMLSelectElement;
+    expect(select.value).toBe("2");
+
+    await user.selectOptions(select, "3");
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    expect(onSaveStep).toHaveBeenCalledWith("s-1", { tier: 3 });
+  });
 });
