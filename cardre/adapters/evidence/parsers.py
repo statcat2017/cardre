@@ -214,11 +214,22 @@ def match_by_schema_version(artifacts: list[ArtifactRef], profile: _Profile) -> 
 
 
 def parquet_has_columns(art: ArtifactRef, columns: set[str], reader: ArtifactReader) -> bool:
-    try:
-        cols = pl.scan_parquet(reader.resolve_path(art)).collect_schema().names()
-        return columns.issubset(cols)
-    except Exception:
+    path = reader.resolve_path(art)
+    if not path.exists():
+        # A missing file is an ineligible candidate (non-match), not a parse
+        # error, so callers may fall back to another artifact as before.
         return False
+    try:
+        cols = pl.scan_parquet(path).collect_schema().names()
+    except Exception as exc:
+        # Distinguish "candidate does not have the required columns" (a
+        # non-match) from "candidate cannot be read" (a typed parse error).
+        # Unreadable/corrupt bytes must not hide behind a silent non-match.
+        raise EvidenceParseError(
+            f"Parquet artifact {art.artifact_id} could not be read: {exc}",
+            artifact_id=art.artifact_id,
+        ) from exc
+    return columns.issubset(cols)
 
 
 def candidate_passes_payload_check(art: ArtifactRef, profile: _Profile, reader: ArtifactReader) -> bool:

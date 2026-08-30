@@ -102,6 +102,8 @@ def test_dispatcher_reports_running_then_completed():
         harness.release["run-1"].set()
         harness.wait_finished("run-1")
     assert dispatcher.get_status("run-1") == "completed"
+    # An unknown Run must be distinguishable from a completed dispatched Run.
+    assert dispatcher.get_status("never-dispatched") != "completed"
     dispatcher.shutdown()
 
 
@@ -120,7 +122,7 @@ def test_dispatcher_queues_beyond_max_workers():
     assert dispatcher.active_count == 1
     assert dispatcher.queued_count == 1
     try:
-        assert dispatcher.get_status("run-2") == "completed"  # not yet running
+        assert dispatcher.get_status("run-2") == "queued"  # admitted but not yet running
         # Release the first worker; the queued run must then execute.
         harness.release["run-1"].set()
         harness.wait_started("run-2")

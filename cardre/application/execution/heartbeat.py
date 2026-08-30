@@ -5,6 +5,14 @@ between nodes, so a legitimate node that runs longer than the stale threshold
 is not terminalized by the stale sweep. ``HeartbeatWatchdog`` runs a daemon
 thread that renews the heartbeat until stopped; it is started when a run
 claims ``running`` and stopped before finalization.
+
+A persistently failing background heartbeat must not be swallowed forever: a
+silently-healthy run on a dead heartbeat write would only be caught later by
+the stale sweep. After ``max_consecutive_failures`` consecutive write failures
+the watchdog invokes ``on_failure`` (once) and stops, so the caller can make
+the failure observable and terminalize the run deterministically. A single
+transient failure followed by a success resets the counter and never triggers
+``on_failure``.
 """
 
 from __future__ import annotations
@@ -23,6 +31,11 @@ class HeartbeatWatchdog:
 
     ``interval_seconds`` must be well below the stale threshold so a node
     blocked for the full interval is still renewed before it looks stale.
+
+    ``on_failure`` is invoked from the watchdog thread exactly once when
+    ``max_consecutive_failures`` consecutive heartbeat writes have failed; the
+    loop then stops so the caller is not repeatedly notified. A successful
+    write resets the consecutive-failure counter.
     """
 
     def __init__(
@@ -30,10 +43,14 @@ class HeartbeatWatchdog:
         uow_factory: Callable[[], Any],
         run_id: str,
         interval_seconds: float,
+        on_failure: Callable[[], None] | None = None,
+        max_consecutive_failures: int | None = None,
     ) -> None:
         self._uow_factory = uow_factory
         self._run_id = run_id
         self._interval = interval_seconds
+        self._on_failure = on_failure
+        self._max_consecutive_failures = max_consecutive_failures
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
 
@@ -54,6 +71,7 @@ class HeartbeatWatchdog:
             self._thread = None
 
     def _run(self) -> None:
+        consecutive_failures = 0
         while not self._stop.wait(self._interval):
             uow = self._uow_factory()
             try:
@@ -61,6 +79,16 @@ class HeartbeatWatchdog:
                 uow.commit()
             except Exception:
                 uow.rollback()
+                consecutive_failures += 1
+                if (
+                    self._max_consecutive_failures is not None
+                    and consecutive_failures >= self._max_consecutive_failures
+                ):
+                    if self._on_failure is not None:
+                        self._on_failure()
+                    break
+            else:
+                consecutive_failures = 0
             finally:
                 uow.close()
 

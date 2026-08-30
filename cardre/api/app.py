@@ -14,7 +14,12 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from cardre._version import __version__
-from cardre.api.errors import CardreApiError, cardre_api_error_handler, cardre_error_handler
+from cardre.api.errors import (
+    CardreApiError,
+    cardre_api_error_handler,
+    cardre_error_handler,
+    unexpected_error_handler,
+)
 from cardre.api.routes import (
     artifacts,
     evidence,
@@ -32,12 +37,17 @@ from cardre.domain.errors import CardreError
 def _lifespan_factory(container: object):
     @asynccontextmanager
     async def _inner(app: FastAPI) -> AsyncIterator[None]:
+        watchdog = getattr(container, "stale_run_recovery_watchdog", None)
+        if watchdog is not None and hasattr(watchdog, "start"):
+            watchdog.start()
         try:
             yield
         finally:
             dispatcher = getattr(container, "async_dispatcher", None)
             if dispatcher is not None and hasattr(dispatcher, "shutdown"):
                 dispatcher.shutdown()
+            if watchdog is not None and hasattr(watchdog, "stop"):
+                watchdog.stop()
 
     return _inner
 
@@ -79,6 +89,7 @@ def create_app(container: object) -> FastAPI:
 
     app.add_exception_handler(CardreError, cardre_error_handler)  # type: ignore[arg-type]
     app.add_exception_handler(CardreApiError, cardre_api_error_handler)  # type: ignore[arg-type]
+    app.add_exception_handler(Exception, unexpected_error_handler)  # type: ignore[arg-type]
 
     app.include_router(health.router)
     app.include_router(projects.router)

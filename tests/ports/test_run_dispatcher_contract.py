@@ -52,6 +52,30 @@ class TestRunDispatcherContract:
         assert dispatcher.get_status("run-1") == "completed"
         dispatcher.shutdown()
 
+    def test_sync_reports_unknown_for_undispatched_run(self):
+        dispatcher = SyncRunDispatcher(lambda command: None)
+        dispatcher.dispatch(_request("run-1"))
+        # An unknown Run must be distinguishable from a completed Run, so a
+        # Run that was never dispatched cannot be reported as completed.
+        assert dispatcher.get_status("never-dispatched") != "completed"
+        dispatcher.shutdown()
+
+    def test_thread_reports_unknown_for_undispatched_run(self):
+        finished = threading.Event()
+
+        def execute(command) -> None:
+            finished.set()
+
+        thread = ThreadRunDispatcher(execute)
+        try:
+            thread.dispatch(_request("run-1"))
+            assert finished.wait(timeout=5), "worker never finished"
+            assert thread.get_status("run-1") == "completed"
+            # An unknown Run ID must not be confused with a completed Run.
+            assert thread.get_status("never-dispatched") != "completed"
+        finally:
+            thread.shutdown()
+
     def test_thread_reports_running_then_completed(self):
         started = threading.Event()
         finished = threading.Event()

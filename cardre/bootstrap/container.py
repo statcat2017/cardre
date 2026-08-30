@@ -62,6 +62,8 @@ class Container:
     publication_publisher_factory: Any = None
     reconcile_publications_factory: Any = None
     reconcile_dispatches_factory: Any = None
+    recover_stale_runs_factory: Any = None
+    stale_run_recovery_watchdog: Any = None
     list_reports: Any = None
     list_exports: Any = None
     get_run_manifest: Any = None
@@ -213,6 +215,17 @@ def build_container(settings: Settings) -> Container:
         generate_report,
     )
 
+    from cardre.application.runs.recover_stale_runs import RecoverStaleRuns
+
+    def recover_stale_runs_factory() -> RecoverStaleRuns:
+        return RecoverStaleRuns(
+            uow_factory,
+            registry,
+            finalize_run_factory,
+            clock=clock,
+            stale_heartbeat_seconds=settings.stale_heartbeat_seconds,
+        )
+
     from cardre.application.runs.reconcile_publications import ReconcilePublications
 
     def reconcile_publications_factory() -> ReconcilePublications:
@@ -239,6 +252,13 @@ def build_container(settings: Settings) -> Container:
     list_exports = ListExports(uow_factory)
     get_run_manifest = GetRunManifest(uow_factory, manifest_publisher_factory)
 
+    from cardre.application.runs.recover_stale_runs import StaleRunRecoveryWatchdog
+
+    stale_run_recovery_watchdog = StaleRunRecoveryWatchdog(
+        recover_stale_runs_factory(),
+        interval_seconds=settings.stale_heartbeat_seconds,
+    )
+
     return Container(
         settings=settings,
         clock=clock,
@@ -261,6 +281,8 @@ def build_container(settings: Settings) -> Container:
         async_dispatcher=async_dispatcher,
         reconcile_publications_factory=reconcile_publications_factory,
         reconcile_dispatches_factory=reconcile_dispatches_factory,
+        recover_stale_runs_factory=recover_stale_runs_factory,
+        stale_run_recovery_watchdog=stale_run_recovery_watchdog,
         list_reports=list_reports,
         list_exports=list_exports,
         get_run_manifest=get_run_manifest,

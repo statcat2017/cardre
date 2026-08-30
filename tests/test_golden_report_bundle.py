@@ -18,14 +18,17 @@ from pathlib import Path
 
 import pytest
 
+from cardre.adapters.rendering.html_report import HtmlReportRenderer
 from cardre.adapters.reporting.collector import ReportCollector
 from cardre.adapters.sqlite.connection import SqliteUnitOfWorkFactory
 from cardre.adapters.sqlite.project_provisioner import SqliteProjectProvisioner
 from cardre.adapters.system.project_registry import JsonProjectRegistry
+from cardre.application.reporting.schema import ReportBundle
 from cardre.application.runs.submit_run import SubmitRunCommand
 from cardre.bootstrap.container import build_container
 from cardre.bootstrap.node_catalogue import build_default_catalogue
 from cardre.bootstrap.settings import Settings
+from cardre.domain.errors import CardreError, ErrorCode
 from tests.acceptance.fixture_pathway import build_acceptance_fixture_steps, write_input_parquet
 
 FIXTURE_DIR = Path(__file__).parent / "fixtures"
@@ -483,3 +486,24 @@ if __name__ == "__main__":
         print(f"Updated {GOLDEN_REPORT_BUNDLE}")
     else:
         print("Run with --update-golden to regenerate the golden fixture")
+
+
+class TestMalformedReportBundleRendering:
+    """Malformed report data must fail closed through the public renderer.
+
+    Missing integrity data (``pathway.steps``, ``validation.metrics_by_role``)
+    must surface as a typed report-data failure rather than a raw ``KeyError``
+    or a silently truncated report.
+    """
+
+    def test_missing_pathway_steps_raises_typed_error(self):
+        bundle = ReportBundle.model_construct(pathway={"pathway_id": "p"})
+        with pytest.raises(CardreError) as exc_info:
+            HtmlReportRenderer.render_to_html(bundle)
+        assert exc_info.value.code == ErrorCode.REPORT_DATA_INVALID
+
+    def test_missing_validation_metrics_raises_typed_error(self):
+        bundle = ReportBundle.model_construct(validation={"stability": {"psi_by_role": []}})
+        with pytest.raises(CardreError) as exc_info:
+            HtmlReportRenderer.render_to_html(bundle)
+        assert exc_info.value.code == ErrorCode.REPORT_DATA_INVALID

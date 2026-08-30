@@ -57,10 +57,10 @@ class ImportTabularDatasetNode(NodeType):
                         ),
                         ParameterDefinition(
                             name="max_rows",
-                            label="Max Rows",
+                            label="Max Rows (Head Limit)",
                             kind="integer",
                             required=False,
-                            help_text="Maximum rows to read (None = no limit). Useful for sampling large files.",
+                            help_text="Read only the first N rows as a head limit (None = no limit). This is NOT sampling: the first rows are taken in file order and may not represent the full dataset distribution.",
                         ),
                     ],
                 ),
@@ -110,8 +110,8 @@ class ImportTabularDatasetNode(NodeType):
             metadata["max_rows_applied"] = max_rows
             warnings.append({
                 "code": "SOURCE_ROW_LIMIT_APPLIED",
-                "message": f"Imported at most {max_rows} rows. The first {max_rows} rows may not "
-                           f"represent the full dataset distribution.",
+                "message": f"Imported only the first {max_rows} rows (head limit). This is not "
+                           f"sampling: the head rows may not represent the full dataset distribution.",
             })
 
         art_metadata = {

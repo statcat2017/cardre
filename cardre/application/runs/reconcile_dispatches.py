@@ -6,14 +6,20 @@ dispatch, the run stays ``submitted`` with a pending dispatch row and
 blocks normal resubmission of its plan version. On startup this drains pending
 rows through the dispatcher so the run either executes or (if it was
 terminalized meanwhile) simply has its stale row dropped.
+
+A per-Project pending-read failure is recorded as an ``error`` outcome rather
+than silently skipped, and reconciliation continues to the remaining Projects.
 """
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from typing import Any
 
 from cardre.application.ports.capability_probe import CapabilityProbePort
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -57,7 +63,15 @@ class ReconcileDispatches:
             try:
                 with self._uow_factory.read_only(project_id) as uow:
                     pending = uow.dispatches.list_pending()
-            except Exception:
+            except Exception as exc:
+                outcome.results.append(ReconcileDispatchResult(
+                    run_id="", project_id=project_id, state="error",
+                    error=f"pending dispatch read failed: {exc}",
+                ))
+                logger.exception(
+                    "ReconcileDispatches: pending dispatch read failed for "
+                    "project %s; skipping it for this pass", project_id,
+                )
                 continue
             for run_id in pending:
                 # A run terminalized before claim (dispatch failure, validation
@@ -67,7 +81,15 @@ class ReconcileDispatches:
                 try:
                     with self._uow_factory.read_only(project_id) as uow:
                         run = uow.runs.get(run_id)
-                except Exception:
+                except Exception as exc:
+                    outcome.results.append(ReconcileDispatchResult(
+                        run_id=run_id, project_id=project_id, state="error",
+                        error=f"run read failed: {exc}",
+                    ))
+                    logger.exception(
+                        "ReconcileDispatches: run read failed for run %s in "
+                        "project %s", run_id, project_id,
+                    )
                     continue
                 if run is not None and run.status not in (
                     RunStatus.SUBMITTED.value,

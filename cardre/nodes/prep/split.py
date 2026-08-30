@@ -214,6 +214,14 @@ class SplitTrainTestOotNode(NodeType):
             raise ValueError(f"Target column '{target_column}' not found in dataset")
         role_map = self._stratified_split(df, target_column, train_frac, test_frac, oot_frac, seed)
 
+        empty_roles = [role for role, subset in role_map.items() if subset.height == 0]
+        if empty_roles:
+            raise ValueError(
+                f"Cannot populate split role(s) {empty_roles} with zero rows; increase "
+                f"sample size or adjust fractions. Got train={role_map['train'].height}, "
+                f"test={role_map['test'].height}, oot={role_map['oot'].height}."
+            )
+
         for role in ("train", "test", "oot"):
             subset = role_map[role]
             context.outputs.publish_table(

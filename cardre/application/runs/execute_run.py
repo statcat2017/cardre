@@ -120,6 +120,7 @@ class ExecuteRun:
         artifact_store_factory: Callable[[], Any],
         publication_publisher_factory: Callable[[], Any],
         heartbeat_interval_seconds: float = 75,
+        heartbeat_max_retries: int = 3,
     ) -> None:
         self._uow_factory = uow_factory
         self._read_only_factory = read_only_factory
@@ -129,6 +130,7 @@ class ExecuteRun:
         self._artifact_store_factory = artifact_store_factory
         self._publication_publisher_factory = publication_publisher_factory
         self._heartbeat_interval_seconds = heartbeat_interval_seconds
+        self._heartbeat_max_retries = heartbeat_max_retries
 
     def __call__(self, command: ExecuteRunCommand) -> None:
         # FsArtifactStore is stateless and project-bound — construct one per
@@ -164,9 +166,18 @@ class ExecuteRun:
         from cardre.application.execution.heartbeat import HeartbeatWatchdog
 
         # Lease: renew the heartbeat periodically DURING node execution so a
-        # legitimate long-running node is not terminalized as stale.
+        # legitimate long-running node is not terminalized as stale. A
+        # persistently failing background heartbeat must not be swallowed
+        # forever: after the bounded consecutive-failure threshold the
+        # watchdog invokes the failure callback (once) and stops, and we
+        # terminalize the run as interrupted with the RUN_HEARTBEAT_FAILED
+        # diagnostic so the failure is observable and deterministic.
         watchdog = HeartbeatWatchdog(
-            self._uow_factory, command.run_id, self._heartbeat_interval_seconds,
+            self._uow_factory,
+            command.run_id,
+            self._heartbeat_interval_seconds,
+            on_failure=lambda: self._terminalize_heartbeat_failed(command),
+            max_consecutive_failures=self._heartbeat_max_retries,
         )
         watchdog.start()
         try:
@@ -236,20 +247,86 @@ class ExecuteRun:
             message=message,
         ))
 
+    def _terminalize_lease_lost(self, command: ExecuteRunCommand) -> None:
+        """Terminalize a Run whose lease was lost for a non-cancellation reason.
+
+        The worker may have lost the lease to stale recovery or a replacement
+        worker while the Run was still ``running``. It must not return leaving
+        the Run permanently running. Finalize as ``interrupted`` with the
+        ``RUN_LEASE_LOST`` diagnostic, racing only the running condition: if
+        another owner already terminalized the Run, ``FinalizeRun``'s
+        conditional transition loses and raises ``RunAlreadyFinalised``, which
+        we swallow — no false diagnostic or duplicate manifest is written.
+        """
+        from cardre.application.runs.finalize_run import RunAlreadyFinalised
+
+        try:
+            self._finalize_run(command.run_id, "interrupted", diagnostic=FinalizeDiagnostic(
+                code="RUN_LEASE_LOST",
+                message="Run lease lost; execution interrupted",
+            ))
+        except RunAlreadyFinalised:
+            # Another owner already terminalized the Run (e.g. stale recovery
+            # won the race). Nothing to do: the run is already terminal and no
+            # false RUN_LEASE_LOST diagnostic may be appended.
+            return
+
+    def _terminalize_heartbeat_failed(self, command: ExecuteRunCommand) -> None:
+        """Terminalize a Run whose background heartbeat persistently failed.
+
+        Invoked from the watchdog thread exactly once after the bounded
+        consecutive-failure threshold. Finalize as ``interrupted`` with the
+        ``RUN_HEARTBEAT_FAILED`` diagnostic. If the main loop (or another
+        owner) already terminalized the Run, ``FinalizeRun``'s conditional
+        transition loses and raises ``RunAlreadyFinalised``, which we swallow —
+        no false diagnostic or duplicate manifest is written, and the watchdog
+        has already stopped so it will not notify again.
+        """
+        from cardre.application.runs.finalize_run import RunAlreadyFinalised
+
+        try:
+            self._finalize_run(command.run_id, "interrupted", diagnostic=FinalizeDiagnostic(
+                code="RUN_HEARTBEAT_FAILED",
+                message="Persistent background heartbeat write failed after "
+                f"{self._heartbeat_max_retries} consecutive attempts",
+            ))
+        except RunAlreadyFinalised:
+            # Another owner already terminalized the Run. Nothing to do: the
+            # run is already terminal and no false RUN_HEARTBEAT_FAILED
+            # diagnostic may be appended.
+            return
+
     def _is_cancelled(self, command: ExecuteRunCommand) -> bool:
         with _read_uow(self._read_only_factory) as uow:
             run = uow.runs.get(command.run_id)
         return run is not None and getattr(run, "cancel_requested", False)
 
-    def _heartbeat(self, command: ExecuteRunCommand) -> None:
-        uow = self._uow_factory()
-        try:
-            heartbeat(uow, command.run_id)
-            uow.commit()
-        except Exception:
-            uow.rollback()
-        finally:
-            uow.close()
+    def _heartbeat(self, command: ExecuteRunCommand) -> bool:
+        """Renew the lease with a bounded retry policy.
+
+        Returns ``True`` on a successful write. If the persistent heartbeat
+        write keeps failing past ``_heartbeat_max_retries``, the failure is made
+        observable: the run is terminalized as ``interrupted`` with the
+        ``RUN_HEARTBEAT_FAILED`` diagnostic and ``False`` is returned so the
+        caller stops executing. A silently-healthy run on a dead heartbeat write
+        is never allowed.
+        """
+        for _ in range(self._heartbeat_max_retries):
+            uow = self._uow_factory()
+            try:
+                heartbeat(uow, command.run_id)
+                uow.commit()
+                return True
+            except Exception:
+                uow.rollback()
+            finally:
+                uow.close()
+        self._finalize_run(command.run_id, "interrupted", diagnostic=FinalizeDiagnostic(
+            code="RUN_HEARTBEAT_FAILED",
+            message="Persistent heartbeat write failed after "
+            f"{self._heartbeat_max_retries} attempts",
+        ))
+        return False
 
     def _execute_steps(
         self,
@@ -272,7 +349,8 @@ class ExecuteRun:
             summary_hook.before_step(
                 step, command, pv_id, run, step_outputs, run_step_records, worker_generation,
             )
-            self._heartbeat(command)
+            if not self._heartbeat(command):
+                return
 
             result = self._step_runner.run_step(
                 pv_id, command.run_id, step, step_outputs, run_step_records,
@@ -286,6 +364,11 @@ class ExecuteRun:
             except LeaseLost as exc:
                 if "cancellation" in str(exc):
                     self._finalize_run(command.run_id, "cancelled")
+                else:
+                    # Non-cancellation lease loss (lease ownership lost / stale
+                    # recovery won the race) while the run was still running:
+                    # it must not return leaving the run permanently running.
+                    self._terminalize_lease_lost(command)
                 return
 
             self._finalize_artifacts(pending_publishes, artifact_store, publisher)
