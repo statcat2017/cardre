@@ -44,6 +44,7 @@ class ErrorCode(StrEnum):
     INPUT_CONTRACT_VIOLATION = "INPUT_CONTRACT_VIOLATION"
     ARTIFACT_STAGING_FAILED = "ARTIFACT_STAGING_FAILED"
     ARTIFACT_PUBLISH_FAILED = "ARTIFACT_PUBLISH_FAILED"
+    INTERNAL_SERVER_ERROR = "INTERNAL_SERVER_ERROR"
 
     EVIDENCE_VALIDATION_ERROR = "EVIDENCE_VALIDATION_ERROR"
 
@@ -51,6 +52,7 @@ class ErrorCode(StrEnum):
     REPORT_BLOCKED = "REPORT_BLOCKED"
     CANONICAL_MANIFEST_MISSING = "CANONICAL_MANIFEST_MISSING"
     EXPORT_RUN_NOT_FOUND = "EXPORT_RUN_NOT_FOUND"
+    REPORT_DATA_INVALID = "REPORT_DATA_INVALID"
 
     # --- Run manifest (internal: raised during finalization, not HTTP) ---
     MANIFEST_STEP_MISSING = "MANIFEST_STEP_MISSING"
@@ -62,9 +64,11 @@ class ErrorCode(StrEnum):
 
     # --- Internal execution (class-level defaults; surface via run diagnostics) ---
     CARDRE_ERROR = "CARDRE_ERROR"
+    SCORECARD_DEFINITION_ERROR = "SCORECARD_DEFINITION_ERROR"
     NODE_FAILED_WITH_ARTIFACTS = "NODE_FAILED_WITH_ARTIFACTS"
     NODE_ROLE_ACCESS_VIOLATION = "NODE_ROLE_ACCESS_VIOLATION"
     RUN_LEASE_LOST = "RUN_LEASE_LOST"
+    RUN_HEARTBEAT_FAILED = "RUN_HEARTBEAT_FAILED"
 
 
 # Internal-only codes that never cross the HTTP boundary. They surface via run
@@ -73,9 +77,11 @@ class ErrorCode(StrEnum):
 # shared by scripts/generate-error-codes.py and tests/test_error_code_sync.py.
 INTERNAL_ERROR_CODES: frozenset[ErrorCode] = frozenset({
     ErrorCode.CARDRE_ERROR,
+    ErrorCode.SCORECARD_DEFINITION_ERROR,
     ErrorCode.NODE_FAILED_WITH_ARTIFACTS,
     ErrorCode.NODE_ROLE_ACCESS_VIOLATION,
     ErrorCode.RUN_LEASE_LOST,
+    ErrorCode.RUN_HEARTBEAT_FAILED,
     ErrorCode.RUN_LIFECYCLE_ERROR,
     ErrorCode.MANIFEST_STEP_MISSING,
     ErrorCode.MANIFEST_PLAN_MISSING,
@@ -85,6 +91,7 @@ INTERNAL_ERROR_CODES: frozenset[ErrorCode] = frozenset({
     ErrorCode.ARTIFACT_PUBLISH_FAILED,
     ErrorCode.RUN_EXECUTION_FAILED,
     ErrorCode.RUN_CANCELLED,
+    ErrorCode.REPORT_DATA_INVALID,
 })
 
 
@@ -229,6 +236,22 @@ class ParameterValidationError(CardreError):
     status_code = 400
 
 
+class ScorecardDefinitionError(CardreError):
+    """Raised when a scorecard bin definition requires a feature that the
+    model Artifact does not provide a coefficient for.
+
+    This is a feature-contract violation between the bin definition and the
+    model Artifact (an unused selection or a naming mismatch), distinct from a
+    malformed or unreadable model Artifact.
+    """
+
+    code = ErrorCode.SCORECARD_DEFINITION_ERROR
+    status_code = 500
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message, code=self.code)
+
+
 class ArtifactReadError(CardreError):
     """Raised when an artifact file cannot be read (missing or hash mismatch)."""
     code = ErrorCode.ARTIFACT_READ_ERROR
@@ -308,4 +331,5 @@ __all__ = [
     "RunNotRunningError",
     "RunPlanVersionMismatchError",
     "SchemaVersionError",
+    "ScorecardDefinitionError",
 ]

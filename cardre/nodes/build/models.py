@@ -5,6 +5,7 @@ import warnings
 from typing import Any
 
 from cardre.domain.artifacts import json_logical_hash
+from cardre.domain.errors import ScorecardDefinitionError
 from cardre.domain.evidence.kinds import (
     EvidenceKind,
     EvidenceNotFoundError,
@@ -386,7 +387,11 @@ class ScoreScalingNode(NodeType):
             variable = var_def_obj.variable
             woe_key = f"{variable}_woe"
             if woe_key not in coefficients:
-                continue
+                raise ScorecardDefinitionError(
+                    f"Score scaling: bin definition requires variable {variable!r} "
+                    f"({woe_key!r}) but the model coefficients contain no "
+                    f"coefficient for it; available coefficients: {sorted(coefficients)}"
+                )
             coef = float(coefficients[woe_key])
 
             for bin_entry in var_def_obj.bins:

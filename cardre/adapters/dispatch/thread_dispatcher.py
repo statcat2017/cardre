@@ -44,6 +44,7 @@ class ThreadRunDispatcher:
         self._queue: queue.Queue[RunRequest | None] = queue.Queue()
         self._active: dict[str, RunRequest] = {}
         self._queued_or_active: set[str] = set()
+        self._completed: set[str] = set()
         self._lock = threading.Lock()
         self._shutdown = False
         self._drain_failed = False
@@ -92,12 +93,17 @@ class ThreadRunDispatcher:
                 with self._lock:
                     self._active.pop(request.run_id, None)
                     self._queued_or_active.discard(request.run_id)
+                    self._completed.add(request.run_id)
 
     def get_status(self, run_id: str) -> str:
         with self._lock:
             if run_id in self._active:
                 return "running"
-        return "completed"
+            if run_id in self._completed:
+                return "completed"
+            if run_id in self._queued_or_active:
+                return "queued"
+        return "unknown"
 
     @property
     def active_count(self) -> int:

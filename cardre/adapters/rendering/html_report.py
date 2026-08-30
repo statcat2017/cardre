@@ -11,6 +11,35 @@ from pathlib import Path
 from typing import Any
 
 from cardre.application.reporting.schema import ReportBundle
+from cardre.domain.errors import CardreError, ErrorCode
+
+
+def _validate_report_data(bundle: ReportBundle) -> dict[str, Any]:
+    """Fail closed on malformed report data before any section is rendered.
+
+    ``model_dump(mode="json")`` on a ReportBundle whose serialized payload
+    omitted required integrity sections (e.g. ``pathway.steps`` or
+    ``validation.metrics_by_role``) would otherwise raise a raw ``KeyError``
+    mid-render. This is the single controlled validation path: missing
+    integrity data is surfaced as a typed report-data failure, never a
+    partially rendered or silently truncated document.
+    """
+    data = bundle.model_dump(mode="json")
+    pathway = data.get("pathway") or {}
+    if not isinstance(pathway.get("steps"), list):
+        raise CardreError(
+            "Report bundle pathway.steps is missing or malformed.",
+            code=ErrorCode.REPORT_DATA_INVALID,
+            context={"field": "pathway.steps"},
+        )
+    validation = data.get("validation") or {}
+    if not isinstance(validation.get("metrics_by_role"), list):
+        raise CardreError(
+            "Report bundle validation.metrics_by_role is missing or malformed.",
+            code=ErrorCode.REPORT_DATA_INVALID,
+            context={"field": "validation.metrics_by_role"},
+        )
+    return data
 
 
 def _esc(value: Any) -> str:
@@ -329,7 +358,7 @@ class HtmlReportRenderer:
 
     @staticmethod
     def render_to_html(bundle: ReportBundle) -> str:
-        data = bundle.model_dump(mode="json")
+        data = _validate_report_data(bundle)
         title = _esc(data["summary"].get("model_name") or "Cardre report")
         gen_at = _esc(data.get("generated_at") or "")
         gen_by = data.get("generated_by") or {}
