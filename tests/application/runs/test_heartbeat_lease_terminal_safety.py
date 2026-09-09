@@ -520,6 +520,163 @@ def test_single_transient_background_heartbeat_failure_does_not_terminalize(prov
 
 
 # ---------------------------------------------------------------------------
+# RED — commit-fenced renewal and terminalize retry
+# ---------------------------------------------------------------------------
+
+
+def test_commit_failure_after_successful_heartbeat_counts_as_failure(provisioned_project):
+    """A heartbeat that renews the lease but whose commit fails must count as a
+    failure: the consecutive-failure counter must not reset until the commit
+    actually succeeds, so a bounded threshold still invokes terminalization."""
+    from cardre.application.execution.heartbeat import HeartbeatWatchdog
+
+    project_id, uow_factory, _registry, root = provisioned_project
+    with uow_factory.for_project(project_id) as uow:
+        plan_id = uow.plans.create_plan(project_id, "Plan")
+        pv_id = uow.plans.create_version(plan_id, [], is_committed=True)
+        run_id = uow.runs.create(pv_id)
+        uow.runs.transition(run_id, RunStatus.RUNNING,
+                            expected_from=(RunStatus.SUBMITTED,))
+        uow.runs.begin_worker_generation(run_id)
+        uow.commit()
+
+    finalize = _finalize_for(uow_factory, project_id, root)
+
+    class _CommitFailingUoW:
+        """A UoW whose heartbeat_fenced succeeds but whose commit always raises."""
+
+        def __init__(self, inner):
+            self._inner = inner
+
+        def __getattr__(self, name):
+            return getattr(self._inner, name)
+
+        def commit(self):
+            raise RuntimeError("injected persistent commit failure")
+
+    def failing_commit():
+        return _CommitFailingUoW(uow_factory.for_project(project_id))
+
+    watchdog = HeartbeatWatchdog(
+        failing_commit,
+        run_id,
+        interval_seconds=0.05,
+        worker_generation=1,
+        max_failed_heartbeats=2,
+        finalize_run=finalize,
+    )
+    watchdog.start()
+    try:
+        deadline = time.monotonic() + 5.0
+        while time.monotonic() < deadline:
+            with uow_factory.read_only(project_id) as uow:
+                run = uow.runs.get(run_id)
+            assert run is not None
+            if str(run.status) == RunStatus.INTERRUPTED.value:
+                break
+            time.sleep(0.05)
+    finally:
+        watchdog.stop()
+
+    with uow_factory.read_only(project_id) as uow:
+        run = uow.runs.get(run_id)
+        diags = uow.runs.get_diagnostics(run_id)
+    assert run is not None
+    assert str(run.status) == RunStatus.INTERRUPTED.value, (
+        "a commit failure after a successful heartbeat must still count as a "
+        "failure and reach the bounded terminalization threshold"
+    )
+    assert any(d.get("code") == "RUN_HEARTBEAT_FAILED" for d in diags), (
+        "terminalization must carry the RUN_HEARTBEAT_FAILED diagnostic"
+    )
+
+
+def test_terminalize_retries_after_transient_finalization_failure(provisioned_project):
+    """A transient finalization failure must not silently abandon the run: the
+    watchdog keeps retrying on subsequent intervals until finalization
+    succeeds, and does not stop the watchdog on the failed attempt."""
+    from cardre.application.execution.heartbeat import HeartbeatWatchdog
+
+    project_id, uow_factory, _registry, root = provisioned_project
+    with uow_factory.for_project(project_id) as uow:
+        plan_id = uow.plans.create_plan(project_id, "Plan")
+        pv_id = uow.plans.create_version(plan_id, [], is_committed=True)
+        run_id = uow.runs.create(pv_id)
+        uow.runs.transition(run_id, RunStatus.RUNNING,
+                            expected_from=(RunStatus.SUBMITTED,))
+        uow.runs.begin_worker_generation(run_id)
+        uow.commit()
+
+    finalize = _finalize_for(uow_factory, project_id, root)
+    attempts = {"count": 0}
+
+    def flaky_finalize(*args, **kwargs):
+        attempts["count"] += 1
+        if attempts["count"] == 1:
+            raise RuntimeError("injected transient finalization failure")
+        return finalize(*args, **kwargs)
+
+    class _FailingHeartbeatRuns2:
+        def __init__(self, inner):
+            self._inner = inner
+
+        def __getattr__(self, name):
+            return getattr(self._inner, name)
+
+        def heartbeat_fenced(self, run_id, worker_generation):
+            raise RuntimeError("injected persistent heartbeat failure")
+
+    class _FailingHeartbeatUoW2:
+        def __init__(self, inner):
+            self._inner = inner
+
+        def __getattr__(self, name):
+            return getattr(self._inner, name)
+
+        @property
+        def runs(self):
+            return _FailingHeartbeatRuns2(self._inner.runs)
+
+    def failing_heartbeat():
+        return _FailingHeartbeatUoW2(uow_factory.for_project(project_id))
+
+    watchdog = HeartbeatWatchdog(
+        failing_heartbeat,
+        run_id,
+        interval_seconds=0.05,
+        worker_generation=1,
+        max_failed_heartbeats=1,
+        finalize_run=flaky_finalize,
+    )
+    watchdog.start()
+    try:
+        deadline = time.monotonic() + 5.0
+        while time.monotonic() < deadline:
+            with uow_factory.read_only(project_id) as uow:
+                run = uow.runs.get(run_id)
+            assert run is not None
+            if str(run.status) == RunStatus.INTERRUPTED.value:
+                break
+            time.sleep(0.05)
+    finally:
+        watchdog.stop()
+
+    with uow_factory.read_only(project_id) as uow:
+        run = uow.runs.get(run_id)
+        diags = uow.runs.get_diagnostics(run_id)
+    assert run is not None
+    assert str(run.status) == RunStatus.INTERRUPTED.value, (
+        "a transient finalization failure must be retried until it succeeds"
+    )
+    assert attempts["count"] >= 2, (
+        "finalization must be retried after a transient failure"
+    )
+    assert any(d.get("code") == "RUN_HEARTBEAT_FAILED" for d in diags), (
+        "successful terminalization must carry the RUN_HEARTBEAT_FAILED diagnostic"
+    )
+
+
+# ---------------------------------------------------------------------------
 # RED #47 — obsolete non-cancellation LeaseLost cannot terminalize a new owner
 # ---------------------------------------------------------------------------
 

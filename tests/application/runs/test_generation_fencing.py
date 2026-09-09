@@ -284,6 +284,82 @@ def test_generation_mismatch_lease_lost_stops_worker_without_diagnostic_or_trans
     assert persisted["count"] == 0, "obsolete worker must not finalize artifacts"
 
 
+def test_failed_finalization_is_generation_fenced(provisioned_project):
+    """A generation-N worker whose node raises after the stored generation was
+    bumped to N+1 (while the run stays running) must not terminalize the run:
+    ExecuteRun returns cleanly, the run stays running, and no
+    RUN_EXECUTION_FAILED diagnostic or manifest is written."""
+    project_id, uow_factory, root, run_id = _provision_submitted_run(provisioned_project)
+
+    finalize = FinalizeRun(
+        lambda: uow_factory.for_project(project_id),
+        _NoopManifestPublisher(),
+        _stub_publisher(uow_factory, project_id),
+        _FakeClock(),
+    )
+
+    node_started = threading.Event()
+    release_node = threading.Event()
+
+    class _RaisingRunner:
+        def run_step(self, *args, **kwargs):
+            node_started.set()
+            release_node.wait(timeout=5)
+            raise RuntimeError("node crashed")
+
+    class _NoopCatalogue:
+        def resolve(self, node_type):
+            return _fake_node("1")
+
+    class _NoopStore:
+        def finalize(self, staged):
+            return None
+
+        def object_path(self, physical_hash):
+            return "objects/x"
+
+    executor = ExecuteRun(
+        lambda: uow_factory.for_project(project_id),
+        lambda: uow_factory.read_only(project_id),
+        _NoopCatalogue(),
+        _RaisingRunner(),
+        finalize,
+        lambda: _NoopStore(),
+        lambda: _stub_publisher(uow_factory, project_id),
+        heartbeat_interval_seconds=0.1,
+    )
+
+    thread_errors: list[BaseException] = []
+
+    def _run_executor():
+        try:
+            executor(ExecuteRunCommand(run_id=run_id))
+        except BaseException as exc:  # pragma: no cover - diagnostic
+            thread_errors.append(exc)
+
+    thread = threading.Thread(target=_run_executor)
+    thread.start()
+    assert node_started.wait(timeout=10), f"node never started; thread_errors={thread_errors}"
+    # A stale recovery bumps the generation while the run stays running.
+    _bump_generation(uow_factory, project_id, run_id)
+    release_node.set()
+    thread.join(timeout=5)
+    assert not thread_errors, f"worker thread raised: {thread_errors}"
+
+    with uow_factory.read_only(project_id) as uow:
+        run = uow.runs.get(run_id)
+        diags = uow.runs.get_diagnostics(run_id)
+        outbox = uow.publications.list_by_run(run_id)
+    assert run is not None
+    assert str(run.status) == RunStatus.RUNNING.value, (
+        "generation mismatch must not transition the run to failed"
+    )
+    assert not any(d.get("code") == "RUN_EXECUTION_FAILED" for d in diags), (
+        "obsolete worker must not append RUN_EXECUTION_FAILED"
+    )
+    assert outbox == [], "obsolete worker must not enqueue a manifest"
+
+
 # ---------------------------------------------------------------------------
 # Generation-fenced interrupted transition
 # ---------------------------------------------------------------------------

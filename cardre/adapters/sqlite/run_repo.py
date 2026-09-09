@@ -173,6 +173,23 @@ class RunRepo:
         )
         return bool(cursor.rowcount > 0)
 
+    def transition_failed_fenced(self, run_id: str, worker_generation: int) -> bool:
+        """Transition a run to ``failed`` guarded by running + lease ownership
+        (generation compare-and-set).
+
+        Used by a worker whose node raised to terminalize the run it owns. An
+        obsolete worker whose generation was bumped by a stale recovery cannot
+        terminalize a run it no longer owns.
+        """
+        from cardre.domain.diagnostics import utc_now_iso
+        now = utc_now_iso()
+        cursor = self._conn.execute(
+            "UPDATE runs SET status = ?, finished_at = ? "
+            "WHERE run_id = ? AND status = 'running' AND worker_generation = ?",
+            (RunStatus.FAILED.value, now, run_id, worker_generation),
+        )
+        return bool(cursor.rowcount > 0)
+
     def begin_worker_generation(self, run_id: str) -> int:
         """Bump and return the worker generation for a run.
 

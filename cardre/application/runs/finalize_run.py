@@ -114,6 +114,16 @@ class FinalizeRun:
                 transitioned = uow.runs.transition_interrupted_fenced(run_id, worker_generation)
                 if not transitioned:
                     return
+            elif target == RunStatus.FAILED and worker_generation is not None:
+                # Worker-originated failure (a node raised): transition only
+                # while the run is still running AND owned by the caller's
+                # worker generation. An obsolete worker whose generation was
+                # bumped by a stale recovery cannot terminalize a run it no
+                # longer owns; a CAS loss is a benign lost race and we return
+                # harmlessly with no diagnostic or manifest.
+                transitioned = uow.runs.transition_failed_fenced(run_id, worker_generation)
+                if not transitioned:
+                    return
             elif target == RunStatus.INTERRUPTED and stale_heartbeat_at is not FinalizeRun._STALE_UNSET:
                 # Stale-interruption mode: conditionally transition the stale run
                 # only if its heartbeat is still exactly the observed value

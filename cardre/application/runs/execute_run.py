@@ -193,7 +193,7 @@ class ExecuteRun:
                 self._finalize_run(command.run_id, "failed", diagnostic=FinalizeDiagnostic(
                     code="RUN_EXECUTION_FAILED",
                     message=str(exc),
-                ))
+                ), worker_generation=worker_generation)
         finally:
             watchdog.stop()
 
@@ -337,7 +337,7 @@ class ExecuteRun:
             self._finalize_artifacts(pending_publishes, artifact_store, publisher)
 
             if result.status == RunStepStatus.FAILED:
-                self._finalize_run(command.run_id, "failed")
+                self._finalize_run(command.run_id, "failed", worker_generation=worker_generation)
                 return
 
         # Cancellation can arrive during the final node: re-read the run

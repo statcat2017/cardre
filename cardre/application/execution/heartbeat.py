@@ -18,9 +18,12 @@ obsolete worker stop without changing the Run.
 
 from __future__ import annotations
 
+import logging
 import threading
 from collections.abc import Callable
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 
 def heartbeat(uow: object, run_id: str, worker_generation: int | None = None) -> bool:
@@ -105,10 +108,11 @@ class HeartbeatWatchdog:
             lease_lost = False
             try:
                 uow = self._uow_factory()
-                renewed = heartbeat(
+                heartbeat(
                     uow, self._run_id, worker_generation=self._worker_generation,
                 )
                 uow.commit()
+                renewed = True
             except Exception as exc:
                 from cardre.domain.errors import LeaseLost
 
@@ -133,15 +137,25 @@ class HeartbeatWatchdog:
                 and self._consecutive_failures >= self._max_failed_heartbeats
                 and self._finalize_run is not None
             ):
-                self._terminalize()
-                break
+                if self._terminalize():
+                    break
 
-    def _terminalize(self) -> None:
-        import contextlib
+    def _terminalize(self) -> bool:
+        """Attempt to terminalize the run as ``interrupted``.
 
-        from cardre.application.runs.finalize_run import FinalizeDiagnostic
+        Returns ``True`` when the run is terminal (either this call finalised
+        it, or it was already finalised / the lease was lost to another owner),
+        in which case the watchdog stops. Returns ``False`` on any other
+        finalization failure so the watchdog keeps retrying on subsequent
+        intervals rather than silently abandoning the run.
+        """
+        from cardre.application.runs.finalize_run import (
+            FinalizeDiagnostic,
+            RunAlreadyFinalised,
+        )
+        from cardre.domain.errors import LeaseLost
 
-        with contextlib.suppress(Exception):
+        try:
             self._finalize_run(
                 self._run_id,
                 "interrupted",
@@ -151,7 +165,20 @@ class HeartbeatWatchdog:
                 ),
                 worker_generation=self._worker_generation,
             )
-        self._stop.set()
+            return True
+        except (RunAlreadyFinalised, LeaseLost):
+            # The run was already terminalized by another owner, or this
+            # worker lost its lease: a benign lost race, treat as a successful
+            # stop.
+            return True
+        except Exception:
+            # Any other finalization failure: log it and keep retrying on
+            # subsequent intervals rather than silently abandoning the run.
+            logger.exception(
+                "heartbeat watchdog failed to terminalize run %s; will retry",
+                self._run_id,
+            )
+            return False
 
 
 __all__ = ["HeartbeatWatchdog", "heartbeat"]
