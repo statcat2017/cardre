@@ -105,6 +105,15 @@ class FinalizeRun:
                             raise RunAlreadyFinalised(run_id, str(actual2.status) if actual2 else "unknown")
                     else:
                         raise RunAlreadyFinalised(run_id, str(actual.status) if actual else "unknown")
+            elif target == RunStatus.INTERRUPTED and worker_generation is not None:
+                # Worker-originated interruption (persistent background
+                # heartbeat failure): transition only while the run is still
+                # running AND owned by the caller's worker generation. An
+                # obsolete worker whose generation was bumped by a stale
+                # recovery cannot terminalize a run it no longer owns.
+                transitioned = uow.runs.transition_interrupted_fenced(run_id, worker_generation)
+                if not transitioned:
+                    return
             elif target == RunStatus.INTERRUPTED and stale_heartbeat_at is not FinalizeRun._STALE_UNSET:
                 # Stale-interruption mode: conditionally transition the stale run
                 # only if its heartbeat is still exactly the observed value

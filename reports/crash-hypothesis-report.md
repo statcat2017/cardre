@@ -1,6 +1,6 @@
 # Cardre Crash Hypothesis Evaluation
 
-Run timestamp (UTC): `2026-08-27T21:38:10.625643+00:00`
+Run timestamp (UTC): `2026-09-09T14:19:33.862737+00:00`
 
 ## Summary
 
@@ -67,11 +67,11 @@ Runtime probes exercise bounded production behaviour. Structural probes inspect 
 | 40 | A manifest body without a hash is reported as missing canonical manifest | mitigated | request failure | 0.90 | cardre.adapters.filesystem.manifest_publisher:FsManifestPublisher.verify contains the exercised guard: manifest verification checks the hash and returns validity diagnostics. | cardre/adapters/filesystem/manifest_publisher.py |
 | 41 | Stale-Run sweeping happens only on submission; an abandoned Run remains running indefinitely without later activity | mitigated | stuck Run | 0.90 | cardre.api.app:_lifespan_factory contains the exercised guard: the lifecycle starts and stops an independent stale-Run recovery watchdog. | cardre/application/runs/submit_run.py |
 | 42 | Every heartbeat takes an immediate SQLite write lock and contends with execution | unverified | environment | 0.30 | requires concurrent heartbeat and execution writes under load. | cardre.adapters.sqlite.connection |
-| 43 | A transient heartbeat failure is swallowed, then a healthy Run is interrupted as stale | mitigated | stuck Run | 0.90 | cardre.application.execution.heartbeat:HeartbeatWatchdog._run contains the exercised guard: background heartbeat failures are bounded and persistent failure invokes the failure callback and stops the watchdog. | cardre/application/execution/heartbeat.py |
+| 43 | A transient heartbeat failure is swallowed, then a healthy Run is interrupted as stale | mitigated | stuck Run | 0.90 | cardre.application.execution.heartbeat:HeartbeatWatchdog._run contains the exercised guard: background heartbeat failures are bounded and persistent failure invokes generation-fenced finalization and stops the watchdog. | cardre/application/runs/execute_run.py |
 | 44 | Success finalisation without worker_generation raises and leaves the Run running | mitigated | stuck Run | 0.90 | cardre.application.runs.finalize_run:FinalizeRun.__call__ contains the exercised guard: success without a lease token is deliberately rejected. | cardre/application/runs/finalize_run.py |
 | 45 | Cancellation wins a success-versus-cancel race, discarding a successful result | unverified | environment | 0.30 | requires a precisely timed cancellation/finalisation race. | cardre/adapters/sqlite/run_repo.py |
 | 46 | Cancellation is checked only between Steps; a long Step remains uninterruptible | unverified | environment | 0.30 | requires a node that runs longer than the cancellation interval. | cardre/application/runs/execute_run.py |
-| 47 | Lease loss returns from execution without terminalising the Run | mitigated | stuck Run | 0.90 | cardre.application.runs.execute_run:ExecuteRun._execute_steps contains the exercised guard: non-cancellation lease loss uses terminalization rather than returning silently. | cardre/application/runs/execute_run.py |
+| 47 | Lease loss returns from execution without terminalising the Run | mitigated | stuck Run | 0.95 | generation-mismatch LeaseLost stops the obsolete worker without terminalizing the Run. | cardre/application/runs/execute_run.py |
 | 48 | A pre-execution failure races with cancellation and records the wrong terminal state | unverified | environment | 0.30 | requires a race between validation and cancellation. | cardre/application/runs/execute_run.py |
 | 49 | Duplicate dispatch becomes a no-op while the Run remains submitted | mitigated | stuck Run | 0.90 | cardre.adapters.dispatch.thread_dispatcher:ThreadRunDispatcher.dispatch contains the exercised guard: duplicates are rejected explicitly; durable reconciliation remains the recovery path. | cardre/adapters/dispatch/thread_dispatcher.py |
 | 50 | Dispatcher status reports “completed” for work that was never dispatched | mitigated | UI failure | 1.00 | unknown Run ID reports 'unknown', distinct from completed | cardre/adapters/dispatch/thread_dispatcher.py |

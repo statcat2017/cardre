@@ -436,18 +436,28 @@ def _stale_recovery_trigger_probe() -> ProbeResult:
 def _heartbeat_failure_probe() -> ProbeResult:
     return _guard(
         "cardre.application.execution.heartbeat:HeartbeatWatchdog._run",
-        "max_consecutive_failures", "on_failure", "break",
+        "max_failed_heartbeats", "finalize_run", "break",
         kind="stuck Run",
-        explanation="background heartbeat failures are bounded and persistent failure invokes the failure callback and stops the watchdog.",
+        explanation="background heartbeat failures are bounded and persistent failure invokes generation-fenced finalization and stops the watchdog.",
     )
 
 
 def _lease_loss_probe() -> ProbeResult:
-    return _guard(
-        "cardre.application.runs.execute_run:ExecuteRun._execute_steps",
-        "self._terminalize_lease_lost", "except LeaseLost",
-        kind="stuck Run",
-        explanation="non-cancellation lease loss uses terminalization rather than returning silently.",
+    src = _source(
+        "cardre.application.runs.execute_run", "ExecuteRun._execute_steps",
+    )
+    obsolete_path_stopped = "except LeaseLost" in src and "return" in src
+    unsafe_terminalizer = "_terminalize_lease_lost" in src
+    if obsolete_path_stopped and not unsafe_terminalizer:
+        return ProbeResult(
+            "mitigated", "stuck Run",
+            "generation-mismatch LeaseLost stops the obsolete worker without terminalizing the Run.",
+            0.95,
+        )
+    return ProbeResult(
+        "real defect", "stuck Run",
+        "obsolete LeaseLost path still has an unfenced terminalization path.",
+        0.95,
     )
 
 

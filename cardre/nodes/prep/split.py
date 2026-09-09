@@ -139,7 +139,7 @@ class SplitTrainTestOotNode(NodeType):
 
     @classmethod
     def parameter_schema(cls) -> NodeParameterSchema:
-        fraction_constraint = ParameterConstraint(min_value=0.0, max_value=1.0)
+        fraction_constraint = ParameterConstraint(exclusive_min=0.0, max_value=1.0)
         return NodeParameterSchema(
             node_type=cls.node_type,
             node_version=cls.version,

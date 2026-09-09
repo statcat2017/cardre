@@ -141,6 +141,10 @@ class _FailingHeartbeatRuns:
         self._attempts.append(1)
         raise RuntimeError("injected persistent heartbeat write failure")
 
+    def heartbeat_fenced(self, run_id: str, worker_generation: int) -> bool:
+        self.heartbeat(run_id)
+        return False
+
 
 class _FailingHeartbeatUoW:
     def __init__(self, inner, attempts: list[int]) -> None:
@@ -289,6 +293,10 @@ class _FailingAfterFirstHeartbeatRuns:
         if len(self._attempts) > 1:
             raise RuntimeError("injected persistent background heartbeat write failure")
 
+    def heartbeat_fenced(self, run_id: str, worker_generation: int) -> bool:
+        self.heartbeat(run_id)
+        return True
+
 
 class _FailingAfterFirstHeartbeatUoW:
     def __init__(self, inner, attempts: list[int]) -> None:
@@ -337,6 +345,10 @@ class _FailingOnceHeartbeatRuns:
         self._state["calls"] += 1
         if self._state["calls"] == self._state["fail_on"]:
             raise RuntimeError("injected transient heartbeat write failure")
+
+    def heartbeat_fenced(self, run_id: str, worker_generation: int) -> bool:
+        self.heartbeat(run_id)
+        return True
 
 
 class _FailingOnceHeartbeatUoW:
@@ -484,8 +496,8 @@ def test_single_transient_background_heartbeat_failure_does_not_terminalize(prov
         failing_once,
         run_id,
         interval_seconds=0.05,
-        on_failure=lambda: failures.append(1),
-        max_consecutive_failures=3,
+        max_failed_heartbeats=3,
+        finalize_run=lambda *args, **kwargs: failures.append(1),
     )
     watchdog.start()
     try:
@@ -508,14 +520,16 @@ def test_single_transient_background_heartbeat_failure_does_not_terminalize(prov
 
 
 # ---------------------------------------------------------------------------
-# RED #47 — non-cancellation LeaseLost while running cannot leave it running
+# RED #47 — obsolete non-cancellation LeaseLost cannot terminalize a new owner
 # ---------------------------------------------------------------------------
 
 
-def test_non_cancellation_lease_lost_terminalizes_running_run(provisioned_project):
-    """A non-cancellation ``LeaseLost`` while the Run is still ``running`` must
-    not return leaving it permanently running: it ends ``interrupted`` with the
-    ``RUN_LEASE_LOST`` diagnostic."""
+def test_non_cancellation_lease_lost_stops_without_terminalizing_run(provisioned_project):
+    """A non-cancellation ``LeaseLost`` means this worker lost authority.
+
+    It must stop without changing the Run, appending a diagnostic, or creating
+    a manifest for the current owner.
+    """
     project_id, uow_factory, _registry, root = provisioned_project
     pv_id = _committed_noop_pv(uow_factory, project_id)
     run_id = _run_id(uow_factory, project_id, pv_id)
@@ -542,15 +556,14 @@ def test_non_cancellation_lease_lost_terminalizes_running_run(provisioned_projec
         diags = uow.runs.get_diagnostics(run_id)
         outbox = uow.publications.list_by_run(run_id)
     assert run is not None
-    assert str(run.status) == RunStatus.INTERRUPTED.value, (
-        "non-cancellation lease loss while running must not leave the run running"
+    assert str(run.status) == RunStatus.RUNNING.value, (
+        "obsolete lease loss must not transition the current owner's Run"
     )
-    assert any(d.get("code") == "RUN_LEASE_LOST" for d in diags), (
-        "interrupted run must carry the RUN_LEASE_LOST diagnostic"
+    assert not any(d.get("code") == "RUN_LEASE_LOST" for d in diags), (
+        "obsolete lease loss must not append a diagnostic"
     )
-    # The terminalization is a full, durable finalization.
-    assert any(r["kind"] == "manifest" for r in outbox), (
-        "lease-lost run must enqueue a manifest outbox record"
+    assert outbox == [], (
+        "obsolete lease loss must not enqueue a manifest"
     )
 
 

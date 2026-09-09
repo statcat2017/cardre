@@ -254,3 +254,60 @@ def test_dispatcher_rejects_non_positive_max_workers():
         ThreadRunDispatcher(lambda command: None, max_workers=0)
     with pytest.raises(ValueError, match="max_workers"):
         ThreadRunDispatcher(lambda command: None, max_workers=-1)
+
+
+def test_dispatcher_reports_failed_when_callback_raises():
+    """A callback that raises must not make the dispatched Run report
+    completed; it must be reported as failed (P1)."""
+    started = threading.Event()
+    finished = threading.Event()
+
+    def execute(request):
+        started.set()
+        finished.set()
+        raise RuntimeError("boom")
+
+    dispatcher = ThreadRunDispatcher(execute, max_workers=1)
+    try:
+        dispatcher.dispatch(_request("run-1"))
+        assert started.wait(timeout=5), "worker never started"
+        assert finished.wait(timeout=5), "worker never finished"
+        # Poll because the worker records the failure after the callback raises.
+        deadline = 5
+        while dispatcher.get_status("run-1") == "running" and deadline > 0:
+            threading.Event().wait(0.05)
+            deadline -= 0.05
+        assert dispatcher.get_status("run-1") == "failed"
+    finally:
+        dispatcher.shutdown()
+
+
+def test_dispatcher_redispatched_completed_run_reports_queued_running_completed():
+    """A run that previously completed and is legitimately redispatched must
+    discard old completion bookkeeping at admission: queued while waiting,
+    running while executing, completed after a successful attempt (P2)."""
+    harness = _BlockingHarness()
+    dispatcher = ThreadRunDispatcher(harness.execute, max_workers=1)
+
+    # First dispatch completes.
+    harness.events("run-1")
+    dispatcher.dispatch(_request("run-1"))
+    harness.wait_started("run-1")
+    harness.release["run-1"].set()
+    harness.wait_finished("run-1")
+    assert dispatcher.get_status("run-1") == "completed"
+
+    # Legitimate redispatch of the same run: old completion bookkeeping must be
+    # discarded at admission, so it reports queued while waiting.
+    harness.events("run-1")
+    dispatcher.dispatch(_request("run-1"))
+    try:
+        assert dispatcher.get_status("run-1") == "queued"
+        harness.wait_started("run-1")
+        assert dispatcher.get_status("run-1") == "running"
+    finally:
+        harness.release["run-1"].set()
+        harness.wait_finished("run-1")
+    assert dispatcher.get_status("run-1") == "completed"
+    assert harness.executed == ["run-1", "run-1"]
+    dispatcher.shutdown()

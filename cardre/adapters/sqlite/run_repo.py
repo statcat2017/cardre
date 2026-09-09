@@ -155,6 +155,24 @@ class RunRepo:
         )
         return bool(cursor.rowcount > 0)
 
+    def transition_interrupted_fenced(self, run_id: str, worker_generation: int) -> bool:
+        """Transition a run to ``interrupted`` guarded by running + lease
+        ownership (generation compare-and-set).
+
+        Used by a worker that has lost its heartbeat (persistent background
+        heartbeat failure) to terminalize the run it owns. An obsolete worker
+        whose generation was bumped by a stale recovery cannot terminalize a
+        run it no longer owns.
+        """
+        from cardre.domain.diagnostics import utc_now_iso
+        now = utc_now_iso()
+        cursor = self._conn.execute(
+            "UPDATE runs SET status = ?, finished_at = ? "
+            "WHERE run_id = ? AND status = 'running' AND worker_generation = ?",
+            (RunStatus.INTERRUPTED.value, now, run_id, worker_generation),
+        )
+        return bool(cursor.rowcount > 0)
+
     def begin_worker_generation(self, run_id: str) -> int:
         """Bump and return the worker generation for a run.
 
@@ -206,6 +224,22 @@ class RunRepo:
         )
         if cursor.rowcount == 0:
             logger.warning("heartbeat: no running run found for run_id=%s", run_id)
+
+    def heartbeat_fenced(self, run_id: str, worker_generation: int) -> bool:
+        """Renew the lease only if the run is still running AND owned by the
+        caller's worker generation (ownership compare-and-set).
+
+        An obsolete worker (whose generation was bumped by a stale recovery)
+        cannot refresh another generation's lease. Returns whether the renewal
+        happened.
+        """
+        from cardre.domain.diagnostics import utc_now_iso
+        cursor = self._conn.execute(
+            "UPDATE runs SET heartbeat_at = ? "
+            "WHERE run_id = ? AND status = 'running' AND worker_generation = ?",
+            (utc_now_iso(), run_id, worker_generation),
+        )
+        return bool(cursor.rowcount > 0)
 
     def set_active_step(self, run_id: str, step_id: str | None) -> None:
         self._conn.execute("UPDATE runs SET active_step_id = ? WHERE run_id = ?", (step_id, run_id))
