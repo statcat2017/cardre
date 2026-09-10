@@ -283,6 +283,50 @@ class TestComposedExecution:
                                 )
                     break
 
+    def test_run_summary_round_trips_as_run_level_evidence(self, composed_run):
+        """A Run summary is run-level Evidence, not a Step's output.
+
+        The RunSummary artifact is published with an empty ``run_step_id``
+        outbox row and must be read back through the EvidenceReader as
+        ``RUN_SUMMARY`` evidence, resolved by its descriptor and physical
+        bytes rather than by any step-scoped query. A dedicated step identity
+        is not required: the round trip succeeds against the production
+        persistence + reader path.
+        """
+        from cardre.adapters.evidence.reader import EvidenceReader
+        from cardre.adapters.filesystem.artifact_store import FsArtifactStore
+        from cardre.domain.evidence.kinds import EvidenceKind
+
+        project_id, _, _, run_id, uow_factory, root = composed_run
+        store = FsArtifactStore(root)
+        with uow_factory.for_project(project_id) as uow:
+            reader = EvidenceReader(store, uow.artifacts, uow.run_steps)
+            row = uow._conn.execute(
+                "SELECT artifact_id, physical_hash FROM artifacts "
+                "WHERE role = 'manifest' AND artifact_type = 'run_summary'"
+            ).fetchone()
+            assert row is not None, "RunSummary artifact was not persisted"
+            aid = row["artifact_id"]
+
+            # The outbox row for the RunSummary is run-scoped: its run_step_id
+            # is empty, and it must still be a pending/reconcilable publication
+            # whose artifact resolves on disk.
+            outbox = [p for p in uow.publications.list_by_run(run_id)
+                      if p["kind"] == "artifact" and p["artifact_id"] == aid]
+            assert outbox, "RunSummary has no publication outbox row"
+            assert outbox[0]["run_step_id"] == "", (
+                "RunSummary must be published as run-level Evidence with an empty run_step_id"
+            )
+
+            summary = reader.read(aid, EvidenceKind.RUN_SUMMARY)
+            assert summary is not None, (
+                "RunSummary must be readable through the EvidenceReader as RUN_SUMMARY"
+            )
+            assert summary["run_id"] == run_id
+            assert isinstance(summary.get("steps"), list) and summary["steps"], (
+                "RunSummary must carry its persisted run steps"
+            )
+
     def test_technical_manifest_retrievable_through_evidence_reader(self, composed_run):
         """The technical-manifest output must be retrievable via EvidenceReader
         as TECHNICAL_MANIFEST_INDEX (role=manifest), proving the profile agrees

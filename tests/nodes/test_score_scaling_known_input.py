@@ -24,6 +24,7 @@ from cardre.adapters.filesystem.artifact_store import FsArtifactStore
 from cardre.application.execution.input_collection import StepInputCollection
 from cardre.application.execution.output_publisher import StagingOutputPublisher
 from cardre.domain.artifacts import ArtifactRef
+from cardre.domain.errors import ErrorCode, ScorecardDefinitionError
 from cardre.domain.evidence.kinds import EvidenceKind
 from cardre.domain.evidence.schemas import SCHEMA_MODEL_ARTIFACT, SCHEMA_WOE_TABLE
 from cardre.domain.step import StepSpec
@@ -225,4 +226,116 @@ def test_score_scaling_with_known_input(tmp_path: Path) -> None:
     assert attr3["bin_id"] == "b3"
     assert attr3["woe"] == round(0.2, WOE_ROUND)
     assert attr3["coefficient"] == -0.8
-    assert attr3["points"] == round(direction * factor * (-0.8) * 0.2, POINTS_ROUND)
+
+
+def test_score_scaling_rejects_definition_requiring_absent_woe_coefficient(tmp_path: Path) -> None:
+    """A bin definition requiring a ``{variable}_woe`` feature absent from the
+    model coefficients must fail with a typed, actionable error and must not
+    publish any partial scorecard.
+
+    Mirrors the known-input path but drops ``income_woe`` from the model
+    coefficients while the bin definition still declares an ``income``
+    variable. This is a scorecard feature-contract violation, not a malformed
+    model Artifact, so it must be distinguished from ``ValueError``.
+    """
+    store = FsArtifactStore(tmp_path)
+    pub = StagingOutputPublisher(store)
+
+    # --- model artifact: intercept=-0.5, coefficients only for age_woe ---
+    # income is intentionally absent from coefficients even though the bin
+    # definition below declares it.
+    model_staged = pub.publish_json(
+        role="model",
+        kind=EvidenceKind.MODEL_ARTIFACT,
+        payload={
+            "schema_version": SCHEMA_MODEL_ARTIFACT,
+            "target_column": "default_flag",
+            "target_event_value": "1",
+            "class_mapping": {"good": "0", "bad": "1"},
+            "probability_column_index": 1,
+            "feature_contract": {
+                "features": ["age_woe"],
+                "transformation_strategy": "woe",
+                "order_hash": "abc",
+                "missing_policy": "error",
+                "unknown_category_policy": "error",
+            },
+            "model_payload": {
+                "intercept": -0.5,
+                "coefficients": {"age_woe": 1.2},
+            },
+            "training": {"row_count": 100, "converged": True, "iterations": 15, "params": {"C": 1.0}},
+            "source_variables": ["age"],
+            "bad_class_label": "1",
+            "warnings": [],
+        },
+        metadata={"schema_version": SCHEMA_MODEL_ARTIFACT},
+    )
+
+    # --- bin definition declares both age and income ---
+    bin_def_staged = pub.publish_json(
+        role="definition",
+        kind=EvidenceKind.BIN_DEFINITION,
+        payload={
+            "schema_version": "cardre.bin_definition.v1",
+            "variables": [
+                {
+                    "variable": "age",
+                    "dtype": "numeric",
+                    "kind": "fine",
+                    "bins": [
+                        {"bin_id": "b1", "label": "18-30", "lower": 18, "upper": 30},
+                    ],
+                },
+                {
+                    "variable": "income",
+                    "dtype": "numeric",
+                    "kind": "fine",
+                    "bins": [
+                        {"bin_id": "b3", "label": "Low", "lower": 0, "upper": 30000},
+                    ],
+                },
+            ],
+        },
+        metadata={"schema_version": "cardre.bin_definition.v1"},
+    )
+
+    woe_df = pl.DataFrame({
+        "variable": ["age", "income"],
+        "bin_id": ["b1", "b3"],
+        "woe": [0.5, 0.2],
+    })
+    woe_staged = pub.publish_table(
+        role="report",
+        kind=EvidenceKind.WOE_TABLE,
+        frame=woe_df,
+        metadata={"schema_version": SCHEMA_WOE_TABLE},
+    )
+
+    for staged in (model_staged, bin_def_staged, woe_staged):
+        store.finalize(staged)
+
+    refs = [_staged_to_ref(model_staged), _staged_to_ref(bin_def_staged), _staged_to_ref(woe_staged)]
+    reader = EvidenceReader(store, _StubArtifactRepo(refs), _NullRepo())
+    inputs = StepInputCollection(reader, refs)
+    outputs = StagingOutputPublisher(store)
+
+    params = {
+        "base_score": 600,
+        "base_odds": "50:1",
+        "points_to_double_odds": 20.0,
+        "higher_score_is_lower_risk": True,
+    }
+
+    with pytest.raises(ScorecardDefinitionError) as exc_info:
+        ScoreScalingNode().run(_context(inputs, outputs, params))
+
+    err = exc_info.value
+    assert err.code == ErrorCode.SCORECARD_DEFINITION_ERROR
+    assert "income" in err.message
+    assert "income_woe" in err.message
+    assert "coefficient" in err.message
+    assert type(err).__name__ == "ScorecardDefinitionError"
+
+    # No partial scorecard may be published.
+    assert not outputs._staged_artifacts

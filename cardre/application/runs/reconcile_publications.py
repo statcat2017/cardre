@@ -9,14 +9,20 @@ manifest or finalizing an already-present object is a no-op.
 The per-publication protocol (finalize + mark_published / mark_failed) is
 owned by ``PublicationPublisher``; this module is the thin startup driver
 that lists pending rows, dispatches each by kind, and collects outcomes.
+
+A per-Project pending-read failure is recorded as a failed outcome rather than
+silently skipped, and reconciliation continues to the remaining Projects.
 """
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -26,6 +32,7 @@ class ReconcileResult:
     outbox_id: str
     state: str
     error: str = ""
+    project_id: str = ""
 
 
 @dataclass
@@ -64,7 +71,16 @@ class ReconcilePublications:
             try:
                 with self._uow_factory.read_only(project_id) as uow:
                     pending = uow.publications.list_pending()
-            except Exception:
+            except Exception as exc:
+                outcome.results.append(ReconcileResult(
+                    run_id="", kind="project", outbox_id="", state="failed",
+                    error=f"pending publication read failed: {exc}",
+                    project_id=project_id,
+                ))
+                logger.exception(
+                    "ReconcilePublications: pending publication read failed for "
+                    "project %s; skipping it for this pass", project_id,
+                )
                 continue
             publisher = self._publication_publisher_factory(project_id)
             for row in pending:
@@ -87,9 +103,9 @@ class ReconcilePublications:
                     row["physical_hash"],
                 ),
             )
-            return ReconcileResult(row["run_id"], "artifact", outbox_id, "published")
+            return ReconcileResult(row["run_id"], "artifact", outbox_id, "published", project_id=project_id)
         except Exception as exc:
-            return ReconcileResult(row["run_id"], "artifact", outbox_id, "failed", str(exc))
+            return ReconcileResult(row["run_id"], "artifact", outbox_id, "failed", str(exc), project_id)
 
     def _reconcile_manifest(
         self, project_id: str, publisher: Any, row: dict[str, Any]
@@ -99,16 +115,16 @@ class ReconcilePublications:
         if payload is None:
             msg = "manifest outbox row has no stored payload"
             self._mark_failed(project_id, outbox_id, msg)
-            return ReconcileResult(row["run_id"], "manifest", outbox_id, "failed", msg)
+            return ReconcileResult(row["run_id"], "manifest", outbox_id, "failed", msg, project_id)
         try:
             manifest_publisher = self._manifest_publisher_factory(project_id)
             publisher.publish(
                 outbox_id,
                 lambda: manifest_publisher.publish(row["run_id"], payload),
             )
-            return ReconcileResult(row["run_id"], "manifest", outbox_id, "published")
+            return ReconcileResult(row["run_id"], "manifest", outbox_id, "published", project_id=project_id)
         except Exception as exc:
-            return ReconcileResult(row["run_id"], "manifest", outbox_id, "failed", str(exc))
+            return ReconcileResult(row["run_id"], "manifest", outbox_id, "failed", str(exc), project_id)
 
     def _mark_failed(self, project_id: str, outbox_id: str, error: str) -> None:
         """Mark a row failed directly for a data-integrity guard (no payload).

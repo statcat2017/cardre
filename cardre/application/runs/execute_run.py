@@ -3,12 +3,16 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from dataclasses import dataclass
 from typing import Any
 
 from cardre.application.execution.heartbeat import heartbeat
-from cardre.application.runs.finalize_run import FinalizeDiagnostic, FinalizeRun
+from cardre.application.runs.finalize_run import (
+    FinalizeDiagnostic,
+    FinalizeRun,
+    RunAlreadyFinalised,
+)
 from cardre.domain.artifacts import ArtifactRef
 from cardre.domain.diagnostics import utc_now_iso
 from cardre.domain.errors import LeaseLost
@@ -120,6 +124,7 @@ class ExecuteRun:
         artifact_store_factory: Callable[[], Any],
         publication_publisher_factory: Callable[[], Any],
         heartbeat_interval_seconds: float = 75,
+        heartbeat_max_retries: int = 3,
     ) -> None:
         self._uow_factory = uow_factory
         self._read_only_factory = read_only_factory
@@ -129,6 +134,7 @@ class ExecuteRun:
         self._artifact_store_factory = artifact_store_factory
         self._publication_publisher_factory = publication_publisher_factory
         self._heartbeat_interval_seconds = heartbeat_interval_seconds
+        self._heartbeat_max_retries = heartbeat_max_retries
 
     def __call__(self, command: ExecuteRunCommand) -> None:
         # FsArtifactStore is stateless and project-bound — construct one per
@@ -163,10 +169,14 @@ class ExecuteRun:
 
         from cardre.application.execution.heartbeat import HeartbeatWatchdog
 
-        # Lease: renew the heartbeat periodically DURING node execution so a
-        # legitimate long-running node is not terminalized as stale.
+        # legitimate long-running node is not terminalized as stale. The
+        # renewal is generation-fenced, and persistent failure is terminalized
+        # through the generation-fenced FinalizeRun path.
         watchdog = HeartbeatWatchdog(
             self._uow_factory, command.run_id, self._heartbeat_interval_seconds,
+            worker_generation=worker_generation,
+            max_failed_heartbeats=self._heartbeat_max_retries,
+            finalize_run=self._finalize_run,
         )
         watchdog.start()
         try:
@@ -174,10 +184,16 @@ class ExecuteRun:
                 command, pv_id, run, steps, worker_generation, artifact_store, publisher,
             )
         except Exception as exc:
-            self._finalize_run(command.run_id, "failed", diagnostic=FinalizeDiagnostic(
-                code="RUN_EXECUTION_FAILED",
-                message=str(exc),
-            ))
+            # A concurrent terminalization (e.g. the background heartbeat
+            # watchdog interrupting the run) may win the finalization race
+            # while the node is raising. The run is already terminal with its
+            # own manifest and diagnostic; treat that as a benign lost race and
+            # return cleanly rather than surfacing a worker crash.
+            with suppress(RunAlreadyFinalised):
+                self._finalize_run(command.run_id, "failed", diagnostic=FinalizeDiagnostic(
+                    code="RUN_EXECUTION_FAILED",
+                    message=str(exc),
+                ), worker_generation=worker_generation)
         finally:
             watchdog.stop()
 
@@ -241,15 +257,41 @@ class ExecuteRun:
             run = uow.runs.get(command.run_id)
         return run is not None and getattr(run, "cancel_requested", False)
 
-    def _heartbeat(self, command: ExecuteRunCommand) -> None:
-        uow = self._uow_factory()
-        try:
-            heartbeat(uow, command.run_id)
-            uow.commit()
-        except Exception:
-            uow.rollback()
-        finally:
-            uow.close()
+    def _heartbeat(self, command: ExecuteRunCommand, worker_generation: int) -> bool:
+        """Renew the worker lease, stopping on loss or persistent failure."""
+        from cardre.domain.errors import LeaseLost
+
+        for _ in range(self._heartbeat_max_retries):
+            uow = None
+            try:
+                uow = self._uow_factory()
+                heartbeat(uow, command.run_id, worker_generation=worker_generation)
+                uow.commit()
+                return True
+            except LeaseLost:
+                if uow is not None:
+                    uow.rollback()
+                return False
+            except Exception:
+                if uow is not None:
+                    uow.rollback()
+            finally:
+                if uow is not None:
+                    uow.close()
+
+        self._finalize_run(
+            command.run_id,
+            "interrupted",
+            diagnostic=FinalizeDiagnostic(
+                code="RUN_HEARTBEAT_FAILED",
+                message=(
+                    "Persistent heartbeat write failed after "
+                    f"{self._heartbeat_max_retries} attempts"
+                ),
+            ),
+            worker_generation=worker_generation,
+        )
+        return False
 
     def _execute_steps(
         self,
@@ -272,7 +314,8 @@ class ExecuteRun:
             summary_hook.before_step(
                 step, command, pv_id, run, step_outputs, run_step_records, worker_generation,
             )
-            self._heartbeat(command)
+            if not self._heartbeat(command, worker_generation):
+                return
 
             result = self._step_runner.run_step(
                 pv_id, command.run_id, step, step_outputs, run_step_records,
@@ -286,12 +329,15 @@ class ExecuteRun:
             except LeaseLost as exc:
                 if "cancellation" in str(exc):
                     self._finalize_run(command.run_id, "cancelled")
+                # A generation mismatch means this worker is no longer the
+                # authority. Stop without diagnostics or terminalization; the
+                # current owner or stale recovery decides the Run state.
                 return
 
             self._finalize_artifacts(pending_publishes, artifact_store, publisher)
 
             if result.status == RunStepStatus.FAILED:
-                self._finalize_run(command.run_id, "failed")
+                self._finalize_run(command.run_id, "failed", worker_generation=worker_generation)
                 return
 
         # Cancellation can arrive during the final node: re-read the run

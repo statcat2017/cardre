@@ -331,6 +331,154 @@ def test_cancellation_during_final_node_ends_cancelled(provisioned_project):
     assert str(run.status) == "cancelled", f"final status: {run.status}"
 
 
+def test_watchdog_heartbeat_failure_then_node_raises_returns_cleanly(provisioned_project):
+    """A background heartbeat failure that terminalizes the run as interrupted,
+    followed by the node raising, must not surface RunAlreadyFinalised as a
+    worker crash.
+
+    ExecuteRun must return cleanly, keep the run interrupted, preserve exactly
+    one terminal manifest and one appropriate diagnostic, and treat the
+    post-claim finalization race as a benign lost race.
+    """
+    from cardre.application.runs.execute_run import ExecuteRun, ExecuteRunCommand
+    from cardre.application.runs.finalize_run import FinalizeRun
+
+    project_id, uow_factory, _registry, root = provisioned_project
+    with uow_factory.for_project(project_id) as uow:
+        plan_id = uow.plans.create_plan(project_id, "Plan")
+        pv_id = uow.plans.create_version(
+            plan_id,
+            [StepSpec(
+                step_id="s1", node_type="cardre.noop", node_version="1",
+                category="transform", params={}, params_hash=json_logical_hash({}),
+                parent_step_ids=[], position=0, canonical_step_id="s1",
+            )],
+            is_committed=True,
+        )
+        run_id = uow.runs.create(pv_id)  # created; ExecuteRun claims RUNNING
+        uow.commit()
+
+    finalize = FinalizeRun(
+        lambda: uow_factory.for_project(project_id),
+        _NoopManifestPublisher(),
+        _stub_publisher(uow_factory, project_id),
+        _FakeClock(),
+    )
+
+    node_started = threading.Event()
+    release_node = threading.Event()
+
+    class _RaisingRunner:
+        def run_step(self, *args, **kwargs):
+            node_started.set()
+            release_node.wait(timeout=5)
+            raise RuntimeError("node exploded after terminalization")
+
+    class _NoopCatalogue:
+        def resolve(self, node_type):
+            return _fake_node("1")
+
+    # A write UoW whose heartbeat_fenced fails ONLY on the watchdog thread AND
+    # only once the node has started. The worker's between-node heartbeat always
+    # succeeds (simulating a healthy worker) so the node runs and blocks while
+    # the background watchdog persistently fails and terminalizes the run as
+    # interrupted.
+    class _WatchdogFailingUoW:
+        def __init__(self, inner):
+            self._inner = inner
+
+        def __getattr__(self, name):
+            return getattr(self._inner, name)
+
+        @property
+        def runs(self):
+            inner_runs = self._inner.runs
+
+            class _Runs:
+                def heartbeat_fenced(self, run_id, worker_generation):
+                    if (
+                        threading.current_thread().name.startswith("heartbeat-")
+                        and node_started.is_set()
+                    ):
+                        raise RuntimeError("injected background heartbeat failure")
+                    return True
+
+                def __getattr__(self, name):
+                    return getattr(inner_runs, name)
+
+            return _Runs()
+
+        def close(self):
+            self._inner.close()
+
+        def __enter__(self):
+            return self._inner.__enter__()
+
+        def __exit__(self, *exc):
+            return self._inner.__exit__(*exc)
+
+    def failing_write_factory():
+        return _WatchdogFailingUoW(uow_factory.for_project(project_id))
+
+    executor = ExecuteRun(
+        failing_write_factory,
+        lambda: uow_factory.read_only(project_id),
+        _NoopCatalogue(),
+        _RaisingRunner(),
+        finalize,
+        lambda: type("Store", (), {"finalize": lambda self, s: None, "object_path": lambda self, h: ""})(),
+        lambda: _stub_publisher(uow_factory, project_id),
+        heartbeat_interval_seconds=0.05,
+        heartbeat_max_retries=2,
+    )
+    # The worker's between-node heartbeat is healthy (it is not the failure
+    # under test) and must not contend for the SQLite write lock with the
+    # watchdog's terminalization. Stub it to always succeed so the worker
+    # reaches the node and blocks while the background watchdog terminalizes.
+    executor._heartbeat = lambda command, worker_generation: True
+
+    errors: list[Exception] = []
+
+    def run():
+        try:
+            executor(ExecuteRunCommand(run_id=run_id))
+        except Exception as exc:  # pragma: no cover - failure path
+            errors.append(exc)
+
+    thread = threading.Thread(target=run)
+    thread.start()
+    assert node_started.wait(timeout=5), "node never started"
+
+    # Wait for the watchdog to terminalize the run as interrupted.
+    deadline = time.monotonic() + 5.0
+    run_row = None
+    while time.monotonic() < deadline:
+        with uow_factory.read_only(project_id) as uow:
+            run_row = uow.runs.get(run_id)
+        if run_row is not None and str(run_row.status) == RunStatus.INTERRUPTED.value:
+            break
+        time.sleep(0.05)
+    assert run_row is not None and str(run_row.status) == RunStatus.INTERRUPTED.value, (
+        "watchdog never terminalized the run as interrupted"
+    )
+
+    release_node.set()
+    thread.join(timeout=5)
+    assert not thread.is_alive(), "ExecuteRun did not return cleanly"
+    assert errors == [], f"ExecuteRun surfaced a worker crash: {errors}"
+
+    with uow_factory.read_only(project_id) as uow:
+        run_row = uow.runs.get(run_id)
+        outbox = uow.publications.list_by_run(run_id)
+        diagnostics = uow.runs.get_diagnostics(run_id)
+    assert str(run_row.status) == RunStatus.INTERRUPTED.value
+    manifests = [r for r in outbox if r["kind"] == "manifest"]
+    assert len(manifests) == 1, f"expected exactly one terminal manifest, got {len(manifests)}"
+    assert manifests[0]["manifest_payload"]["status"] == "interrupted"
+    assert len(diagnostics) == 1, f"expected exactly one diagnostic, got {diagnostics}"
+    assert diagnostics[0]["code"] == "RUN_HEARTBEAT_FAILED"
+
+
 def test_lost_lease_blocks_output_persistence(provisioned_project):
     """A worker whose lease was lost (run terminalized as stale) must not
     persist output after the recovery."""

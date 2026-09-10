@@ -267,6 +267,10 @@ def test_reconcile_with_full_worker_pool_does_not_strand_pending_runs(tmp_path):
     try:
         ReconcileDispatches(uow_factory, registry, dispatcher, _FakeCapabilityProbe())()
         # First run occupies the sole worker; second is queued, not stranded.
+        deadline = time.monotonic() + 5
+        while len(started) < 1 and time.monotonic() < deadline:
+            time.sleep(0.01)
+        assert started, "first reconciled run never started"
         assert dispatcher.active_count == 1
         assert dispatcher.queued_count == 1, "second run must be queued"
         release.set()

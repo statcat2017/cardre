@@ -13,12 +13,15 @@ All error responses follow the shape::
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from fastapi import Request
 from fastapi.responses import JSONResponse
 
 from cardre.domain.errors import CardreError, ErrorCode
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # CardreApiError
@@ -72,6 +75,22 @@ async def cardre_api_error_handler(request: Request, exc: CardreApiError) -> JSO
         message=exc.message,
         status_code=exc.status_code,
         context=exc.context,
+    )
+
+
+async def unexpected_error_handler(request: Request, exc: Exception) -> JSONResponse:
+    """Handle an unexpected exception: log the traceback, return a structured 500.
+
+    Domain/API errors are translated elsewhere; this is the single catch-all for
+    anything that reaches the boundary untyped. The response uses the public
+    ``INTERNAL_SERVER_ERROR`` code and never
+    leaks the exception message or traceback to the client.
+    """
+    logger.exception("Unhandled exception serving %s %s", request.method, request.url.path)
+    return error_response(
+        code=ErrorCode.INTERNAL_SERVER_ERROR,
+        message="An unexpected internal error occurred.",
+        status_code=500,
     )
 
 
@@ -136,4 +155,5 @@ __all__ = [
     "cardre_error_handler",
     "error_response",
     "translate_domain_error",
+    "unexpected_error_handler",
 ]

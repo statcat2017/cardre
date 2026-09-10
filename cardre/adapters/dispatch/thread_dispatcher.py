@@ -10,6 +10,15 @@ Requests beyond capacity are queued rather than rejected, so durable dispatch
 reconciliation can hand off every pending run without stranding any behind a
 full pool. ``dispatch()`` raises only on shutdown or on a duplicate run.
 
+Status reporting: ``get_status`` distinguishes ``running`` (active), ``queued``
+(admitted but not yet running), ``completed`` (a successful attempt), ``failed``
+(a callback that raised), and ``unknown`` (never dispatched). A run that
+previously completed and is legitimately redispatched discards its old
+completion/failure bookkeeping at admission, so it reports ``queued`` while
+waiting, ``running`` while executing, and ``completed`` after a successful
+attempt. Bookkeeping is bounded so stale completed/failed state never dominates
+redispatch.
+
 Shutdown semantics: ``shutdown()`` stops admitting new work, cooperatively
 cancels every active run (via the optional ``cancel_run`` hook), and joins the
 worker pool. Any request still queued at shutdown is discarded — its run stays
@@ -22,9 +31,39 @@ from __future__ import annotations
 
 import queue
 import threading
+from collections import OrderedDict
 from collections.abc import Callable
 
 from cardre.application.ports.run_dispatcher import RunRequest
+
+# Upper bound on remembered completed/failed run IDs. Keeps bookkeeping bounded
+# so a long-lived dispatcher never accumulates unbounded state, while still
+# reporting recently-finished runs accurately.
+_MAX_REMEMBERED = 10_000
+
+
+class _BoundedSet:
+    """A set with a fixed capacity that evicts the oldest entries on overflow.
+
+    Used to bound completed/failed bookkeeping so stale state cannot dominate
+    redispatch. Eviction order is insertion order (oldest first).
+    """
+
+    def __init__(self, max_size: int) -> None:
+        self._max_size = max_size
+        self._data: OrderedDict[str, None] = OrderedDict()
+
+    def add(self, run_id: str) -> None:
+        self._data.pop(run_id, None)
+        self._data[run_id] = None
+        while len(self._data) > self._max_size:
+            self._data.popitem(last=False)
+
+    def discard(self, run_id: str) -> None:
+        self._data.pop(run_id, None)
+
+    def __contains__(self, run_id: str) -> bool:
+        return run_id in self._data
 
 
 class ThreadRunDispatcher:
@@ -44,6 +83,8 @@ class ThreadRunDispatcher:
         self._queue: queue.Queue[RunRequest | None] = queue.Queue()
         self._active: dict[str, RunRequest] = {}
         self._queued_or_active: set[str] = set()
+        self._completed = _BoundedSet(_MAX_REMEMBERED)
+        self._failed = _BoundedSet(_MAX_REMEMBERED)
         self._lock = threading.Lock()
         self._shutdown = False
         self._drain_failed = False
@@ -60,6 +101,11 @@ class ThreadRunDispatcher:
                 raise RuntimeError("Dispatcher is shut down")
             if request.run_id in self._queued_or_active:
                 raise RuntimeError(f"Run {request.run_id} is already dispatched")
+            # A legitimately redispatched run discards its old completion or
+            # failure bookkeeping at admission so it reports queued/running/
+            # completed for this attempt rather than stale completed/failed.
+            self._completed.discard(request.run_id)
+            self._failed.discard(request.run_id)
             self._queued_or_active.add(request.run_id)
         self._queue.put(request)
 
@@ -80,14 +126,18 @@ class ThreadRunDispatcher:
             except Exception as exc:  # noqa: BLE001
                 # A failing run must never kill the worker: with a pool of one
                 # an escaped exception would leave every subsequent queued run
-                # unprocessed until restart. Log, drop this run, and continue.
-                # The run stays created/queued with its durable dispatch row so
-                # a later reconcile/restart can recover it.
+                # unprocessed until restart. Log, mark the run failed, and
+                # continue. The run stays durably recoverable via reconcile.
                 import logging
 
                 logging.getLogger(__name__).exception(
                     "run worker %s failed: %s", request.run_id, exc,
                 )
+                with self._lock:
+                    self._failed.add(request.run_id)
+            else:
+                with self._lock:
+                    self._completed.add(request.run_id)
             finally:
                 with self._lock:
                     self._active.pop(request.run_id, None)
@@ -97,7 +147,13 @@ class ThreadRunDispatcher:
         with self._lock:
             if run_id in self._active:
                 return "running"
-        return "completed"
+            if run_id in self._completed:
+                return "completed"
+            if run_id in self._failed:
+                return "failed"
+            if run_id in self._queued_or_active:
+                return "queued"
+        return "unknown"
 
     @property
     def active_count(self) -> int:

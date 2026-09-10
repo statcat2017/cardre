@@ -22,10 +22,15 @@ import pytest
 from cardre.adapters.evidence import EVIDENCE_ADAPTERS, AdapterSpec, get_adapter
 from cardre.adapters.evidence.parsers import match
 from cardre.adapters.evidence.profiles import EVIDENCE_PROFILES
+from cardre.adapters.evidence.reader import EvidenceReader
 from cardre.adapters.filesystem.artifact_store import FsArtifactStore
 from cardre.domain.artifacts import ArtifactRef
-from cardre.domain.evidence.kinds import EvidenceKind
-from cardre.domain.evidence.schemas import SCHEMA_MODELLING_METADATA
+from cardre.domain.evidence.kinds import EvidenceKind, EvidenceNotFoundError, EvidenceParseError
+from cardre.domain.evidence.schemas import (
+    SCHEMA_IV_TABLE,
+    SCHEMA_MODELLING_METADATA,
+    SCHEMA_WOE_TABLE,
+)
 
 # ---------------------------------------------------------------------------
 # Test helper: write/register artifacts through a provisioned project
@@ -500,3 +505,125 @@ def test_scored_dataset_role_based_match(artifacts: _ProjectArtifacts) -> None:
     spec = get_adapter(EvidenceKind.SCORED_DATASET)
     result = _match(artifacts, [art], spec.profile)
     assert len(result) == 1
+
+
+# ---------------------------------------------------------------------------
+# Slice 9: corrupt Parquet must not hide behind a non-match
+# ---------------------------------------------------------------------------
+
+def _reader_for(artifacts: _ProjectArtifacts, uow) -> EvidenceReader:
+    """Build an EvidenceReader over the same store/repos the artifacts use.
+
+    ``uow`` must be an open UnitOfWork whose connection stays alive for the
+    reader's lifetime (the reader binds repo queries to that connection).
+    """
+    return EvidenceReader(artifacts.store, uow.artifacts, uow.run_steps)
+
+
+def _register_raw_parquet(
+    artifacts: _ProjectArtifacts,
+    artifact_id: str,
+    data: bytes,
+    *,
+    schema_version: str,
+) -> ArtifactRef:
+    """Stage raw Parquet bytes and register them as an IV_TABLE artifact."""
+    staged = artifacts.store.stage_bytes(
+        "report", schema_version, data,
+        "application/vnd.apache.parquet", "logical-hash-iv",
+        metadata={"schema_version": schema_version},
+    )
+    path = artifacts.store.publish(staged)
+    art = ArtifactRef(
+        artifact_id=artifact_id, artifact_type="iv_table", role="report",
+        path=str(path), physical_hash=staged.physical_hash,
+        logical_hash="logical-hash-iv", media_type="application/vnd.apache.parquet",
+        metadata={"schema_version": schema_version},
+    )
+    with artifacts.uow_factory.for_project(artifacts.project_id) as uow:
+        uow.artifacts.register(art)
+        return uow.artifacts.get(artifact_id)
+
+
+def test_corrupt_parquet_surfaces_parse_error_instead_of_fallback(
+    artifacts: _ProjectArtifacts,
+) -> None:
+    """A corrupt Parquet of a schema-matched kind must raise EvidenceParseError.
+
+    It must NOT be silently treated as a non-match that lets a valid
+    same-broad-kind candidate win, because that hides data corruption behind an
+    innocent-looking fallback.
+    """
+    corrupt = _register_raw_parquet(
+        artifacts, "iv-corrupt",
+        b"this is not a real parquet file",
+        schema_version=SCHEMA_IV_TABLE,
+    )
+    valid = artifacts.write_parquet(
+        "iv_table", "report", SCHEMA_IV_TABLE,
+        pl.DataFrame({"iv": [0.5, 0.3], "variable": ["age", "income"]}),
+        artifact_id="iv-valid",
+    )
+
+    with artifacts.uow_factory.for_project(artifacts.project_id) as uow:
+        reader = _reader_for(artifacts, uow)
+        with pytest.raises(EvidenceParseError):
+            reader.find([corrupt, valid], EvidenceKind.IV_TABLE)
+
+
+def test_parquet_has_columns_distinguishes_unreadable_bytes(
+    artifacts: _ProjectArtifacts,
+) -> None:
+    """The payload check must distinguish 'missing columns' (a non-match) from
+    'unreadable bytes' (a typed parse error)."""
+    from cardre.adapters.evidence.parsers import parquet_has_columns
+
+    corrupt = _register_raw_parquet(
+        artifacts, "iv-corrupt-check",
+        b"definitely not parquet",
+        schema_version=SCHEMA_IV_TABLE,
+    )
+    spec = get_adapter(EvidenceKind.IV_TABLE)
+    with pytest.raises(EvidenceParseError):
+        parquet_has_columns(corrupt, spec.profile.required_columns or set(), artifacts.store)
+
+
+def test_valid_parquet_incompatible_schema_still_falls_back(
+    artifacts: _ProjectArtifacts,
+) -> None:
+    """A valid, readable Parquet whose schema_version is incompatible with the
+    requested kind is a genuine non-match (not a parse error), so callers can
+    still fall back to another artifact."""
+    valid = artifacts.write_parquet(
+        "iv_table", "report", SCHEMA_WOE_TABLE,
+        pl.DataFrame({"iv": [0.5], "variable": ["age"]}),
+        artifact_id="iv-wrong-schema",
+    )
+
+    with artifacts.uow_factory.for_project(artifacts.project_id) as uow:
+        reader = _reader_for(artifacts, uow)
+        with pytest.raises(EvidenceNotFoundError):
+            reader.find([valid], EvidenceKind.IV_TABLE)
+
+def test_missing_parquet_file_remains_a_non_match(
+    artifacts: _ProjectArtifacts,
+) -> None:
+    """A registered artifact whose Parquet file is missing is treated as
+    ineligible (a non-match), not a parse error — matching how a missing JSON
+    payload is handled, so callers may fall back to another candidate."""
+    artifacts.store.stage_bytes(
+        "report", SCHEMA_IV_TABLE, b"irrelevant",
+        "application/vnd.apache.parquet", "logical-hash-missing",
+        metadata={"schema_version": SCHEMA_IV_TABLE},
+    )
+    art = ArtifactRef(
+        artifact_id="iv-missing-file", artifact_type="iv_table", role="report",
+        path="/nonexistent/iv.parquet", physical_hash="missing-iv-hash",
+        logical_hash="logical-hash-missing", media_type="application/vnd.apache.parquet",
+        metadata={"schema_version": SCHEMA_IV_TABLE},
+    )
+    with artifacts.uow_factory.for_project(artifacts.project_id) as uow:
+        uow.artifacts.register(art)
+        reader = _reader_for(artifacts, uow)
+        with pytest.raises(EvidenceNotFoundError):
+            reader.read("iv-missing-file", EvidenceKind.IV_TABLE)

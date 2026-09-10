@@ -5,6 +5,8 @@ Verifies that the renderer emits every section of the ReportBundle.
 
 from __future__ import annotations
 
+import pytest
+
 from cardre.adapters.rendering.html_report import HtmlReportRenderer
 from cardre.application.reporting.schema import (
     ArtifactEntry,
@@ -42,6 +44,7 @@ from cardre.application.reporting.schema import (
     VariableInfo,
     VariableSelectionInfo,
 )
+from cardre.domain.errors import CardreError, ErrorCode
 
 
 def _full_bundle() -> ReportBundle:
@@ -152,3 +155,44 @@ class TestHtmlRendererFullSections:
         html = HtmlReportRenderer.render_to_html(_full_bundle())
         assert "Generated:" in html
         assert "2026-07-24T12:00:00Z" in html
+
+
+def _bundle_with_malformed_pathway() -> ReportBundle:
+    # Simulate malformed serialized report data: ``pathway.steps`` missing.
+    return ReportBundle.model_construct(pathway={"pathway_id": "p"})
+
+
+def _bundle_with_malformed_validation() -> ReportBundle:
+    # Simulate malformed serialized report data: ``metrics_by_role`` missing.
+    return ReportBundle.model_construct(
+        validation={"stability": StabilityInfo(psi_by_role=[])},
+    )
+
+
+class TestHtmlRendererMalformedPayload:
+    def test_missing_pathway_steps_raises_typed_report_data_error(self):
+        with pytest.raises(CardreError) as exc_info:
+            HtmlReportRenderer.render_to_html(_bundle_with_malformed_pathway())
+        assert exc_info.value.code == ErrorCode.REPORT_DATA_INVALID
+        assert "pathway" in exc_info.value.message
+        assert "steps" in exc_info.value.message
+
+    def test_missing_validation_metrics_raises_typed_report_data_error(self):
+        with pytest.raises(CardreError) as exc_info:
+            HtmlReportRenderer.render_to_html(_bundle_with_malformed_validation())
+        assert exc_info.value.code == ErrorCode.REPORT_DATA_INVALID
+        assert "metrics_by_role" in exc_info.value.message
+        assert "validation" in exc_info.value.message
+
+    def test_missing_pathway_steps_via_render_never_emits_partial_report(self, tmp_path):
+        renderer = HtmlReportRenderer()
+        with pytest.raises(CardreError):
+            renderer.render(_bundle_with_malformed_pathway(), tmp_path)
+        # A controlled failure must not leave a silently truncated report behind.
+        assert not (tmp_path / "report.html").exists()
+
+    def test_missing_validation_metrics_via_render_never_emits_partial_report(self, tmp_path):
+        renderer = HtmlReportRenderer()
+        with pytest.raises(CardreError):
+            renderer.render(_bundle_with_malformed_validation(), tmp_path)
+        assert not (tmp_path / "report.html").exists()
