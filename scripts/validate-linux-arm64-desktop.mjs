@@ -7,12 +7,13 @@ import { fileURLToPath } from "node:url";
 import { createHash } from "node:crypto";
 import {
   access,
+  chmod,
   copyFile,
   mkdir,
   mkdtemp,
   readFile,
-  rename,
   rm,
+  stat,
   symlink,
   writeFile,
 } from "node:fs/promises";
@@ -21,9 +22,10 @@ import { execFile as execFileCallback } from "node:child_process";
 
 const execFile = promisify(execFileCallback);
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const appBinary = process.env.CARDRE_APP_BINARY ?? "/usr/bin/cardre";
-const sidecarBinary =
+const sourceAppBinary = process.env.CARDRE_APP_BINARY ?? "/usr/bin/cardre";
+const sourceSidecarBinary =
   process.env.CARDRE_SIDECAR_BINARY ?? "/usr/bin/cardre-api";
+let appBinary = sourceAppBinary;
 const webKitDriver = process.env.WEBKIT_WEBDRIVER ?? "/usr/bin/WebKitWebDriver";
 const tauriDriver =
   process.env.TAURI_DRIVER ?? join(homedir(), ".cargo", "bin", "tauri-driver");
@@ -48,12 +50,34 @@ let driverUrl;
 let sessionId;
 let appPid;
 let stateRoot;
+let packagedAppBinary;
 let appHome;
 let downloadDirectory;
 let registryPath;
 
 function delay(ms) {
   return new Promise((resolveDelay) => setTimeout(resolveDelay, ms));
+}
+
+async function binaryFingerprint(path) {
+  const details = await stat(path);
+  return {
+    device: details.dev,
+    inode: details.ino,
+    mode: details.mode,
+    modifiedAt: details.mtimeMs,
+    changedAt: details.ctimeMs,
+    size: details.size,
+  };
+}
+
+async function copyExecutable(source, destination) {
+  await copyFile(source, destination);
+  await chmod(destination, 0o755);
+}
+
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 async function freePort() {
@@ -154,7 +178,11 @@ async function startSession() {
     },
   });
   sessionId = value.sessionId;
-  appPid = await execFile("/usr/bin/pgrep", ["-n", "-f", "^/usr/bin/cardre$"])
+  appPid = await execFile("/usr/bin/pgrep", [
+    "-n",
+    "-f",
+    `^${escapeRegExp(appBinary)}$`,
+  ])
     .then(({ stdout }) => Number(stdout.trim()))
     .catch(() => undefined);
   await webdriver("POST", `/session/${sessionId}/timeouts`, {
@@ -667,6 +695,55 @@ async function runWorkflow() {
     const body = await response.json();
     return body.reports?.find((item) => item.report_type === "report") ?? false;
   });
+  const reportResponse = await fetch(`${apiUrl}${report.open_url}`);
+  assert.ok(reportResponse.ok, "Generated report HTML should be readable");
+  const reportHtml = await reportResponse.text();
+  const finalCountMatch = reportHtml.match(
+    /<strong>Final variable count:<\/strong>\s*(\d+)/,
+  );
+  const excludedCountMatch = reportHtml.match(
+    /<strong>Excluded variable count:<\/strong>\s*(\d+)/,
+  );
+  const variablesSection = reportHtml.match(
+    /<h2>Variables<\/h2>([\s\S]*?)(?=<h2>|<\/body>)/,
+  );
+  assert.ok(
+    finalCountMatch,
+    "Report summary should include final variable count",
+  );
+  assert.ok(
+    excludedCountMatch,
+    "Report summary should include excluded variable count",
+  );
+  assert.ok(
+    variablesSection,
+    "Report should include detailed variable evidence",
+  );
+  const variableRows = [
+    ...variablesSection[1].matchAll(/<tr>(.*?)<\/tr>/gs),
+  ].slice(1);
+  const variableStatuses = variableRows
+    .map(([, row]) => [...row.matchAll(/<td>(.*?)<\/td>/gs)][1]?.[1])
+    .filter(Boolean)
+    .map((status) => status.trim().toLowerCase());
+  const finalVariableCount = Number(finalCountMatch[1]);
+  const excludedVariableCount = Number(excludedCountMatch[1]);
+  assert.ok(
+    variableStatuses.includes("included"),
+    "Completed scorecard report should contain included variable evidence",
+  );
+  assert.equal(
+    finalVariableCount,
+    variableStatuses.filter((status) => status === "included").length,
+    "Report final variable count should match included detailed evidence",
+  );
+  assert.equal(
+    excludedVariableCount,
+    variableStatuses.filter((status) =>
+      ["excluded", "rejected"].includes(status),
+    ).length,
+    "Report excluded variable count should match excluded detailed evidence",
+  );
   const handlesBeforeReport = await webdriver(
     "GET",
     `/session/${sessionId}/window/handles`,
@@ -776,7 +853,7 @@ async function runWorkflow() {
         ok: true,
         architecture: "arm64",
         os: "Ubuntu 24.04",
-        appBinary,
+        appBinary: sourceAppBinary,
         sidecarResolvedBesideApp: true,
         developmentPath: noDevelopmentPath,
         projectId,
@@ -793,6 +870,7 @@ async function runWorkflow() {
         downloads: savedDownloads,
         reportOpened,
         reportHtmlVerified,
+        reportVariableCountsMatchEvidence: true,
         auditPackChecksumsVerified: verifiedChecksumCount,
       },
       null,
@@ -812,6 +890,7 @@ async function runWorkflow() {
     datasetSelectedThroughFileInput: true,
     reportOpened,
     reportHtmlVerified,
+    reportVariableCountsMatchEvidence: true,
   };
 }
 
@@ -851,9 +930,12 @@ async function verifyReopenState(expected) {
 
 async function verifyUnavailableSidecar() {
   await endSession();
-  const disabledPath = `${sidecarBinary}.validation-disabled`;
-  await access(sidecarBinary);
-  await rename(sidecarBinary, disabledPath);
+  const missingSidecarDirectory = join(stateRoot, "app-without-sidecar");
+  await mkdir(missingSidecarDirectory, { recursive: true });
+  const missingSidecarApp = join(missingSidecarDirectory, "cardre");
+  await copyExecutable(packagedAppBinary, missingSidecarApp);
+  const normalAppBinary = appBinary;
+  appBinary = missingSidecarApp;
   try {
     await startSession();
     await waitForText("Cardre could not start its local API", 20_000);
@@ -864,7 +946,7 @@ async function verifyUnavailableSidecar() {
     return { unavailableSidecarShowsClearError: true };
   } finally {
     await endSession();
-    await rename(disabledPath, sidecarBinary);
+    appBinary = normalAppBinary;
   }
 }
 
@@ -883,6 +965,17 @@ async function main() {
   );
   await mkdir(outputDirectory, { recursive: true });
   stateRoot = await mkdtemp(join(tmpdir(), "cardre-linux-arm64-desktop-"));
+  const sourceBinaryFingerprints = {
+    app: await binaryFingerprint(sourceAppBinary),
+    sidecar: await binaryFingerprint(sourceSidecarBinary),
+  };
+  const packageDirectory = join(stateRoot, "packaged-app");
+  await mkdir(packageDirectory, { recursive: true });
+  packagedAppBinary = join(packageDirectory, "cardre");
+  const packagedSidecarBinary = join(packageDirectory, "cardre-api");
+  await copyExecutable(sourceAppBinary, packagedAppBinary);
+  await copyExecutable(sourceSidecarBinary, packagedSidecarBinary);
+  appBinary = packagedAppBinary;
   appHome = join(stateRoot, "home");
   downloadDirectory = join(stateRoot, "chosen-downloads");
   registryPath = join(stateRoot, "registry", "projects.json");
@@ -900,9 +993,27 @@ async function main() {
   const workflow = await runWorkflow();
   const persistence = await verifyReopenState(workflow);
   const sidecarFailure = await verifyUnavailableSidecar();
+  assert.deepEqual(
+    {
+      app: await binaryFingerprint(sourceAppBinary),
+      sidecar: await binaryFingerprint(sourceSidecarBinary),
+    },
+    sourceBinaryFingerprints,
+    "Installed app and sidecar binaries must remain unchanged",
+  );
   await writeFile(
     join(outputDirectory, "desktop-workflow-result.json"),
-    `${JSON.stringify({ ok: true, ...workflow, ...persistence, ...sidecarFailure }, null, 2)}\n`,
+    `${JSON.stringify(
+      {
+        ok: true,
+        ...workflow,
+        ...persistence,
+        ...sidecarFailure,
+        installedBinariesUnchanged: true,
+      },
+      null,
+      2,
+    )}\n`,
   );
   console.log(
     JSON.stringify({
@@ -910,6 +1021,7 @@ async function main() {
       ...workflow,
       ...persistence,
       ...sidecarFailure,
+      installedBinariesUnchanged: true,
     }),
   );
 }
