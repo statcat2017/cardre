@@ -8,15 +8,21 @@ standard envelope, and that query use cases close their UoWs.
 from __future__ import annotations
 
 import uuid
+from contextlib import nullcontext
+from io import BytesIO
+from types import SimpleNamespace
 
+import polars as pl
 import pytest
 from fastapi.testclient import TestClient
 
 from cardre.adapters.sqlite.project_provisioner import SqliteProjectProvisioner
 from cardre.adapters.system.project_registry import JsonProjectRegistry  # noqa: F401
 from cardre.api.app import create_app
+from cardre.application.reporting.download_scoring_export import DownloadScoringExport
 from cardre.bootstrap.container import build_container
 from cardre.bootstrap.settings import Settings
+from cardre.domain.artifacts import ArtifactRef
 from cardre.domain.diagnostics import utc_now_iso
 
 
@@ -306,3 +312,52 @@ def test_report_html_retrieval_rejects_project_escape(env, tmp_path):
     response = client.get(f"/projects/{pid}/runs/{run_id}/reports/{report_id}/html")
     assert response.status_code == 404
     assert response.json()["detail"]["code"] == "ARTIFACT_NOT_FOUND"
+def _parquet_with_unexpected_columns() -> bytes:
+    buffer = BytesIO()
+    pl.DataFrame({"unexpected": [1]}).write_parquet(buffer)
+    return buffer.getvalue()
+
+
+@pytest.mark.parametrize(
+    ("artifact_type", "raw"),
+    [
+        ("scorecard_table", b"not a parquet file"),
+        ("scoring_export_python", b"{not json"),
+        ("scorecard_table", _parquet_with_unexpected_columns()),
+    ],
+    ids=["malformed-parquet", "invalid-json", "missing-scorecard-columns"],
+)
+def test_invalid_scoring_export_returns_structured_error(env, artifact_type, raw):
+    client, container = env
+    artifact = ArtifactRef(
+        artifact_id="corrupt-export",
+        artifact_type=artifact_type,
+        role="output",
+        path="exports/corrupt",
+        physical_hash="unused",
+        logical_hash="unused",
+    )
+    uow = SimpleNamespace(
+        runs=SimpleNamespace(get=lambda _run_id: SimpleNamespace(status="succeeded")),
+        artifacts=SimpleNamespace(
+            output_artifact_ids_for_run=lambda _run_id: [artifact.artifact_id],
+            get=lambda _artifact_id: artifact,
+        ),
+    )
+    reader = SimpleNamespace(read_bytes=lambda _artifact: raw)
+    container.download_scoring_export = DownloadScoringExport(
+        SimpleNamespace(read_only=lambda _project_id: nullcontext(uow)),
+        lambda _project_id: reader,
+    )
+
+    response = client.get(
+        "/projects/project/runs/run/exports/download",
+        params={"artifact_id": artifact.artifact_id},
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"]["code"] == "ARTIFACT_INVALID"
+    assert response.json()["detail"]["context"] == {
+        "artifact_id": artifact.artifact_id,
+        "artifact_type": artifact_type,
+    }

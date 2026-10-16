@@ -370,6 +370,7 @@ jobs:
       - smoke-test-packaged-sidecar
       - smoke-test-sidecar
       - check-api-contracts
+      - test-browser-e2e
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -388,6 +389,7 @@ jobs:
           SMOKE_TEST_PACKAGED_SIDECAR: ${{ needs.smoke-test-packaged-sidecar.result }}
           SMOKE_TEST_SIDECAR: ${{ needs.smoke-test-sidecar.result }}
           CHECK_API_CONTRACTS: ${{ needs.check-api-contracts.result }}
+          TEST_BROWSER_E2E: ${{ needs.test-browser-e2e.result }}
         run: |
           failures=0
           for job in \
@@ -402,7 +404,8 @@ jobs:
             "check-tauri:$CHECK_TAURI" \
             "smoke-test-packaged-sidecar:$SMOKE_TEST_PACKAGED_SIDECAR" \
             "smoke-test-sidecar:$SMOKE_TEST_SIDECAR" \
-            "check-api-contracts:$CHECK_API_CONTRACTS"
+            "check-api-contracts:$CHECK_API_CONTRACTS" \
+            "test-browser-e2e:$TEST_BROWSER_E2E"
           do
             name=${job%%:*}
             result=${job#*:}
