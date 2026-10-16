@@ -176,25 +176,25 @@ jobs:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-python-env
         with:
-          python-version: \${{ env.PYTHON_VERSION }}
+          python-version: ${{ env.PYTHON_VERSION }}
           extras: sidecar,test
       - uses: ./.github/actions/setup-frontend
         with:
-          node-version: \${{ env.NODE_VERSION }}
+          node-version: ${{ env.NODE_VERSION }}
       - name: Install Chromium
         working-directory: frontend
         run: npx playwright install --with-deps chromium
       - name: Run real browser workflow
         working-directory: frontend
         env:
-          CARDRE_BROWSER_OUTPUT_DIR: \${{ runner.temp }}/cardre-browser-e2e
+          CARDRE_BROWSER_OUTPUT_DIR: ${{ runner.temp }}/cardre-browser-e2e
         run: npm run test:e2e
       - name: Upload browser evidence
         if: always()
         uses: actions/upload-artifact@v7
         with:
           name: cardre-dataset-browse-browser-evidence
-          path: \${{ runner.temp }}/cardre-browser-e2e
+          path: ${{ runner.temp }}/cardre-browser-e2e
           if-no-files-found: ignore
 
   build-sidecar:
