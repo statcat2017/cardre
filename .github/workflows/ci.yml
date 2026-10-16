@@ -197,7 +197,7 @@ jobs:
       - uses: actions/checkout@v7
       - name: Install system deps
         run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev
-      - uses: actions-rust-lang/setup-rust-toolchain@v1
+      - uses: actions-rust-lang/setup-rust-toolchain@v2
         with:
           cache-workspaces: "frontend/src-tauri"
       - name: Download sidecar binary
@@ -232,7 +232,7 @@ jobs:
       - uses: actions/checkout@v7
       - name: Install system deps
         run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev
-      - uses: actions-rust-lang/setup-rust-toolchain@v1
+      - uses: actions-rust-lang/setup-rust-toolchain@v2
         with:
           cache-workspaces: "frontend/src-tauri"
       - name: Download sidecar binary
