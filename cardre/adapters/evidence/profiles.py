@@ -148,7 +148,7 @@ EVIDENCE_PROFILES: dict[EvidenceKind, _Profile] = {
         expected_roles={"report"},
         expected_artifact_types={"validation_metrics"},
         schema_version=SCHEMA_VALIDATION_METRICS,
-        required_keys={"metrics"},
+        required_keys={"roles"},
     ),
     EvidenceKind.CUTOFF_ANALYSIS: _Profile(
         expected_roles={"report"},

@@ -155,6 +155,39 @@ class TestLaunchPathway:
             raise AssertionError(f"Run {run_id} did not reach a terminal state")
         assert status == "succeeded", f"Run did not succeed: {poll.text}"
 
+        generated_report = client.post(f"/projects/{project_id}/runs/{run_id}/reports")
+        assert generated_report.status_code == 201, generated_report.text
+        report = generated_report.json()
+        assert report["run_id"] == run_id
+        assert report["report_type"] == "report"
+        assert report["file_name"] == "model-development-report.html"
+        assert report["open_url"].endswith(f"/reports/{report['report_id']}/html")
+        assert report["download_url"].endswith(f"/reports/{report['report_id']}/download")
+
+        listed_reports = client.get(f"/projects/{project_id}/runs/{run_id}/reports")
+        assert listed_reports.status_code == 200, listed_reports.text
+        assert any(
+            item["report_id"] == report["report_id"]
+            for item in listed_reports.json()["reports"]
+        )
+
+        open_report = client.get(report["open_url"])
+        assert open_report.status_code == 200, open_report.text
+        assert open_report.headers["content-type"].startswith("text/html")
+        assert open_report.headers["content-disposition"].startswith("inline;")
+        html = open_report.text
+        for section in (
+            "Executive Summary", "Dataset Roles", "Variables", "Model", "Score Scaling",
+            "Validation", "Cutoffs", "Limitations", "Reproducibility",
+        ):
+            assert f"<h2>{section}</h2>" in html
+        assert run_id in html
+
+        downloaded_report = client.get(report["download_url"])
+        assert downloaded_report.status_code == 200, downloaded_report.text
+        assert downloaded_report.headers["content-disposition"].startswith("attachment;")
+        assert downloaded_report.content == open_report.content
+
         with uow_factory.for_project(project_id) as uow:
             run_steps = uow.run_steps.get_for_run(run_id)
             assert all(rs.status.value == "succeeded" for rs in run_steps), (

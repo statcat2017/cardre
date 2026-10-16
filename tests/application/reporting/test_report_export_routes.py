@@ -233,6 +233,85 @@ def test_generate_report_registers_discoverable_report(env, tmp_path):
     assert any(r.run_id == run_id for r in items)
 
 
+def test_generate_report_route_returns_readiness_blockers_without_changing_run(env, tmp_path):
+    client, container = env
+    pid, root = _provision(container, tmp_path)
+    _, _, run_id = _seed_run(container, pid, root)
+
+    response = client.post(f"/projects/{pid}/runs/{run_id}/reports")
+
+    assert response.status_code == 409
+    detail = response.json()["detail"]
+    assert detail["code"] == "REPORT_BLOCKED"
+    assert detail["context"]["run_id"] == run_id
+    assert detail["context"]["blockers"]
+    run = client.get(f"/projects/{pid}/runs/{run_id}")
+    assert run.status_code == 200
+    assert run.json()["status"] == "succeeded"
+
+
+def test_report_html_retrieval_is_scoped_to_registered_report(env, tmp_path):
+    client, container = env
+    pid, root = _provision(container, tmp_path)
+    _, _, run_id = _seed_run(container, pid, root)
+    report_id = str(uuid.uuid4())
+    report_path = root / "reports" / "run.html"
+    report_path.parent.mkdir(parents=True)
+    report_path.write_text("<html><h1>Stored model report</h1></html>", encoding="utf-8")
+    with container.uow_factory.for_project(pid) as uow:
+        uow.reports.register(
+            report_id=report_id,
+            run_id=run_id,
+            report_type="report",
+            path="reports/run.html",
+            created_at=utc_now_iso(),
+            scope="run",
+        )
+        uow.commit()
+
+    opened = client.get(f"/projects/{pid}/runs/{run_id}/reports/{report_id}/html")
+    downloaded = client.get(f"/projects/{pid}/runs/{run_id}/reports/{report_id}/download")
+    assert opened.status_code == 200
+    assert opened.headers["content-type"].startswith("text/html")
+    assert opened.headers["content-disposition"].startswith("inline;")
+    assert opened.headers["x-content-type-options"] == "nosniff"
+    assert "default-src 'none'" in opened.headers["content-security-policy"]
+    assert "Stored model report" in opened.text
+    assert downloaded.status_code == 200
+    assert downloaded.headers["content-disposition"].startswith("attachment;")
+    assert downloaded.content == opened.content
+
+    missing = client.get(f"/projects/{pid}/runs/{run_id}/reports/unknown/html")
+    assert missing.status_code == 404
+    assert missing.json()["detail"]["code"] == "ARTIFACT_NOT_FOUND"
+
+    foreign_pid, _ = _provision(container, tmp_path, "Foreign")
+    foreign = client.get(f"/projects/{foreign_pid}/runs/{run_id}/reports/{report_id}/html")
+    assert foreign.status_code == 404
+    assert foreign.json()["detail"]["code"] == "RUN_NOT_FOUND"
+
+
+def test_report_html_retrieval_rejects_project_escape(env, tmp_path):
+    client, container = env
+    pid, root = _provision(container, tmp_path)
+    _, _, run_id = _seed_run(container, pid, root)
+    outside = tmp_path / "outside.html"
+    outside.write_text("<h1>outside</h1>", encoding="utf-8")
+    report_id = str(uuid.uuid4())
+    with container.uow_factory.for_project(pid) as uow:
+        uow.reports.register(
+            report_id=report_id,
+            run_id=run_id,
+            report_type="report",
+            path="../outside.html",
+            created_at=utc_now_iso(),
+            scope="run",
+        )
+        uow.commit()
+
+    response = client.get(f"/projects/{pid}/runs/{run_id}/reports/{report_id}/html")
+    assert response.status_code == 404
+    assert response.json()["detail"]["code"] == "ARTIFACT_NOT_FOUND"
 def _parquet_with_unexpected_columns() -> bytes:
     buffer = BytesIO()
     pl.DataFrame({"unexpected": [1]}).write_parquet(buffer)

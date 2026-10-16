@@ -103,6 +103,15 @@ export function useProjectWorkspace(scope: ProjectScope) {
     enabled: !!effectiveSelectedRunId,
   });
 
+  const generateReportMutation = useMutation({
+    mutationFn: (runId: string) => scoped.generateReport(runId),
+    onSuccess: async (_report, runId) => {
+      await queryClient.invalidateQueries({
+        queryKey: ["runReports", scope.projectId, runId],
+      });
+    },
+  });
+
   const downloadExportMutation = useMutation({
     mutationFn: async ({
       runId,
@@ -339,6 +348,17 @@ export function useProjectWorkspace(scope: ProjectScope) {
     runEvidenceQuery,
     reportsQuery,
     exportsQuery,
+    generateReportMutation,
+    reportGenerationError:
+      generateReportMutation.variables === effectiveSelectedRunId
+        ? generateReportMutation.error
+        : null,
+    reportGenerationPending:
+      generateReportMutation.isPending &&
+      generateReportMutation.variables === effectiveSelectedRunId,
+    readReportHtml: (runId: string, reportId: string) => scoped.readReportHtml(runId, reportId),
+    downloadReportHtml: (runId: string, reportId: string) =>
+      scoped.downloadReportHtml(runId, reportId),
     downloadExportMutation,
     stepsQuery,
     nodeTypesQuery,

@@ -18,7 +18,7 @@
     "observation_level": "",
     "development_sample": "train",
     "validation_samples": [],
-    "final_variable_count": 0,
+    "final_variable_count": 3,
     "excluded_variable_count": 0
   },
   "dataset_roles": [],
@@ -1338,9 +1338,52 @@
     "max_score": 0
   },
   "validation": {
-    "metrics_by_role": [],
+    "metrics_by_role": [
+      {
+        "role": "oot",
+        "row_count": 12,
+        "auc": 0.359375,
+        "gini": -0.28125,
+        "ks": 0.5,
+        "bad_rate": 0.3333333333333333,
+        "score_mean": null,
+        "score_min": null,
+        "score_max": null
+      },
+      {
+        "role": "test",
+        "row_count": 12,
+        "auc": 0.5625,
+        "gini": 0.125,
+        "ks": 0.375,
+        "bad_rate": 0.3333333333333333,
+        "score_mean": null,
+        "score_min": null,
+        "score_max": null
+      },
+      {
+        "role": "train",
+        "row_count": 36,
+        "auc": 0.996528,
+        "gini": 0.993056,
+        "ks": 1.0,
+        "bad_rate": 0.3333333333333333,
+        "score_mean": null,
+        "score_min": null,
+        "score_max": null
+      }
+    ],
     "stability": {
-      "psi_by_role": []
+      "psi_by_role": [
+        {
+          "comparison": "psi_train_vs_oot",
+          "score_psi": 1.145849
+        },
+        {
+          "comparison": "psi_train_vs_test",
+          "score_psi": 1.060777
+        }
+      ]
     }
   },
   "cutoffs": {

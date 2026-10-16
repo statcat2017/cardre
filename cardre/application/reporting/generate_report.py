@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -29,6 +30,7 @@ class GenerateReportCommand:
 
 @dataclass(frozen=True)
 class GenerateReportResult:
+    report_id: str | None
     html_path: str
     bundle_path: str
     report_dir: str
@@ -51,15 +53,27 @@ class GenerateReport:
         self._renderer = renderer
 
     def __call__(self, command: GenerateReportCommand) -> GenerateReportResult:
-        # Default output location is project-scoped: the project root carries a
-        # ``reports/<run_id>/`` directory. The artifact reader's root is the
-        # canonical project root, so reports stay beneath the project.
+        artifact_reader = self._artifact_reader_factory(command.project_id)
+        generated_report_id = str(uuid.uuid4())
         if command.output_dir is not None:
             output_dir = Path(command.output_dir)
+            if hasattr(artifact_reader, "root"):
+                project_root = Path(artifact_reader.root).resolve()
+                try:
+                    output_dir.resolve().relative_to(project_root)
+                except ValueError:
+                    pass
+                else:
+                    output_dir = output_dir / generated_report_id
         else:
-            artifact_reader = self._artifact_reader_factory(command.project_id)
-            output_dir = Path(artifact_reader.root) / "reports" / command.run_id
-        artifact_reader = self._artifact_reader_factory(command.project_id)
+            # Keep generated reports beneath the project and give every run
+            # of this use case an immutable version directory.
+            output_dir = (
+                Path(artifact_reader.root)
+                / "reports"
+                / command.run_id
+                / generated_report_id
+            )
         with self._uow_factory.read_only(command.project_id) as uow:
             evidence_reader = self._evidence_reader_factory(artifact_reader, uow.artifacts, uow.run_steps)
             collector = self._collector_factory(evidence_reader, artifact_reader)
@@ -114,21 +128,28 @@ class GenerateReport:
         # query use case can discover it project- and run-scoped. Only register
         # when the artifact reader exposes a project root (production wiring);
         # pure-port test doubles may not support write access.
+        report_id = None
         if hasattr(artifact_reader, "root"):
-            import uuid
-
             from cardre.domain.diagnostics import utc_now_iso
-            report_id = str(uuid.uuid4())
-            root = Path(artifact_reader.root)
-            html_rel = str(html_path.relative_to(root)) if str(html_path).startswith(str(root)) else str(html_path)
-            with self._uow_factory.for_project(command.project_id) as uow:
-                uow.reports.register(
-                    report_id=report_id, run_id=command.run_id,
-                    report_type="report", path=html_rel, created_at=utc_now_iso(),
-                    scope="run",
-                )
-                uow.commit()
+            root = Path(artifact_reader.root).resolve()
+            try:
+                html_rel = Path(html_path).resolve().relative_to(root)
+            except ValueError:
+                # Audit packs can be written to a user-selected external
+                # destination. Such copies are not project reports and must
+                # not be registered as retrievable project-scoped reports.
+                pass
+            else:
+                report_id = generated_report_id
+                with self._uow_factory.for_project(command.project_id) as uow:
+                    uow.reports.register(
+                        report_id=report_id, run_id=command.run_id,
+                        report_type="report", path=str(html_rel), created_at=utc_now_iso(),
+                        scope="run",
+                    )
+                    uow.commit()
         return GenerateReportResult(
+            report_id=report_id,
             html_path=str(html_path),
             bundle_path=str(bundle_path),
             report_dir=str(output_dir),

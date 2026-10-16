@@ -395,6 +395,9 @@ class HtmlReportRenderer:
         )
         return (
             "<!doctype html><html><head><meta charset=\"utf-8\">"
+            "<meta http-equiv=\"Content-Security-Policy\" "
+            "content=\"default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; "
+            "form-action 'none'; object-src 'none'\">"
             f"<title>{title}</title><style>"
             "body{font-family:system-ui;margin:2rem;max-width:1200px}"
             "table{border-collapse:collapse;margin:1rem 0}th,td{border:1px solid #ddd;padding:.5rem;text-align:left}"

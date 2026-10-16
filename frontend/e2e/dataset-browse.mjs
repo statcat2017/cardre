@@ -130,6 +130,49 @@ async function downloadExport(page, fileName, mediaType) {
   assert.equal(await download.failure(), null, fileName + " download should complete");
 }
 
+async function generateAndOpenReport(page, runId) {
+  const generation = page.waitForResponse((response) => {
+    const url = new URL(response.url());
+    return (
+      response.request().method() === "POST" &&
+      url.pathname.endsWith("/runs/" + runId + "/reports")
+    );
+  });
+  await page.getByRole("button", { name: "Generate report" }).click();
+  const generated = await generation;
+  assert.equal(generated.status(), 201, await generated.text());
+  const report = await generated.json();
+  assert.equal(report.run_id, runId);
+  assert.equal(report.report_type, "report");
+  assert.equal(report.file_name, "model-development-report.html");
+
+  const openResponsePromise = page.waitForResponse((response) => {
+    return new URL(response.url()).pathname.endsWith("/reports/" + report.report_id + "/html");
+  });
+  const reportPagePromise = page.context().waitForEvent("page");
+  await page.getByRole("button", { name: "Open", exact: true }).click();
+  const [openResponse, reportPage] = await Promise.all([openResponsePromise, reportPagePromise]);
+  assert.equal(openResponse.status(), 200);
+  await reportPage.waitForFunction(
+    () => document.body.innerText.includes("Executive Summary") &&
+      document.body.innerText.includes("Reproducibility"),
+  );
+  assert.ok((await reportPage.title()).length > 0);
+  await reportPage.close();
+
+  const downloadResponsePromise = page.waitForResponse((response) => {
+    return new URL(response.url()).pathname.endsWith("/reports/" + report.report_id + "/download");
+  });
+  const downloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Download", exact: true }).click();
+  const [downloadResponse, download] = await Promise.all([downloadResponsePromise, downloadPromise]);
+  assert.equal(downloadResponse.status(), 200);
+  assert.ok(downloadResponse.headers()["content-type"].startsWith("text/html"));
+  assert.equal(download.suggestedFilename(), "model-development-report.html");
+  assert.equal(await download.failure(), null, "model report download should complete");
+  return report.report_id;
+}
+
 async function run() {
   assert.ok(existsSync(datasetPath), "Expected fixture dataset at " + datasetPath);
   temporaryRoot = await mkdtemp(join(tmpdir(), "cardre-browse-e2e-"));
@@ -342,6 +385,7 @@ async function run() {
     await downloadExport(page, "scorecard.csv", "text/csv");
     await downloadExport(page, "scorecard.py", "text/x-python");
     await downloadExport(page, "scorecard.sql", "application/sql");
+    const reportId = await generateAndOpenReport(page, runRecord.run_id);
 
     if (outputDir) {
       await mkdir(outputDir, { recursive: true });
@@ -362,6 +406,9 @@ async function run() {
         cancellationPreservedSelection: true,
         sourceStoredUnderProject: true,
         scoringDownloadsVerified: ["scorecard.csv", "scorecard.py", "scorecard.sql"],
+        reportId,
+        reportOpened: true,
+        reportDownloadVerified: true,
       }),
     );
   } catch (error) {

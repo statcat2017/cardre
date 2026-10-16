@@ -234,6 +234,97 @@ describe("RunDetailsPanel", () => {
     expect(await screen.findByText("Downloaded scorecard.csv.")).toBeInTheDocument();
   });
 
+  it("starts report generation for a succeeded run and shows readiness blockers", async () => {
+    const user = userEvent.setup();
+    const onGenerateReport = vi.fn().mockResolvedValue(undefined);
+    const succeededRun = {
+      run_id: "r-1",
+      plan_version_id: "v-1",
+      status: "succeeded",
+      run_scope: "full_plan",
+      force: false,
+      started_at: "2024-01-01T00:00:00",
+      step_count: 31,
+      is_stale: false,
+      cancel_requested: false,
+    };
+
+    render(
+      <RunDetailsPanel
+        {...EMPTY_PROPS}
+        run={succeededRun}
+        reports={[]}
+        onGenerateReport={onGenerateReport}
+        reportGenerationError={{
+          message: "Report generation is blocked by readiness checks.",
+          context: {
+            blockers: [{ code: "MISSING_EVIDENCE", message: "Validation evidence is missing." }],
+          },
+        }}
+      />,
+    );
+
+    expect(
+      screen.getByText("Report generation is blocked by readiness checks."),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Validation evidence is missing.")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Generate report" }));
+    expect(onGenerateReport).toHaveBeenCalledOnce();
+  });
+
+  it("opens and downloads a listed model report", async () => {
+    const user = userEvent.setup();
+    const report = {
+      report_id: "rep-1",
+      run_id: "r-1",
+      report_type: "report",
+      path: "reports/r-1/report.html",
+      created_at: "2024-01-01T00:00:00",
+      file_name: "model-development-report.html",
+      open_url: "/projects/p-1/runs/r-1/reports/rep-1/html",
+      download_url: "/projects/p-1/runs/r-1/reports/rep-1/download",
+    };
+    const onOpenReport = vi
+      .fn()
+      .mockResolvedValue({ blob: async () => new Blob(["<h1>report</h1>"]) });
+    const onDownloadReport = vi
+      .fn()
+      .mockResolvedValue({ blob: async () => new Blob(["<h1>report</h1>"]) });
+    const reportWindow = { location: { href: "" }, close: vi.fn() } as unknown as Window;
+    const createObjectURL = vi.fn().mockReturnValue("blob:report");
+    vi.spyOn(window, "open").mockReturnValue(reportWindow);
+    vi.stubGlobal("URL", { createObjectURL, revokeObjectURL: vi.fn() });
+
+    render(
+      <RunDetailsPanel
+        {...EMPTY_PROPS}
+        run={{
+          run_id: "r-1",
+          plan_version_id: "v-1",
+          status: "succeeded",
+          run_scope: "full_plan",
+          force: false,
+          started_at: "2024-01-01T00:00:00",
+          step_count: 31,
+          is_stale: false,
+          cancel_requested: false,
+        }}
+        reports={[report]}
+        onOpenReport={onOpenReport}
+        onDownloadReport={onDownloadReport}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Open" }));
+    expect(onOpenReport).toHaveBeenCalledWith(report);
+    expect(reportWindow.location.href).toBe("blob:report");
+    await user.click(screen.getByRole("button", { name: "Download" }));
+    expect(onDownloadReport).toHaveBeenCalledWith(report);
+
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
   it("distinguishes a download failure and missing outputs", async () => {
     const user = userEvent.setup();
     const onDownloadExport = vi.fn().mockRejectedValue(new Error("artifact is unavailable"));
@@ -296,7 +387,9 @@ describe("RunDetailsPanel", () => {
 
   it("shows None. for empty file lists", () => {
     render(<RunDetailsPanel {...EMPTY_PROPS} reports={[]} exports={[]} />);
-    expect(screen.getByText("None.")).toBeInTheDocument();
+    expect(
+      screen.getByText("A report can be generated after this run succeeds."),
+    ).toBeInTheDocument();
     expect(
       screen.getByText("Exports are unavailable until this run succeeds."),
     ).toBeInTheDocument();
