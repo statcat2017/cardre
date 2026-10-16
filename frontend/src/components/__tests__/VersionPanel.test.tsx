@@ -225,8 +225,19 @@ describe("VersionPanel", () => {
     renderPanel({
       versions: [],
       datasetImportError: "DATASET_INVALID: Choose a readable Parquet file.",
+      selectedDataset: {
+        source_ref: "dataset:0123456789abcdef0123456789abcdef",
+        file_name: "previous-customers.parquet",
+        size_bytes: 100,
+      },
     });
     expect(screen.getByRole("alert")).toHaveTextContent("Choose a readable Parquet file.");
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "The previous dataset, previous-customers.parquet, remains selected.",
+    );
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "Upload failed. Previous dataset still selected: previous-customers.parquet",
+    );
   });
 
   it("does not generate the pathway until a dataset is ready", async () => {

@@ -228,6 +228,8 @@ describe("toErrorMessage", () => {
 describe("api operations", () => {
   afterEach(() => {
     vi.restoreAllMocks();
+    vi.useRealTimers();
+    vi.unstubAllEnvs();
   });
 
   function jsonResponse(data: unknown) {
@@ -308,5 +310,11 @@ describe("api operations", () => {
     const req = fetchMock.mock.calls[0]![0] as Request;
     expect(req.headers.get("X-Project-Id")).toBeNull();
     expect(req.headers.get("Accept")).toBe("application/json");
+  });
+
+  it("uses the configured dataset upload timeout", async () => {
+    vi.stubEnv("VITE_DATASET_UPLOAD_TIMEOUT_MS", "2000");
+    const { getDatasetUploadTimeoutMs } = await import("../client");
+    expect(getDatasetUploadTimeoutMs()).toBe(2000);
   });
 });
