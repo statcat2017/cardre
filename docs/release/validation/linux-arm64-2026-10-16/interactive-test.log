@@ -1,0 +1,11 @@
+Desktop app loaded; local API is reachable.
+Created isolated project 359776b1-81c1-45b9-ba81-df1ab7409b3d.
+Created plan 6c49183a-3a5c-44fb-94c6-cae2eee45c3c.
+Imported German Credit through the desktop file input.
+Saved explicit modeling decisions.
+Run b007f630-6e0d-40f1-a316-8c70e31a96f1 succeeded with all 31 steps.
+WebKit blocked the popup; displayed the report in a sandboxed in-app preview.
+Saved all exports and verified 59 audit checksums.
+Reopened the app; project, committed version, and succeeded run persisted.
+A missing sidecar produces a visible startup error.
+{"ok":true,"projectId":"359776b1-81c1-45b9-ba81-df1ab7409b3d","planId":"6c49183a-3a5c-44fb-94c6-cae2eee45c3c","planVersionId":"30aa0902-0474-4372-bcbd-790f7cd69dcf","runId":"b007f630-6e0d-40f1-a316-8c70e31a96f1","reportId":"794e2054-f60b-43f6-82ac-c12383674912","auditExportId":"7f6a1095-5426-4f18-82cb-aadb1ca1b924","verifiedChecksumCount":59,"downloads":["scorecard.csv","scorecard.py","scorecard.sql","model-development-report.html","audit_b007f630-6e0d-40f1-a316-8c70e31a96f1_9cdf497f.zip"],"datasetSelectedThroughFileInput":true,"reportOpened":true,"reportHtmlVerified":true,"projectPersisted":true,"planVersionPersisted":true,"succeededRunPersisted":true,"unavailableSidecarShowsClearError":true}

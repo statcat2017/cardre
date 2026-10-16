@@ -12,14 +12,17 @@ Windows) at build time:
 | Platform | Bundled filename |
 |----------|------------------|
 | Linux x86_64 | `cardre-api-x86_64-unknown-linux-gnu` |
+| Linux ARM64 | `cardre-api-aarch64-unknown-linux-gnu` |
 | macOS Apple Silicon | `cardre-api-aarch64-apple-darwin` |
 | macOS Intel | `cardre-api-x86_64-apple-darwin` |
 | Windows x86_64 | `cardre-api-x86_64-pc-windows-msvc.exe` |
 
 At runtime the packaged app finds the binary at
-`{resource_dir}/binaries/cardre-api-{triple}{.exe?}`. The target triple is
-embedded at Rust compile time by `tauri-build` (env `TAURI_ENV_TARGET_TRIPLE`)
-and read in `main.rs` via `env!`.
+`{resource_dir}/binaries/cardre-api-{triple}{.exe?}`. Linux Debian packages
+also install `cardre-api` beside `cardre` in `/usr/bin`; the launcher checks
+that sibling path when Tauri's resource path does not contain the sidecar.
+The target triple is embedded at Rust compile time by `tauri-build` (env
+`TAURI_ENV_TARGET_TRIPLE`) and read in `src/sidecar.rs` via `env!`.
 
 ## Build the sidecar
 
@@ -34,7 +37,7 @@ Output: `frontend/src-tauri/binaries/cardre-api-{triple}{.exe?}`.
 
 ## Dev mode (`npm run tauri dev`)
 
-In dev the bundled path may not exist yet. `main.rs` falls back to
+In dev the bundled path may not exist yet. `src/sidecar.rs` falls back to
 `which::which("cardre-api")`, which succeeds when
 `pip install -e ".[sidecar]"` put the `cardre-api` console script on PATH.
 This fallback is **intentional for dev only**; a packaged app should never hit
@@ -54,10 +57,20 @@ sidecar: bundled path not found: .../binaries/cardre-api-x86_64-unknown-linux-gn
 sidecar: dev fallback using PATH entry: /home/.../.venv/bin/cardre-api
 ```
 
+The launcher adds `tauri://localhost` to the sidecar's configured CORS origins
+and preserves any other configured origins. On Unix it starts the sidecar in
+its own process group so closing the desktop window also stops PyInstaller's
+worker process.
+
+## Linux ARM64 desktop validation
+
+The dated package build and interactive validation record is in
+[`validation/linux-arm64-2026-10-16.md`](validation/linux-arm64-2026-10-16.md).
+
 ## CI guards
 
 - `scripts/check-sidecar-naming.py` — fails if `tauri.conf.json`,
-  `build-sidecar.sh`, and `main.rs` disagree on the sidecar name.
+  `build-sidecar.sh`, and `src/sidecar.rs` disagree on the sidecar name.
 - `smoke-test-sidecar` — launches the standalone PyInstaller binary and asserts
   `/health` comes up, and asserts the filename is triple-suffixed.
 - `smoke-test-packaged-sidecar` — downloads the sidecar artifact into

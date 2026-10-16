@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fail if sidecar naming drifts across tauri.conf.json, build-sidecar.sh, main.rs.
+"""Fail if sidecar naming drifts across tauri.conf.json, build-sidecar.sh, and sidecar.rs.
 
 Run locally and in CI. Exits non-zero on drift.
 """
@@ -13,6 +13,7 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 CONF = ROOT / "frontend/src-tauri/tauri.conf.json"
 BUILD_SCRIPT = ROOT / "scripts/build-sidecar.sh"
 MAIN_RS = ROOT / "frontend/src-tauri/src/main.rs"
+SIDECAR_RS = ROOT / "frontend/src-tauri/src/sidecar.rs"
 
 errors: list[str] = []
 
@@ -42,14 +43,20 @@ check(
 )
 
 main = MAIN_RS.read_text()
+sidecar = SIDECAR_RS.read_text()
 check(
-    "main.rs SIDECAR_NAME const",
-    'SIDECAR_NAME: &str = "cardre-api"' in main,
+    "main.rs sidecar module",
+    "mod sidecar;" in main,
+    "must load the sidecar module",
+)
+check(
+    "sidecar.rs SIDECAR_NAME const",
+    'SIDECAR_NAME: &str = "cardre-api"' in sidecar,
     "must define SIDECAR_NAME = cardre-api",
 )
 check(
-    "main.rs uses target triple",
-    "TAURI_ENV_TARGET_TRIPLE" in main and "env!" in main,
+    "sidecar.rs uses target triple",
+    "TAURI_ENV_TARGET_TRIPLE" in sidecar and "env!" in sidecar,
     "must read TAURI_ENV_TARGET_TRIPLE via env!",
 )
 check(
@@ -58,8 +65,8 @@ check(
     "must not fall back to Command::new(\"cardre-api\")",
 )
 check(
-    "main.rs bundled path uses sidecar_binary_name",
-    "sidecar_binary_name()" in main and "binaries" in main,
+    "sidecar.rs bundled path uses sidecar_binary_name",
+    "sidecar_binary_name()" in sidecar and "binaries" in sidecar,
     "bundled path must use sidecar_binary_name()",
 )
 
@@ -68,4 +75,4 @@ if errors:
     for e in errors:
         print(f"  - {e}", file=sys.stderr)
     sys.exit(1)
-print("Sidecar naming consistent across config, build script, and main.rs.")
+print("Sidecar naming consistent across config, build script, and sidecar.rs.")

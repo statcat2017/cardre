@@ -1,0 +1,104 @@
+variable,bin_id,label,woe,coefficient,points
+checking_account_status,checking_account_status_bin_001,A14,1.369066,-0.685101,27.06
+checking_account_status,checking_account_status_bin_002,A11,-0.811366,-0.685101,-16.04
+checking_account_status,checking_account_status_bin_003,A12,-0.496437,-0.685101,-9.81
+checking_account_status,checking_account_status_bin_004,A13,0.619039,-0.685101,12.24
+duration_months,duration_months_bin_001,"(-inf, 6]",1.47998,-0.897105,38.31
+duration_months,duration_months_bin_002,"(6, 9]",0.251314,-0.897105,6.51
+duration_months,duration_months_bin_003,"(9, 10]",2.043074,-0.897105,52.88
+duration_months,duration_months_bin_004,"(10, 12]",0.251314,-0.897105,6.51
+duration_months,duration_months_bin_005,"(12, 15]",0.76214,-0.897105,19.73
+duration_months,duration_months_bin_006,"(15, 18]",-0.532217,-0.897105,-13.78
+duration_months,duration_months_bin_007,"(18, 21]",0.356675,-0.897105,9.23
+duration_months,duration_months_bin_008,"(21, 24]",-0.154151,-0.897105,-3.99
+duration_months,duration_months_bin_009,"(24, 30]",-0.528844,-0.897105,-13.69
+duration_months,duration_months_bin_010,"(30, 36]",-0.036368,-0.897105,-0.94
+duration_months,duration_months_bin_011,"(36, 48]",-1.021651,-0.897105,-26.45
+duration_months,duration_months_bin_012,"(48, +inf)",-0.559616,-0.897105,-14.49
+credit_history,credit_history_bin_001,A32,-0.064256,-0.593161,-1.1
+credit_history,credit_history_bin_002,A34,0.81971,-0.593161,14.03
+credit_history,credit_history_bin_003,A33,-0.008969,-0.593161,-0.15
+credit_history,credit_history_bin_004,A31,-1.645806,-0.593161,-28.17
+credit_history,credit_history_bin_005,A30,-1.317301,-0.593161,-22.55
+purpose,purpose_bin_001,A43,0.459532,-0.964462,12.79
+purpose,purpose_bin_002,A40,-0.358945,-0.964462,-9.99
+purpose,purpose_bin_003,A42,-0.371215,-0.964462,-10.33
+purpose,purpose_bin_004,A41,0.960991,-0.964462,26.74
+purpose,purpose_bin_005,A49,-0.102857,-0.964462,-2.86
+purpose,purpose_bin_006,A46,-0.584934,-0.964462,-16.28
+purpose,purpose_bin_007,A45,0.251314,-0.964462,6.99
+purpose,purpose_bin_008,A410,-0.336472,-0.964462,-9.36
+purpose,purpose_bin_009,A44,-1.540445,-0.964462,-42.87
+purpose,purpose_bin_010,A48,1.114177,-0.964462,31.01
+credit_amount,credit_amount_bin_001,"(-inf, 739.9]",0.538997,-0.816907,12.7
+credit_amount,credit_amount_bin_002,"(739.9, 994]",-0.713766,-0.816907,-16.82
+credit_amount,credit_amount_bin_003,"(994, 1207]",0.342286,-0.816907,8.07
+credit_amount,credit_amount_bin_004,"(1207, 1291]",-0.713766,-0.816907,-16.82
+credit_amount,credit_amount_bin_005,"(1291, 1380]",0.0,-0.816907,0.0
+credit_amount,credit_amount_bin_006,"(1380, 1499]",0.342286,-0.816907,8.07
+credit_amount,credit_amount_bin_007,"(1499, 1600]",1.024504,-0.816907,24.15
+credit_amount,credit_amount_bin_008,"(1600, 1934]",-0.300754,-0.816907,-7.09
+credit_amount,credit_amount_bin_009,"(1934, 2204]",0.76214,-0.816907,17.96
+credit_amount,credit_amount_bin_010,"(2204, 2415]",0.164303,-0.816907,3.87
+credit_amount,credit_amount_bin_011,"(2415, 2685]",0.0,-0.816907,0.0
+credit_amount,credit_amount_bin_012,"(2685, 2973]",0.342286,-0.816907,8.07
+credit_amount,credit_amount_bin_013,"(2973, 3349]",-0.105361,-0.816907,-2.48
+credit_amount,credit_amount_bin_014,"(3349, 3618]",1.312186,-0.816907,30.93
+credit_amount,credit_amount_bin_015,"(3618, 3974]",0.342286,-0.816907,8.07
+credit_amount,credit_amount_bin_016,"(3974, 4717]",-0.154151,-0.816907,-3.63
+credit_amount,credit_amount_bin_017,"(4717, 5954]",-0.387766,-0.816907,-9.14
+credit_amount,credit_amount_bin_018,"(5954, 7167]",-0.04879,-0.816907,-1.15
+credit_amount,credit_amount_bin_019,"(7167, 8862]",-0.441833,-0.816907,-10.41
+credit_amount,credit_amount_bin_020,"(8862, +inf)",-0.980829,-0.816907,-23.12
+savings_account,savings_account_bin_001,A61,-0.249858,-0.761896,-5.49
+savings_account,savings_account_bin_002,A65,0.645606,-0.761896,14.19
+savings_account,savings_account_bin_003,A62,-0.178248,-0.761896,-3.92
+savings_account,savings_account_bin_004,A63,0.451985,-0.761896,9.94
+savings_account,savings_account_bin_005,A64,1.098612,-0.761896,24.15
+present_employment_since,present_employment_since_bin_001,A73,0.023925,-0.617584,0.43
+present_employment_since,present_employment_since_bin_002,A75,0.1277,-0.617584,2.28
+present_employment_since,present_employment_since_bin_003,A74,0.468379,-0.617584,8.35
+present_employment_since,present_employment_since_bin_004,A72,-0.559616,-0.617584,-9.97
+present_employment_since,present_employment_since_bin_005,A71,-0.190518,-0.617584,-3.39
+personal_status_sex,personal_status_sex_bin_001,A93,0.219054,-0.563394,3.56
+personal_status_sex,personal_status_sex_bin_002,A92,-0.410369,-0.563394,-6.67
+personal_status_sex,personal_status_sex_bin_003,A94,0.428996,-0.563394,6.97
+personal_status_sex,personal_status_sex_bin_004,A91,-0.249461,-0.563394,-4.06
+other_debtors,other_debtors_bin_001,A101,-0.003512,-0.891178,-0.09
+other_debtors,other_debtors_bin_002,A103,0.579818,-0.891178,14.91
+other_debtors,other_debtors_bin_003,A102,-0.472604,-0.891178,-12.15
+property,property_bin_001,A123,-0.17613,-0.563685,-2.86
+property,property_bin_002,A121,0.553595,-0.563685,9.0
+property,property_bin_003,A122,0.079464,-0.563685,1.29
+property,property_bin_004,A124,-0.579034,-0.563685,-9.42
+age_years,age_years_bin_001,"(-inf, 22]",-0.154151,-0.75662,-3.37
+age_years,age_years_bin_002,"(22, 23]",-0.782759,-0.75662,-17.09
+age_years,age_years_bin_003,"(23, 25]",-0.664976,-0.75662,-14.52
+age_years,age_years_bin_004,"(25, 26]",0.133531,-0.75662,2.92
+age_years,age_years_bin_005,"(26, 27]",0.405465,-0.75662,8.85
+age_years,age_years_bin_006,"(27, 28]",0.194156,-0.75662,4.24
+age_years,age_years_bin_007,"(28, 29]",-0.760286,-0.75662,-16.6
+age_years,age_years_bin_008,"(29, 31]",-0.064539,-0.75662,-1.41
+age_years,age_years_bin_009,"(31, 32]",0.305382,-0.75662,6.67
+age_years,age_years_bin_010,"(32, 33]",-0.085158,-0.75662,-1.86
+age_years,age_years_bin_011,"(33, 35]",0.156004,-0.75662,3.41
+age_years,age_years_bin_012,"(35, 36]",0.599621,-0.75662,13.09
+age_years,age_years_bin_013,"(36, 37]",0.315853,-0.75662,6.9
+age_years,age_years_bin_014,"(37, 39]",0.342286,-0.75662,7.47
+age_years,age_years_bin_015,"(39, 42]",-0.154151,-0.75662,-3.37
+age_years,age_years_bin_016,"(42, 44]",-0.228259,-0.75662,-4.98
+age_years,age_years_bin_017,"(44, 47]",0.985284,-0.75662,21.51
+age_years,age_years_bin_018,"(47, 52]",0.451985,-0.75662,9.87
+age_years,age_years_bin_019,"(52, 61]",-0.105361,-0.75662,-2.3
+age_years,age_years_bin_020,"(61, +inf)",0.944462,-0.75662,20.62
+other_installment_plans,other_installment_plans_bin_001,A143,0.169969,-0.714245,3.5
+other_installment_plans,other_installment_plans_bin_002,A141,-0.624154,-0.714245,-12.86
+other_installment_plans,other_installment_plans_bin_003,A142,-0.559616,-0.714245,-11.53
+housing,housing_bin_001,A152,0.267063,-0.452993,3.49
+housing,housing_bin_002,A151,-0.591364,-0.452993,-7.73
+housing,housing_bin_003,A153,-0.505549,-0.452993,-6.61
+num_existing_credits,num_existing_credits_bin_001,"(-inf, 1]",-0.090637,0.157508,0.41
+num_existing_credits,num_existing_credits_bin_002,"(1, 2]",0.13117,0.157508,-0.6
+num_existing_credits,num_existing_credits_bin_003,"(2, +inf)",0.487703,0.157508,-2.22
+telephone,telephone_bin_001,A191,-0.116091,-0.588254,-1.97
+telephone,telephone_bin_002,A192,0.181205,-0.588254,3.08

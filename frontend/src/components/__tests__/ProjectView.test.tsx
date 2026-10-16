@@ -82,7 +82,7 @@ describe("ProjectView", () => {
       expect(screen.getAllByText("Generate launch pathway").length).toBeGreaterThan(0);
     });
 
-    expect(screen.getByLabelText("Browse…")).toBeDefined();
+    expect(screen.getByLabelText("Browse for Parquet file")).toBeDefined();
     expect(screen.getByRole("status")).toHaveTextContent("No dataset selected");
   });
 

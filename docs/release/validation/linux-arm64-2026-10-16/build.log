@@ -1,0 +1,33 @@
+
+> cardre-frontend@0.1.0 tauri
+> tauri build --bundles deb
+
+        Info Looking up installed tauri packages to check mismatched versions...
+        Warn The bundle identifier "com.cardre.app" set in `"tauri.conf.json" identifier` ends with `.app`. This is not recommended because it conflicts with the application bundle extension on macOS.
+     Running beforeBuildCommand `npm run build`
+
+> cardre-frontend@0.1.0 build
+> vite build
+
+vite v8.3.0 building client environment for production...
+transforming...
+✓ 73 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                  0.31 kB │ gzip:  0.22 kB
+dist/assets/index-CSQ9LDG1.js  312.93 kB │ gzip: 93.25 kB
+
+✓ built in 139ms
+   Compiling cardre v0.1.0 (/work/frontend/src-tauri)
+    Finished `release` profile [optimized] target(s) in 35.95s
+       Built application at: /work/frontend/src-tauri/target/release/cardre
+        Info Patching /work/frontend/src-tauri/target/release/cardre with bundle type information: deb
+    Bundling Cardre_0.1.0_arm64.deb (/work/frontend/src-tauri/target/release/bundle/deb/Cardre_0.1.0_arm64.deb)
+    Finished 1 bundle at:
+        /work/frontend/src-tauri/target/release/bundle/deb/Cardre_0.1.0_arm64.deb
+
+npm notice
+npm notice New major version of npm available! 10.9.9 -> 12.2.0
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v12.2.0
+npm notice To update run: npm install -g npm@12.2.0
+npm notice
