@@ -196,6 +196,7 @@ def test_generated_audit_pack_is_discoverable_through_exports_route(env, tmp_pat
     download = client.get(result["download_url"])
     assert download.status_code == 200
     assert download.headers["content-type"].startswith("application/zip")
+    assert download.headers["x-content-type-options"] == "nosniff"
     assert download.headers["content-disposition"].endswith(
         f'filename="{result["file_name"]}"'
     )

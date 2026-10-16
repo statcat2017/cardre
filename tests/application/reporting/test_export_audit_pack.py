@@ -167,6 +167,31 @@ def test_export_includes_run_evidence_and_artifacts(tmp_path):
         assert "canonical_manifest.json" in archive.namelist()
 
 
+def test_unreadable_artifact_is_marked_unavailable_in_manifest(tmp_path):
+    class _UnreadableReader(_Reader):
+        def read_bytes(self, artifact):
+            raise FileNotFoundError("artifact content is missing")
+
+    export_dir = tmp_path / "audit-pack"
+    use_case = ExportAuditPack(
+        _Factory(_Uow()),
+        lambda project_id: _UnreadableReader(tmp_path),
+        lambda project_id: tmp_path,
+        lambda command: None,
+    )
+
+    result = use_case(ExportAuditPackCommand(
+        project_id="project", plan_id="plan", run_id="branch-run", export_path=export_dir,
+    ))
+
+    artifacts = json.loads((export_dir / "artifacts.json").read_text())
+    assert result.partial is True
+    assert artifacts[0]["content_included"] is False
+    assert artifacts[0]["content_path"] is None
+    assert artifacts[0]["content_status"] == "unavailable"
+    assert list((export_dir / "artifacts").iterdir()) == []
+
+
 def test_export_rejects_missing_run(tmp_path):
     with pytest.raises(CardreError) as exc_info:
         _use_case(tmp_path)(ExportAuditPackCommand(

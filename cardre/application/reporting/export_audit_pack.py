@@ -262,28 +262,34 @@ class ExportAuditPack:
                 diagnostics.append({"code": "ARTIFACT_NOT_FOUND", "artifact_id": artifact_id})
                 partial = True
                 continue
-            content_included = command.include_row_level_data or artifact.artifact_type not in ROW_LEVEL_ARTIFACT_TYPES
             artifact_data = artifact.to_dict()
-            artifact_data["content_included"] = content_included
-            content_path = None
-            if content_included:
-                content_key = hashlib.sha256(
-                    f"{artifact.artifact_id}\0{artifact.physical_hash}".encode()
-                ).hexdigest()
-                content_path = f"artifacts/{content_key}"
-            artifact_data["content_path"] = content_path
-            artifacts.append(artifact_data)
             if not command.include_row_level_data and artifact.artifact_type in ROW_LEVEL_ARTIFACT_TYPES:
+                artifact_data["content_included"] = False
+                artifact_data["content_path"] = None
+                artifact_data["content_status"] = "excluded"
+                artifacts.append(artifact_data)
                 continue
-            assert content_path is not None
+
+            content_key = hashlib.sha256(
+                f"{artifact.artifact_id}\0{artifact.physical_hash}".encode()
+            ).hexdigest()
+            content_path = f"artifacts/{content_key}"
             try:
                 destination = export_dir / content_path
                 destination.parent.mkdir(parents=True, exist_ok=True)
                 destination.write_bytes(reader.read_bytes(artifact))
-                file_count += 1
             except OSError as exc:
                 diagnostics.append({"code": "ARTIFACT_UNREADABLE", "artifact_id": artifact_id, "message": str(exc)})
                 partial = True
+                artifact_data["content_included"] = False
+                artifact_data["content_path"] = None
+                artifact_data["content_status"] = "unavailable"
+            else:
+                file_count += 1
+                artifact_data["content_included"] = True
+                artifact_data["content_path"] = content_path
+                artifact_data["content_status"] = "included"
+            artifacts.append(artifact_data)
         self._write_json(export_dir / "artifacts.json", artifacts)
         file_count += 1
 

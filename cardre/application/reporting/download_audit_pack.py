@@ -3,15 +3,19 @@
 from __future__ import annotations
 
 import hashlib
+import os
 import re
+import tempfile
 import zipfile
+import zlib
 from collections.abc import Callable
 from dataclasses import dataclass
-from io import BytesIO
 from pathlib import Path
 
 from cardre.application.ports.unit_of_work import UnitOfWorkFactory
 from cardre.domain.errors import CardreError, ErrorCode
+
+VERIFY_CHUNK_SIZE = 1024 * 1024
 
 
 @dataclass(frozen=True)
@@ -19,7 +23,8 @@ class DownloadableAuditPack:
     export_id: str
     run_id: str
     file_name: str
-    content: bytes
+    file_path: Path
+    delete_after_download: bool = False
     media_type: str = "application/zip"
 
 
@@ -56,6 +61,7 @@ class DownloadAuditPack:
         root = Path(self._project_root_factory(project_id)).resolve()
         if not stored_path.is_absolute():
             stored_path = root / stored_path
+        temporary_path: Path | None = None
         try:
             path = stored_path.resolve(strict=True)
             path.relative_to(root)
@@ -65,50 +71,81 @@ class DownloadAuditPack:
             if not relative_to_exports.parts:
                 raise ValueError("Audit pack path must be below the exports directory.")
             if path.is_file() and zipfile.is_zipfile(path):
-                content = path.read_bytes()
-                _verify_archive(content)
+                _verify_archive(path)
+                file_path = path
+                file_name = path.name
             elif path.is_dir():
-                content = _zip_directory(path, root)
-                _verify_archive(content)
+                temporary_path = _zip_directory(path, root)
+                _verify_archive(temporary_path)
+                file_path = temporary_path
+                file_name = f"audit-pack-{run_id}.zip"
             else:
                 raise _export_not_found(export_id, run_id)
-        except (OSError, RuntimeError, ValueError, KeyError, zipfile.BadZipFile):
+        except (
+            OSError,
+            RuntimeError,
+            ValueError,
+            KeyError,
+            UnicodeDecodeError,
+            EOFError,
+            zlib.error,
+            zipfile.BadZipFile,
+        ):
+            if temporary_path is not None:
+                temporary_path.unlink(missing_ok=True)
             raise _export_not_found(export_id, run_id) from None
 
         return DownloadableAuditPack(
             export_id=export_id,
             run_id=run_id,
-            file_name=path.name if path.is_file() else f"audit-pack-{run_id}.zip",
-            content=content,
+            file_name=file_name,
+            file_path=file_path,
+            delete_after_download=temporary_path is not None,
         )
 
 
-def _zip_directory(directory: Path, project_root: Path) -> bytes:
-    """Package legacy directory exports without trusting symlink targets."""
-    output = BytesIO()
+def _zip_directory(directory: Path, project_root: Path) -> Path:
+    """Package legacy directory exports to a temporary archive on disk."""
     package_root = directory.resolve(strict=True)
     package_root.relative_to(project_root)
-    with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=6) as archive:
-        for item in sorted(directory.rglob("*")):
-            if not item.is_file():
-                continue
-            if item.is_symlink():
-                raise ValueError("Audit pack contains a symlink.")
-            resolved = item.resolve(strict=True)
-            resolved.relative_to(package_root)
-            archive.write(resolved, item.relative_to(directory).as_posix())
-    return output.getvalue()
+    fd, name = tempfile.mkstemp(prefix="cardre-audit-pack-", suffix=".zip")
+    os.close(fd)
+    archive_path = Path(name)
+    try:
+        with zipfile.ZipFile(
+            archive_path,
+            "w",
+            compression=zipfile.ZIP_DEFLATED,
+            compresslevel=6,
+        ) as archive:
+            for item in sorted(directory.rglob("*")):
+                if item.is_symlink():
+                    raise ValueError("Audit pack contains a symlink.")
+                if not item.is_file():
+                    continue
+                resolved = item.resolve(strict=True)
+                resolved.relative_to(package_root)
+                archive.write(resolved, item.relative_to(directory).as_posix())
+    except BaseException:
+        archive_path.unlink(missing_ok=True)
+        raise
+    return archive_path
 
 
-def _verify_archive(content: bytes) -> None:
-    """Reject unsafe or altered archives before serving a registered export."""
-    with zipfile.ZipFile(BytesIO(content)) as archive:
+def _verify_archive(path: Path) -> None:
+    """Verify archive paths and checksums incrementally from disk."""
+    with zipfile.ZipFile(path) as archive:
         names = archive.namelist()
         if len(names) != len(set(names)) or "checksums.sha256" not in names:
             raise ValueError("Audit pack archive is missing or duplicates required files.")
         for name in names:
-            path = Path(name)
-            if path.is_absolute() or ".." in path.parts or "\\" in name or name.endswith("/"):
+            member_path = Path(name)
+            if (
+                member_path.is_absolute()
+                or ".." in member_path.parts
+                or "\\" in name
+                or name.endswith("/")
+            ):
                 raise ValueError("Audit pack archive contains an unsafe path.")
 
         expected: dict[str, str] = {}
@@ -126,7 +163,11 @@ def _verify_archive(content: bytes) -> None:
         if actual_names != set(expected):
             raise ValueError("Audit pack checksums do not cover every file.")
         for name, expected_digest in expected.items():
-            if hashlib.sha256(archive.read(name)).hexdigest() != expected_digest:
+            digest = hashlib.sha256()
+            with archive.open(name) as member:
+                for chunk in iter(lambda: member.read(VERIFY_CHUNK_SIZE), b""):
+                    digest.update(chunk)
+            if digest.hexdigest() != expected_digest:
                 raise ValueError("Audit pack checksum verification failed.")
 
 
