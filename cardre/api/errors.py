@@ -113,6 +113,7 @@ _DOMAIN_ERROR_MAP: dict[ErrorCode, tuple[ErrorCode, int]] = {
     ErrorCode.PROJECT_NOT_FOUND: (ErrorCode.PROJECT_NOT_FOUND, 404),
     ErrorCode.PLAN_NOT_FOUND: (ErrorCode.PLAN_NOT_FOUND, 404),
     ErrorCode.ARTIFACT_NOT_FOUND: (ErrorCode.ARTIFACT_NOT_FOUND, 404),
+    ErrorCode.ARTIFACT_INVALID: (ErrorCode.ARTIFACT_INVALID, 422),
     ErrorCode.DATASET_NOT_FOUND: (ErrorCode.DATASET_NOT_FOUND, 404),
     ErrorCode.STEP_NOT_FOUND: (ErrorCode.STEP_NOT_FOUND, 404),
     ErrorCode.REVIEW_NOT_FOUND: (ErrorCode.REVIEW_NOT_FOUND, 404),
