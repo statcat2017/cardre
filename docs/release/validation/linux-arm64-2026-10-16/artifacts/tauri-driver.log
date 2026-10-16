@@ -1,0 +1,158 @@
+Reserved port: 35849
+
+(cardre:15024): dbind-WARNING **: 16:43:52.339: AT-SPI: Error retrieving accessibility bus address: org.freedesktop.DBus.Error.ServiceUnknown: The name org.a11y.Bus was not provided by any .service files
+libEGL warning: DRI3 error: Could not get DRI3 device
+libEGL warning: Ensure your X server supports DRI3 to get accelerated rendering
+sidecar: bundled path not found: /usr/lib/Cardre/binaries/cardre-api-aarch64-unknown-linux-gnu
+sidecar: resolved path: /usr/bin/cardre-api
+sidecar: port: 35849
+sidecar: started /usr/bin/cardre-api (pid 15085)
+[sidecar:err] INFO:     Started server process [15094]
+[sidecar:err] INFO:     Waiting for application startup.
+[sidecar:err] INFO:     Application startup complete.
+[sidecar:err] INFO:     Uvicorn running on http://127.0.0.1:35849 (Press CTRL+C to quit)
+[sidecar] INFO:     127.0.0.1:52000 - "GET /health HTTP/1.1" 200 OK
+sidecar: healthy on port 35849
+[sidecar] INFO:     127.0.0.1:52004 - "GET /projects HTTP/1.1" 200 OK
+[sidecar] INFO:     127.0.0.1:52004 - "OPTIONS /projects HTTP/1.1" 200 OK
+[sidecar] INFO:     127.0.0.1:52026 - "GET /projects HTTP/1.1" 200 OK
+[sidecar] INFO:     127.0.0.1:52018 - "POST /projects HTTP/1.1" 201 Created
+[sidecar] INFO:     127.0.0.1:52036 - "GET /projects/359776b1-81c1-45b9-ba81-df1ab7409b3d/node-types HTTP/1.1" 200 OK
+[sidecar] INFO:     127.0.0.1:52034 - "GET /projects/359776b1-81c1-45b9-ba81-df1ab7409b3d/runs HTTP/1.1" 200 OK
+[sidecar] INFO:     127.0.0.1:52004 - "GET /projects/359776b1-81c1-45b9-ba81-df1ab7409b3d/plans HTTP/1.1" 200 OK
+[sidecar] INFO:     127.0.0.1:52018 - "GET /projects/359776b1-81c1-45b9-ba81-df1ab7409b3d HTTP/1.1" 200 OK
+[sidecar] INFO:     127.0.0.1:52026 - "GET /projects HTTP/1.1" 200 OK
+[sidecar] INFO:     127.0.0.1:52036 - "OPTIONS /projects/359776b1-81c1-45b9-ba81-df1ab7409b3d/plans HTTP/1.1" 200 OK
+[sidecar] INFO:     127.0.0.1:52048 - "POST /projects/359776b1-81c1-45b9-ba81-df1ab7409b3d/plans HTTP/1.1" 201 Created
+[sidecar] INFO:     127.0.0.1:52026 - "GET /projects/359776b1-81c1-45b9-ba81-df1ab7409b3d/plans HTTP/1.1" 200 OK
+[sidecar] INFO:     127.0.0.1:52048 - "GET /projects/359776b1-81c1-45b9-ba81-df1ab7409b3d/plans HTTP/1.1" 200 OK
+[sidecar] INFO:     127.0.0.1:52026 - "GET /projects/359776b1-81c1-45b9-ba81-df1ab7409b3d/plans HTTP/1.1" 200 OK
+[sidecar] INFO:     127.0.0.1:52048 - "GET /projects/359776b1-81c1-45b9-ba81-df1ab7409b3d/plans/6c49183a-3a5c-44fb-94c6-cae2eee45c3c/versions HTTP/1.1" 200 OK
+[sidecar] INFO:     127.0.0.1:52048 - "OPTIONS /projects/359776b1-81c1-45b9-ba81-df1ab7409b3d/datasets HTTP/1.1" 200 OK
+[sidecar] INFO:     127.0.0.1:52052 - "POST /projects/359776b1-81c1-45b9-ba81-df1ab7409b3d/datasets HTTP/1.1" 201 Created
+[sidecar] INFO:     127.0.0.1:52052 - "OPTIONS /projects/359776b1-81c1-45b9-ba81-df1ab7409b3d/plans/6c49183a-3a5c-44fb-94c6-cae2eee45c3c/canonical-version HTTP/1.1" 200 OK
+[sidecar] INFO:     127.0.0.1:52064 - "POST /projects/359776b1-81c1-45b9-ba81-df1ab7409b3d/plans/6c49183a-3a5c-44fb-94c6-cae2eee45c3c/canonical-version HTTP/1.1" 201 Created
+[sidecar] INFO:     127.0.0.1:52064 - "GET /projects/359776b1-81c1-45b9-ba81-df1ab7409b3d/plans/6c49183a-3a5c-44fb-94c6-cae2eee45c3c/versions HTTP/1.1" 200 OK
+[sidecar] INFO:     127.0.0.1:52064 - "GET /projects/359776b1-81c1-45b9-ba81-df1ab7409b3d/plan-versions/30aa0902-0474-4372-bcbd-790f7cd69dcf/steps HTTP/1.1" 200 OK
+[sidecar] INFO:     127.0.0.1:52026 - "GET /projects/359776b1-81c1-45b9-ba81-df1ab7409b3d/plans/6c49183a-3a5c-44fb-94c6-cae2eee45c3c/versions HTTP/1.1" 200 OK
+[sidecar] INFO:     127.0.0.1:52026 - "GET /projects/359776b1-81c1-45b9-ba81-df1ab7409b3d/plan-versions/30aa0902-0474-4372-bcbd-790f7cd69dcf/steps HTTP/1.1" 200 OK
+[sidecar] INFO:     127.0.0.1:52064 - "OPTIONS /projects/359776b1-81c1-45b9-ba81-df1ab7409b3d/plan-versions/30aa0902-0474-4372-bcbd-790f7cd69dcf/steps/final-woe-iv HTTP/1.1" 200 OK
+[sidecar] INFO:     127.0.0.1:52026 - "GET /projects/359776b1-81c1-45b9-ba81-df1ab7409b3d/plan-versions/30aa0902-0474-4372-bcbd-790f7cd69dcf/steps HTTP/1.1" 200 OK
+[sidecar] INFO:     127.0.0.1:39690 - "PATCH /projects/359776b1-81c1-45b9-ba81-df1ab7409b3d/plan-versions/30aa0902-0474-4372-bcbd-790f7cd69dcf/steps/final-woe-iv HTTP/1.1" 200 OK
+[sidecar] INFO:     127.0.0.1:39690 - "GET /projects/359776b1-81c1-45b9-ba81-df1ab7409b3d/plan-versions/30aa0902-0474-4372-bcbd-790f7cd69dcf/steps HTTP/1.1" 200 OK
+[sidecar] INFO:     127.0.0.1:52026 - "GET /projects/359776b1-81c1-45b9-ba81-df1ab7409b3d/plan-versions/30aa0902-0474-4372-bcbd-790f7cd69dcf/steps HTTP/1.1" 200 OK
+[sidecar] INFO:     127.0.0.1:39690 - "OPTIONS /projects/359776b1-81c1-45b9-ba81-df1ab7409b3d/plan-versions/30aa0902-0474-4372-bcbd-790f7cd69dcf/steps/define-metadata HTTP/1.1" 200 OK
+[sidecar] INFO:     127.0.0.1:39694 - "PATCH /projects/359776b1-81c1-45b9-ba81-df1ab7409b3d/plan-versions/30aa0902-0474-4372-bcbd-790f7cd69dcf/steps/define-metadata HTTP/1.1" 200 OK
+[sidecar] INFO:     127.0.0.1:39694 - "GET /projects/359776b1-81c1-45b9-ba81-df1ab7409b3d/plan-versions/30aa0902-0474-4372-bcbd-790f7cd69dcf/steps HTTP/1.1" 200 OK
+[sidecar] INFO:     127.0.0.1:52026 - "GET /projects/359776b1-81c1-45b9-ba81-df1ab7409b3d/plan-versions/30aa0902-0474-4372-bcbd-790f7cd69dcf/steps HTTP/1.1" 200 OK
+[sidecar] INFO:     127.0.0.1:39694 - "OPTIONS /projects/359776b1-81c1-45b9-ba81-df1ab7409b3d/plan-versions/30aa0902-0474-4372-bcbd-790f7cd69dcf/steps/manual-binning HTTP/1.1" 200 OK
+[sidecar] INFO:     127.0.0.1:39702 - "PATCH /projects/359776b1-81c1-45b9-ba81-df1ab7409b3d/plan-versions/30aa0902-0474-4372-bcbd-790f7cd69dcf/steps/manual-binning HTTP/1.1" 200 OK
+[sidecar] INFO:     127.0.0.1:39702 - "GET /projects/359776b1-81c1-45b9-ba81-df1ab7409b3d/plan-versions/30aa0902-0474-4372-bcbd-790f7cd69dcf/steps HTTP/1.1" 200 OK
+[sidecar] INFO:     127.0.0.1:52026 - "GET /projects/359776b1-81c1-45b9-ba81-df1ab7409b3d/plan-versions/30aa0902-0474-4372-bcbd-790f7cd69dcf/steps HTTP/1.1" 200 OK
+[sidecar] INFO:     127.0.0.1:39710 - "POST /projects/359776b1-81c1-45b9-ba81-df1ab7409b3d/plan-versions/30aa0902-0474-4372-bcbd-790f7cd69dcf/commit HTTP/1.1" 200 OK
+[sidecar] INFO:     127.0.0.1:39710 - "GET /projects/359776b1-81c1-45b9-ba81-df1ab7409b3d/plans/6c49183a-3a5c-44fb-94c6-cae2eee45c3c/versions HTTP/1.1" 200 OK
+[sidecar] INFO:     127.0.0.1:52026 - "GET /projects/359776b1-81c1-45b9-ba81-df1ab7409b3d/plan-versions/30aa0902-0474-4372-bcbd-790f7cd69dcf HTTP/1.1" 200 OK
+[sidecar] INFO:     127.0.0.1:39710 - "OPTIONS /projects/359776b1-81c1-45b9-ba81-df1ab7409b3d/runs HTTP/1.1" 200 OK
+[sidecar] INFO:     127.0.0.1:52026 - "GET /projects/359776b1-81c1-45b9-ba81-df1ab7409b3d/runs HTTP/1.1" 200 OK
+[sidecar] INFO:     127.0.0.1:39720 - "POST /projects/359776b1-81c1-45b9-ba81-df1ab7409b3d/runs HTTP/1.1" 201 Created
+[sidecar] INFO:     127.0.0.1:39720 - "GET /projects/359776b1-81c1-45b9-ba81-df1ab7409b3d/runs HTTP/1.1" 200 OK
+[sidecar] INFO:     127.0.0.1:39720 - "GET /projects/359776b1-81c1-45b9-ba81-df1ab7409b3d/runs/b007f630-6e0d-40f1-a316-8c70e31a96f1 HTTP/1.1" 200 OK
+[sidecar] INFO:     127.0.0.1:39702 - "GET /projects/359776b1-81c1-45b9-ba81-df1ab7409b3d/runs/b007f630-6e0d-40f1-a316-8c70e31a96f1/evidence HTTP/1.1" 200 OK
+[sidecar] INFO:     127.0.0.1:39690 - "GET /projects/359776b1-81c1-45b9-ba81-df1ab7409b3d/exports?run_id=b007f630-6e0d-40f1-a316-8c70e31a96f1 HTTP/1.1" 200 OK
+[sidecar] INFO:     127.0.0.1:39710 - "GET /projects/359776b1-81c1-45b9-ba81-df1ab7409b3d/runs/b007f630-6e0d-40f1-a316-8c70e31a96f1/steps HTTP/1.1" 200 OK
+[sidecar] INFO:     127.0.0.1:39694 - "GET /projects/359776b1-81c1-45b9-ba81-df1ab7409b3d/runs/b007f630-6e0d-40f1-a316-8c70e31a96f1/reports HTTP/1.1" 200 OK
+[sidecar] INFO:     127.0.0.1:52026 - "GET /projects/359776b1-81c1-45b9-ba81-df1ab7409b3d/runs HTTP/1.1" 200 OK
+[sidecar] INFO:     127.0.0.1:52026 - "GET /projects/359776b1-81c1-45b9-ba81-df1ab7409b3d/runs HTTP/1.1" 200 OK
+[sidecar] INFO:     127.0.0.1:52026 - "GET /projects/359776b1-81c1-45b9-ba81-df1ab7409b3d/runs HTTP/1.1" 200 OK
+[sidecar] INFO:     127.0.0.1:52026 - "GET /projects/359776b1-81c1-45b9-ba81-df1ab7409b3d/runs HTTP/1.1" 200 OK
+[sidecar] INFO:     127.0.0.1:39720 - "GET /projects/359776b1-81c1-45b9-ba81-df1ab7409b3d/runs HTTP/1.1" 200 OK
+[sidecar] INFO:     127.0.0.1:39710 - "GET /projects/359776b1-81c1-45b9-ba81-df1ab7409b3d/runs/b007f630-6e0d-40f1-a316-8c70e31a96f1 HTTP/1.1" 200 OK
+[sidecar] INFO:     127.0.0.1:39694 - "GET /projects/359776b1-81c1-45b9-ba81-df1ab7409b3d/runs/b007f630-6e0d-40f1-a316-8c70e31a96f1/evidence HTTP/1.1" 200 OK
+[sidecar] INFO:     127.0.0.1:39702 - "GET /projects/359776b1-81c1-45b9-ba81-df1ab7409b3d/runs/b007f630-6e0d-40f1-a316-8c70e31a96f1/steps HTTP/1.1" 200 OK
+[sidecar] INFO:     127.0.0.1:52026 - "GET /projects/359776b1-81c1-45b9-ba81-df1ab7409b3d/runs HTTP/1.1" 200 OK
+[sidecar] INFO:     127.0.0.1:52026 - "GET /projects/359776b1-81c1-45b9-ba81-df1ab7409b3d/runs HTTP/1.1" 200 OK
+[sidecar] INFO:     127.0.0.1:52026 - "GET /projects/359776b1-81c1-45b9-ba81-df1ab7409b3d/runs HTTP/1.1" 200 OK
+[sidecar] INFO:     127.0.0.1:52026 - "GET /projects/359776b1-81c1-45b9-ba81-df1ab7409b3d/runs HTTP/1.1" 200 OK
+[sidecar] INFO:     127.0.0.1:52026 - "GET /projects/359776b1-81c1-45b9-ba81-df1ab7409b3d/runs HTTP/1.1" 200 OK
+[sidecar] INFO:     127.0.0.1:52026 - "GET /projects/359776b1-81c1-45b9-ba81-df1ab7409b3d/runs/b007f630-6e0d-40f1-a316-8c70e31a96f1/steps HTTP/1.1" 200 OK
+[sidecar] INFO:     127.0.0.1:39720 - "GET /projects/359776b1-81c1-45b9-ba81-df1ab7409b3d/runs HTTP/1.1" 200 OK
+[sidecar] INFO:     127.0.0.1:39710 - "GET /projects/359776b1-81c1-45b9-ba81-df1ab7409b3d/runs/b007f630-6e0d-40f1-a316-8c70e31a96f1 HTTP/1.1" 200 OK
+[sidecar] INFO:     127.0.0.1:39702 - "GET /projects/359776b1-81c1-45b9-ba81-df1ab7409b3d/runs/b007f630-6e0d-40f1-a316-8c70e31a96f1/steps HTTP/1.1" 200 OK
+[sidecar] INFO:     127.0.0.1:39694 - "GET /projects/359776b1-81c1-45b9-ba81-df1ab7409b3d/runs/b007f630-6e0d-40f1-a316-8c70e31a96f1/evidence HTTP/1.1" 200 OK
+[sidecar] INFO:     127.0.0.1:39720 - "GET /projects/359776b1-81c1-45b9-ba81-df1ab7409b3d/runs/b007f630-6e0d-40f1-a316-8c70e31a96f1/reports HTTP/1.1" 200 OK
+[sidecar] INFO:     127.0.0.1:39710 - "GET /projects/359776b1-81c1-45b9-ba81-df1ab7409b3d/exports?run_id=b007f630-6e0d-40f1-a316-8c70e31a96f1 HTTP/1.1" 200 OK
+[sidecar] INFO:     127.0.0.1:39720 - "GET /projects/359776b1-81c1-45b9-ba81-df1ab7409b3d/runs/b007f630-6e0d-40f1-a316-8c70e31a96f1/exports/download?artifact_id=scorecard_table%7Creport%7Capplication%2Fvnd.apache.parquet%7Cscorecard_table%7Ccardre.scorecard_table.v1%7Cv3%3A048618a61873e058c067b3b5cf42b7f38b717ea7ed944daf31dc33283f321530%7C3db0eb3e78fae140fe8d96d39e986f3888b659482a1b59517789e99227a71753%7C4d2f06b3028d459ecb94aeb1df2b8e4d9610cf6bb487845b7f9bd9e22775c3bc HTTP/1.1" 200 OK
+[sidecar] INFO:     127.0.0.1:39720 - "GET /projects/359776b1-81c1-45b9-ba81-df1ab7409b3d/runs/b007f630-6e0d-40f1-a316-8c70e31a96f1/exports/download?artifact_id=scoring_export_python%7Creport%7Capplication%2Fjson%7Cscoring_export_python%7Ccardre.scoring_export_python.v1%7C7b251668fd1829cc3e8e545aa246905756448f58643e4d7cc6fcd075a17fd4f9%7Cc458afeba8ece8bdd93be8de71cd98982f1619cbcf2fbd4f6c5e4830846232d8%7Cf55178cce319d63102c7a16d3a8ed36a4314e03560b436b9d7d55018142dec3f HTTP/1.1" 200 OK
+[sidecar] INFO:     127.0.0.1:39720 - "GET /projects/359776b1-81c1-45b9-ba81-df1ab7409b3d/runs/b007f630-6e0d-40f1-a316-8c70e31a96f1/exports/download?artifact_id=scoring_export_sql%7Creport%7Capplication%2Fjson%7Cscoring_export_sql%7Ccardre.scoring_export_sql.v1%7C213481832d41e90c51b16b351f68dee2a92101d8962578a522c94bef95491498%7C9570b3bd68f2827e837ab927c2127a6940aa2d468c31ca29e7d1c02acd3cec26%7Cecd49eab77e925701862af9bb5d4fe2f6711b175e5c7c9c1fd6ae09af450a5ed HTTP/1.1" 200 OK
+[sidecar] INFO:     127.0.0.1:52026 - "GET /projects/359776b1-81c1-45b9-ba81-df1ab7409b3d/runs/b007f630-6e0d-40f1-a316-8c70e31a96f1/reports HTTP/1.1" 200 OK
+[sidecar] INFO:     127.0.0.1:39734 - "POST /projects/359776b1-81c1-45b9-ba81-df1ab7409b3d/runs/b007f630-6e0d-40f1-a316-8c70e31a96f1/reports HTTP/1.1" 201 Created
+[sidecar] INFO:     127.0.0.1:39734 - "GET /projects/359776b1-81c1-45b9-ba81-df1ab7409b3d/runs/b007f630-6e0d-40f1-a316-8c70e31a96f1/reports HTTP/1.1" 200 OK
+[sidecar] INFO:     127.0.0.1:52026 - "GET /projects/359776b1-81c1-45b9-ba81-df1ab7409b3d/runs/b007f630-6e0d-40f1-a316-8c70e31a96f1/reports HTTP/1.1" 200 OK
+[sidecar] INFO:     127.0.0.1:39734 - "GET /projects/359776b1-81c1-45b9-ba81-df1ab7409b3d/runs/b007f630-6e0d-40f1-a316-8c70e31a96f1/reports/794e2054-f60b-43f6-82ac-c12383674912/html HTTP/1.1" 200 OK
+[sidecar] INFO:     127.0.0.1:39734 - "GET /projects/359776b1-81c1-45b9-ba81-df1ab7409b3d/runs/b007f630-6e0d-40f1-a316-8c70e31a96f1/reports/794e2054-f60b-43f6-82ac-c12383674912/download HTTP/1.1" 200 OK
+[sidecar] INFO:     127.0.0.1:52026 - "GET /projects/359776b1-81c1-45b9-ba81-df1ab7409b3d/exports?run_id=b007f630-6e0d-40f1-a316-8c70e31a96f1 HTTP/1.1" 200 OK
+[sidecar] INFO:     127.0.0.1:39738 - "POST /projects/359776b1-81c1-45b9-ba81-df1ab7409b3d/runs/b007f630-6e0d-40f1-a316-8c70e31a96f1/exports/audit-pack HTTP/1.1" 201 Created
+[sidecar] INFO:     127.0.0.1:39738 - "GET /projects/359776b1-81c1-45b9-ba81-df1ab7409b3d/exports?run_id=b007f630-6e0d-40f1-a316-8c70e31a96f1 HTTP/1.1" 200 OK
+[sidecar] INFO:     127.0.0.1:52026 - "GET /projects/359776b1-81c1-45b9-ba81-df1ab7409b3d/exports?run_id=b007f630-6e0d-40f1-a316-8c70e31a96f1 HTTP/1.1" 200 OK
+[sidecar] INFO:     127.0.0.1:39738 - "GET /projects/359776b1-81c1-45b9-ba81-df1ab7409b3d/runs/b007f630-6e0d-40f1-a316-8c70e31a96f1/exports/7f6a1095-5426-4f18-82cb-aadb1ca1b924/download HTTP/1.1" 200 OK
+
+(cardre:15024): Gdk-WARNING **: 16:44:13.126: GdkWindow 0x400003 unexpectedly destroyed
+
+(cardre:15024): GLib-GObject-CRITICAL **: 16:44:13.126: invalid (NULL) pointer instance
+
+(cardre:15024): GLib-GObject-CRITICAL **: 16:44:13.126: g_signal_handler_disconnect: assertion 'G_TYPE_CHECK_INSTANCE (instance)' failed
+
+(cardre:15024): Gdk-CRITICAL **: 16:44:13.126: gdk_frame_clock_end_updating: assertion 'GDK_IS_FRAME_CLOCK (frame_clock)' failed
+Reserved port: 45301
+
+(cardre:15265): dbind-WARNING **: 16:44:13.388: AT-SPI: Error retrieving accessibility bus address: org.freedesktop.DBus.Error.ServiceUnknown: The name org.a11y.Bus was not provided by any .service files
+libEGL warning: DRI3 error: Could not get DRI3 device
+libEGL warning: Ensure your X server supports DRI3 to get accelerated rendering
+sidecar: bundled path not found: /usr/lib/Cardre/binaries/cardre-api-aarch64-unknown-linux-gnu
+sidecar: resolved path: /usr/bin/cardre-api
+sidecar: port: 45301
+sidecar: started /usr/bin/cardre-api (pid 15318)
+[sidecar:err] INFO:     Started server process [15327]
+[sidecar:err] INFO:     Waiting for application startup.
+[sidecar:err] INFO:     Application startup complete.
+[sidecar:err] INFO:     Uvicorn running on http://127.0.0.1:45301 (Press CTRL+C to quit)
+[sidecar] INFO:     127.0.0.1:56372 - "GET /health HTTP/1.1" 200 OK
+sidecar: healthy on port 45301
+[sidecar] INFO:     127.0.0.1:56374 - "GET /projects HTTP/1.1" 200 OK
+[sidecar] INFO:     127.0.0.1:56384 - "GET /projects HTTP/1.1" 200 OK
+[sidecar] INFO:     127.0.0.1:56410 - "GET /projects/359776b1-81c1-45b9-ba81-df1ab7409b3d/node-types HTTP/1.1" 200 OK
+[sidecar] INFO:     127.0.0.1:56374 - "GET /projects/359776b1-81c1-45b9-ba81-df1ab7409b3d HTTP/1.1" 200 OK
+[sidecar] INFO:     127.0.0.1:56386 - "GET /projects/359776b1-81c1-45b9-ba81-df1ab7409b3d/plans HTTP/1.1" 200 OK
+[sidecar] INFO:     127.0.0.1:56394 - "GET /projects/359776b1-81c1-45b9-ba81-df1ab7409b3d/runs HTTP/1.1" 200 OK
+[sidecar] INFO:     127.0.0.1:56384 - "GET /projects/359776b1-81c1-45b9-ba81-df1ab7409b3d/plan-versions/30aa0902-0474-4372-bcbd-790f7cd69dcf HTTP/1.1" 200 OK
+[sidecar] INFO:     127.0.0.1:56394 - "GET /projects/359776b1-81c1-45b9-ba81-df1ab7409b3d/runs/b007f630-6e0d-40f1-a316-8c70e31a96f1 HTTP/1.1" 200 OK
+[sidecar] INFO:     127.0.0.1:56386 - "GET /projects/359776b1-81c1-45b9-ba81-df1ab7409b3d/runs/b007f630-6e0d-40f1-a316-8c70e31a96f1/steps HTTP/1.1" 200 OK
+[sidecar] INFO:     127.0.0.1:56410 - "GET /projects/359776b1-81c1-45b9-ba81-df1ab7409b3d/plans/6c49183a-3a5c-44fb-94c6-cae2eee45c3c/versions HTTP/1.1" 200 OK
+[sidecar] INFO:     127.0.0.1:56422 - "GET /projects/359776b1-81c1-45b9-ba81-df1ab7409b3d/runs/b007f630-6e0d-40f1-a316-8c70e31a96f1/reports HTTP/1.1" 200 OK
+[sidecar] INFO:     127.0.0.1:56384 - "GET /projects/359776b1-81c1-45b9-ba81-df1ab7409b3d/runs/b007f630-6e0d-40f1-a316-8c70e31a96f1 HTTP/1.1" 200 OK
+[sidecar] INFO:     127.0.0.1:56374 - "GET /projects/359776b1-81c1-45b9-ba81-df1ab7409b3d/runs/b007f630-6e0d-40f1-a316-8c70e31a96f1/evidence HTTP/1.1" 200 OK
+[sidecar] INFO:     127.0.0.1:56436 - "GET /projects/359776b1-81c1-45b9-ba81-df1ab7409b3d/exports?run_id=b007f630-6e0d-40f1-a316-8c70e31a96f1 HTTP/1.1" 200 OK
+
+(cardre:15265): Gdk-WARNING **: 16:44:25.488: GdkWindow 0x400003 unexpectedly destroyed
+
+(cardre:15265): GLib-GObject-CRITICAL **: 16:44:25.488: invalid (NULL) pointer instance
+
+(cardre:15265): GLib-GObject-CRITICAL **: 16:44:25.488: g_signal_handler_disconnect: assertion 'G_TYPE_CHECK_INSTANCE (instance)' failed
+
+(cardre:15265): Gdk-CRITICAL **: 16:44:25.488: gdk_frame_clock_end_updating: assertion 'GDK_IS_FRAME_CLOCK (frame_clock)' failed
+Reserved port: 42347
+
+(cardre:15406): dbind-WARNING **: 16:44:25.746: AT-SPI: Error retrieving accessibility bus address: org.freedesktop.DBus.Error.ServiceUnknown: The name org.a11y.Bus was not provided by any .service files
+libEGL warning: DRI3 error: Could not get DRI3 device
+libEGL warning: Ensure your X server supports DRI3 to get accelerated rendering
+sidecar: bundled path not found: /usr/lib/Cardre/binaries/cardre-api-aarch64-unknown-linux-gnu
+sidecar: installed path not found: /usr/bin/cardre-api
+sidecar: startup failed: Could not resolve sidecar. Bundled: Some("/usr/lib/Cardre/binaries/cardre-api-aarch64-unknown-linux-gnu"); installed beside app: Some("/usr/bin/cardre-api"); PATH entry `cardre-api` not found.
+
+(cardre:15406): Gdk-WARNING **: 16:44:34.320: GdkWindow 0x400003 unexpectedly destroyed
+
+(cardre:15406): GLib-GObject-CRITICAL **: 16:44:34.320: invalid (NULL) pointer instance
+
+(cardre:15406): GLib-GObject-CRITICAL **: 16:44:34.320: g_signal_handler_disconnect: assertion 'G_TYPE_CHECK_INSTANCE (instance)' failed
+
+(cardre:15406): Gdk-CRITICAL **: 16:44:34.320: gdk_frame_clock_end_updating: assertion 'GDK_IS_FRAME_CLOCK (frame_clock)' failed

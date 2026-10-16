@@ -360,15 +360,17 @@ describe("RunDetailsPanel", () => {
       open_url: "/projects/p-1/runs/r-1/reports/rep-1/html",
       download_url: "/projects/p-1/runs/r-1/reports/rep-1/download",
     };
-    const onOpenReport = vi
-      .fn()
-      .mockResolvedValue({ blob: async () => new Blob(["<h1>report</h1>"]) });
+    const onOpenReport = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: async () => "<h1>report</h1>",
+      blob: async () => new Blob(["<h1>report</h1>"]),
+    } as Response);
     const onDownloadReport = vi
       .fn()
       .mockResolvedValue({ blob: async () => new Blob(["<h1>report</h1>"]) });
-    const reportWindow = { location: { href: "" }, close: vi.fn() } as unknown as Window;
     const createObjectURL = vi.fn().mockReturnValue("blob:report");
-    vi.spyOn(window, "open").mockReturnValue(reportWindow);
+    vi.spyOn(window, "open").mockReturnValue(null);
     vi.stubGlobal("URL", { createObjectURL, revokeObjectURL: vi.fn() });
 
     render(
@@ -393,7 +395,11 @@ describe("RunDetailsPanel", () => {
 
     await user.click(screen.getByRole("button", { name: "Open" }));
     expect(onOpenReport).toHaveBeenCalledWith(report);
-    expect(reportWindow.location.href).toBe("blob:report");
+    const preview = await screen.findByTitle("Model development report content");
+    expect(preview).toHaveAttribute("srcdoc", "<h1>report</h1>");
+    expect(preview).toHaveAttribute("sandbox", "");
+    await user.click(screen.getByRole("button", { name: "Close report preview" }));
+    expect(screen.queryByTitle("Model development report content")).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Download" }));
     expect(onDownloadReport).toHaveBeenCalledWith(report);
 

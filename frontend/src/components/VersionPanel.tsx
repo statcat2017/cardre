@@ -142,7 +142,7 @@ export function VersionPanel({
             }}
             style={{ display: "grid", gap: 8 }}
           >
-            <label
+            <div
               style={{
                 display: "grid",
                 gridTemplateColumns: "1fr auto",
@@ -150,34 +150,68 @@ export function VersionPanel({
                 alignItems: "center",
               }}
             >
-              <input
-                type="file"
-                accept=".parquet"
-                onChange={(event) => {
-                  const file = event.target.files?.[0];
-                  if (file) onDatasetFile(file);
-                  event.currentTarget.value = "";
-                }}
-                disabled={datasetImportPending}
-                style={{ display: "none" }}
-                id="parquet-file-picker"
-              />
-              <label
-                htmlFor="parquet-file-picker"
-                aria-disabled={datasetImportPending}
+              <div
                 style={{
                   padding: "10px 12px",
                   borderRadius: 10,
                   border: `1px solid ${theme.borderStrong}`,
                   background: theme.canvasSoft,
-                  cursor: datasetImportPending ? "not-allowed" : "pointer",
+                  color: theme.muted,
+                  fontSize: 13,
+                  minWidth: 0,
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
                   whiteSpace: "nowrap",
-                  opacity: datasetImportPending ? 0.6 : 1,
                 }}
               >
-                Browse…
-              </label>
-            </label>
+                {selectedDataset?.file_name ?? "No Parquet file selected"}
+              </div>
+              <div
+                style={{
+                  position: "relative",
+                }}
+              >
+                <input
+                  type="file"
+                  accept=".parquet"
+                  aria-label="Browse for Parquet file"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    if (file) onDatasetFile(file);
+                    event.currentTarget.value = "";
+                  }}
+                  disabled={datasetImportPending}
+                  style={{
+                    position: "absolute",
+                    inset: 0,
+                    zIndex: 1,
+                    width: "100%",
+                    height: "100%",
+                    opacity: 0,
+                    cursor: datasetImportPending ? "not-allowed" : "pointer",
+                  }}
+                  id="parquet-file-picker"
+                />
+                <div
+                  aria-hidden="true"
+                  style={{
+                    padding: "10px 12px",
+                    borderRadius: 10,
+                    border: 0,
+                    background: datasetImportPending ? theme.mutedSoft : theme.text,
+                    color: "#fff",
+                    cursor: datasetImportPending ? "not-allowed" : "pointer",
+                    whiteSpace: "nowrap",
+                    opacity: datasetImportPending ? 0.6 : 1,
+                    pointerEvents: "none",
+                    fontSize: 13,
+                    fontWeight: 600,
+                  }}
+                >
+                  Browse…
+                </div>
+              </div>
+            </div>
             <div role="status" aria-live="polite" style={{ color: theme.muted, fontSize: 13 }}>
               {datasetImportPending
                 ? `Importing ${datasetImportingName ?? "selected dataset"}…`

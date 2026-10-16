@@ -169,7 +169,29 @@ def write_job_log(owner: str, repo: str, pr_number: int, job: dict) -> Path:
     }
     logs_url = f"https://api.github.com/repos/{owner}/{repo}/actions/jobs/{job['id']}/logs"
     req = urllib.request.Request(logs_url, headers=headers)
-    raw = urllib.request.urlopen(req, timeout=60).read()
+
+    class StripCrossOriginAuthRedirectHandler(urllib.request.HTTPRedirectHandler):
+        def redirect_request(self, req, fp, code, msg, headers, newurl):
+            source = urllib.parse.urlsplit(req.full_url)
+            destination = urllib.parse.urlsplit(newurl)
+            if destination.scheme != "https":
+                raise urllib.error.HTTPError(
+                    newurl, code, "Refusing non-HTTPS job log redirect", headers, fp
+                )
+            request_headers = (
+                req.headers
+                if destination.netloc.lower() == source.netloc.lower()
+                else {"User-Agent": "cardre-pr-gate"}
+            )
+            return urllib.request.Request(
+                newurl,
+                headers=request_headers,
+                origin_req_host=req.origin_req_host,
+                unverifiable=True,
+            )
+
+    opener = urllib.request.build_opener(StripCrossOriginAuthRedirectHandler())
+    raw = opener.open(req, timeout=60).read()
     if raw.startswith(b"PK"):
         with zipfile.ZipFile(BytesIO(raw)) as archive:
             members = [name for name in archive.namelist() if not name.endswith("/")]
@@ -223,8 +245,9 @@ owner, repo = parse_origin(origin)
 branch = run_git("branch", "--show-current")
 if not branch:
     raise RuntimeError("Detached HEAD: checkout a branch before running scripts/pr-gate.sh")
+expected_sha = run_git("rev-parse", "HEAD")
 
-print(f"Pushing {branch} to origin")
+print(f"Pushing {branch} ({expected_sha[:12]}) to origin")
 subprocess.run(["git", "push", "-u", "origin", branch], cwd=ROOT, check=True)
 
 pr = ensure_pr(owner, repo, branch)
@@ -242,6 +265,13 @@ while True:
 
     pr = api("GET", f"/repos/{owner}/{repo}/pulls/{pr_number}")
     head_sha = pr["head"]["sha"]
+    if head_sha != expected_sha:
+        print(
+            f"Waiting for PR head to update: {head_sha[:12]} != {expected_sha[:12]}",
+            flush=True,
+        )
+        time.sleep(sleep_seconds)
+        continue
     run = latest_ci_run(owner, repo, head_sha)
     if run is None:
         print("Waiting for GitHub Actions run to appear...")

@@ -193,7 +193,7 @@ describe("VersionPanel", () => {
       type: "application/octet-stream",
     });
 
-    await user.upload(screen.getByLabelText("Browse…"), file);
+    await user.upload(screen.getByLabelText("Browse for Parquet file"), file);
 
     expect(onDatasetFile).toHaveBeenCalledWith(file);
   });
@@ -205,7 +205,7 @@ describe("VersionPanel", () => {
       size_bytes: 100,
     };
     const { onDatasetFile } = renderPanel({ versions: [], selectedDataset });
-    fireEvent.change(screen.getByLabelText("Browse…"), { target: { files: [] } });
+    fireEvent.change(screen.getByLabelText("Browse for Parquet file"), { target: { files: [] } });
 
     expect(onDatasetFile).not.toHaveBeenCalled();
     expect(screen.getByRole("status")).toHaveTextContent("Ready: customers.parquet");

@@ -27,6 +27,7 @@ describe("App", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     window.localStorage.clear();
+    delete window.__SIDECAR_STARTUP_ERROR__;
     queryClient.clear();
     vi.spyOn(api, "listProjects").mockResolvedValue({ projects: [] } as never);
     vi.spyOn(api, "getProject").mockResolvedValue({
@@ -45,6 +46,16 @@ describe("App", () => {
     expect(screen.getByText("Evidence-first scorecard workflows.")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Create Project" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Back" })).not.toBeInTheDocument();
+  });
+
+  it("shows an actionable error when the desktop sidecar cannot start", () => {
+    window.__SIDECAR_STARTUP_ERROR__ = "Could not resolve bundled cardre-api";
+
+    render(<App />);
+
+    expect(screen.getByRole("alert")).toHaveTextContent("Cardre could not start its local API");
+    expect(screen.getByText("Could not resolve bundled cardre-api")).toBeInTheDocument();
+    expect(api.listProjects).not.toHaveBeenCalled();
   });
 
   it("opens a project view when a project is created", async () => {

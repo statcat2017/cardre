@@ -125,6 +125,7 @@ export function RunDetailsPanel({
     status: "downloading" | "success" | "error";
     message: string;
   } | null>(null);
+  const [reportPreview, setReportPreview] = useState<{ html: string } | null>(null);
 
   const downloadExport = async (item: Export) => {
     if (!onDownloadExport || !item.artifact_id || !item.file_name) return;
@@ -158,15 +159,7 @@ export function RunDetailsPanel({
   const openReport = async (item: Report) => {
     if (!onOpenReport) return;
     const reportWindow = window.open("about:blank", "_blank");
-    if (!reportWindow) {
-      setDownloadState({
-        exportId: item.report_id,
-        status: "error",
-        message: "Allow popups to open this report.",
-      });
-      return;
-    }
-    reportWindow.opener = null;
+    if (reportWindow) reportWindow.opener = null;
     setDownloadState({
       exportId: item.report_id,
       status: "downloading",
@@ -174,16 +167,25 @@ export function RunDetailsPanel({
     });
     try {
       const response = await onOpenReport(item);
-      const objectUrl = URL.createObjectURL(await response.blob());
-      reportWindow.location.href = objectUrl;
-      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+      if (!response.ok) {
+        throw new Error(`The report request failed (HTTP ${response.status}).`);
+      }
+      if (reportWindow) {
+        const objectUrl = URL.createObjectURL(await response.blob());
+        reportWindow.location.href = objectUrl;
+        window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+      } else {
+        // The report renderer escapes project data and supplies a restrictive CSP.
+        // The sandbox adds a separate boundary when a desktop WebView blocks popups.
+        setReportPreview({ html: await response.text() });
+      }
       setDownloadState({
         exportId: item.report_id,
         status: "success",
         message: "Report opened.",
       });
     } catch (error) {
-      reportWindow.close();
+      reportWindow?.close();
       setDownloadState({
         exportId: item.report_id,
         status: "error",
@@ -547,6 +549,46 @@ export function RunDetailsPanel({
           )}
         </section>
       </div>
+      {reportPreview && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Model development report preview"
+          style={{
+            position: "fixed",
+            inset: 16,
+            zIndex: 1000,
+            display: "grid",
+            gridTemplateRows: "auto minmax(0, 1fr)",
+            gap: 10,
+            padding: 16,
+            borderRadius: 14,
+            border: `1px solid ${theme.borderStrong}`,
+            background: theme.canvas,
+            boxShadow: "0 12px 40px rgba(0, 0, 0, 0.24)",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <h2 style={{ margin: 0, fontSize: 18 }}>Model development report</h2>
+            <button type="button" onClick={() => setReportPreview(null)}>
+              Close report preview
+            </button>
+          </div>
+          <iframe
+            title="Model development report content"
+            srcDoc={reportPreview.html}
+            sandbox=""
+            referrerPolicy="no-referrer"
+            style={{
+              width: "100%",
+              height: "100%",
+              border: `1px solid ${theme.border}`,
+              borderRadius: 10,
+              background: theme.surface,
+            }}
+          />
+        </div>
+      )}
     </>
   );
 }

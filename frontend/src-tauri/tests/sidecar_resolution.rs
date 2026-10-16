@@ -1,8 +1,8 @@
 //! Integration test: bundled sidecar naming contract.
 //!
-//! Asserts that tauri.conf.json, build-sidecar.sh, and main.rs agree on the
+//! Asserts that tauri.conf.json, build-sidecar.sh, and sidecar.rs agree on the
 //! sidecar name. Does NOT depend on TAURI_ENV_TARGET_TRIPLE (not available in
-//! integration test binaries). The triple-dependent unit tests live in main.rs.
+//! integration test binaries). The triple-dependent unit tests live in sidecar.rs.
 //!
 //! Run: cargo test --test sidecar_resolution
 
@@ -39,19 +39,24 @@ fn build_sidecar_script_produces_triple_suffixed_name() {
 }
 
 #[test]
-fn main_rs_defines_sidecar_name_constant() {
+fn main_rs_uses_sidecar_module_and_sidecar_rs_defines_name() {
     let main_rs = include_str!("../src/main.rs");
+    let sidecar_rs = include_str!("../src/sidecar.rs");
     assert!(
-        main_rs.contains("SIDECAR_NAME: &str = \"cardre-api\""),
-        "main.rs must define SIDECAR_NAME = cardre-api"
+        main_rs.contains("mod sidecar;"),
+        "main.rs must load the sidecar module"
     );
     assert!(
-        main_rs.contains("TAURI_ENV_TARGET_TRIPLE"),
-        "main.rs must use TAURI_ENV_TARGET_TRIPLE"
+        sidecar_rs.contains("SIDECAR_NAME: &str = \"cardre-api\""),
+        "sidecar.rs must define SIDECAR_NAME = cardre-api"
     );
     assert!(
-        main_rs.contains("sidecar_binary_name()"),
-        "main.rs must use sidecar_binary_name()"
+        sidecar_rs.contains("TAURI_ENV_TARGET_TRIPLE"),
+        "sidecar.rs must use TAURI_ENV_TARGET_TRIPLE"
+    );
+    assert!(
+        sidecar_rs.contains("sidecar_binary_name()"),
+        "sidecar.rs must use sidecar_binary_name()"
     );
     assert!(
         main_rs.contains("resolve_sidecar"),

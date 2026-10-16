@@ -30,6 +30,7 @@ include = ["cardre*", "sidecar*"]
 [tool.ruff]
 target-version = "py311"
 line-length = 100
+extend-exclude = ["docs/release/validation/**"]
 
 [tool.ruff.lint]
 select = ["F", "W", "E", "I", "B", "C4", "UP", "SIM"]
