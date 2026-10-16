@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Response
+from fastapi.responses import FileResponse
+from starlette.background import BackgroundTask
 
 from cardre.api.dependencies import get_container
 from cardre.api.mappers import export_to_response
@@ -47,7 +49,7 @@ def generate_audit_pack(project_id: str, run_id: str, container=Depends(get_cont
 
 @router.get(
     "/runs/{run_id}/exports/{export_id}/download",
-    response_class=Response,
+    response_class=FileResponse,
     responses={
         200: {
             "description": "Downloadable checksummed audit pack archive.",
@@ -60,13 +62,18 @@ def download_audit_pack(
     project_id: str, run_id: str, export_id: str, container=Depends(get_container)
 ):
     item = container.download_audit_pack(project_id, run_id, export_id)
-    return Response(
-        content=item.content,
+    return FileResponse(
+        path=item.file_path,
         media_type=item.media_type,
+        filename=item.file_name,
         headers={
-            "Content-Disposition": f'attachment; filename="{item.file_name}"',
             "X-Content-Type-Options": "nosniff",
         },
+        background=(
+            BackgroundTask(item.file_path.unlink, missing_ok=True)
+            if item.delete_after_download
+            else None
+        ),
     )
 
 

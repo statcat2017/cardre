@@ -224,6 +224,12 @@ def test_golden_report_bundle_matches(tmp_path):
     with open(GOLDEN_REPORT_BUNDLE) as f:
         expected = json.load(f)
     got = _run_pathway(tmp_path)
+    statuses = [variable["role"].strip().casefold() for variable in got["variables"]]
+    included_count = sum(status == "included" for status in statuses)
+    excluded_count = sum(status in {"excluded", "rejected"} for status in statuses)
+    assert included_count > 0
+    assert got["summary"]["final_variable_count"] == included_count
+    assert got["summary"]["excluded_variable_count"] == excluded_count
 
     def _compare(got: object, expected: object, path: str = "") -> list[str]:
         diffs: list[str] = []

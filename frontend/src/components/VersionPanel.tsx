@@ -215,9 +215,11 @@ export function VersionPanel({
             <div role="status" aria-live="polite" style={{ color: theme.muted, fontSize: 13 }}>
               {datasetImportPending
                 ? `Importing ${datasetImportingName ?? "selected dataset"}…`
-                : selectedDataset
-                  ? `Ready: ${selectedDataset.file_name}`
-                  : "No dataset selected"}
+                : datasetImportError && selectedDataset
+                  ? `Upload failed. Previous dataset still selected: ${selectedDataset.file_name}`
+                  : selectedDataset
+                    ? `Ready: ${selectedDataset.file_name}`
+                    : "No dataset selected"}
             </div>
             {datasetImportError && (
               <div
@@ -230,6 +232,9 @@ export function VersionPanel({
                 }}
               >
                 Could not import the selected dataset: {datasetImportError}
+                {selectedDataset && (
+                  <> The previous dataset, {selectedDataset.file_name}, remains selected.</>
+                )}
               </div>
             )}
             <div

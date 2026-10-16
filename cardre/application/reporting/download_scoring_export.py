@@ -63,9 +63,22 @@ class DownloadScoringExport:
             if export_format is None:
                 raise _artifact_not_found(artifact_id)
 
-            raw = self._artifact_reader_factory(project_id).read_bytes(artifact)
+            try:
+                raw = self._artifact_reader_factory(project_id).read_bytes(artifact)
+                content = _render_export(artifact, raw)
+            except (
+                OSError,
+                UnicodeDecodeError,
+                ValueError,
+                TypeError,
+                pl.exceptions.PolarsError,
+            ) as exc:
+                raise CardreError(
+                    "Persisted scoring export is unreadable or does not match its expected schema.",
+                    code=ErrorCode.ARTIFACT_INVALID,
+                    context={"artifact_id": artifact_id, "artifact_type": artifact.artifact_type},
+                ) from exc
 
-        content = _render_export(artifact, raw)
         return DownloadableScoringExport(
             artifact_id=artifact.artifact_id,
             run_id=run_id,
@@ -93,6 +106,8 @@ def _render_export(artifact: ArtifactRef, raw: bytes) -> bytes:
         return table.write_csv().encode("utf-8")
 
     payload = json.loads(raw.decode("utf-8"))
+    if not isinstance(payload, dict):
+        raise ValueError("Persisted scoring source must be a JSON object.")
     expected_schema = {
         "scoring_export_python": SCHEMA_SCORING_EXPORT_PYTHON,
         "scoring_export_sql": SCHEMA_SCORING_EXPORT_SQL,

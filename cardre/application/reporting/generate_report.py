@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -52,15 +53,27 @@ class GenerateReport:
         self._renderer = renderer
 
     def __call__(self, command: GenerateReportCommand) -> GenerateReportResult:
-        # Default output location is project-scoped: the project root carries a
-        # ``reports/<run_id>/`` directory. The artifact reader's root is the
-        # canonical project root, so reports stay beneath the project.
+        artifact_reader = self._artifact_reader_factory(command.project_id)
+        generated_report_id = str(uuid.uuid4())
         if command.output_dir is not None:
             output_dir = Path(command.output_dir)
+            if hasattr(artifact_reader, "root"):
+                project_root = Path(artifact_reader.root).resolve()
+                try:
+                    output_dir.resolve().relative_to(project_root)
+                except ValueError:
+                    pass
+                else:
+                    output_dir = output_dir / generated_report_id
         else:
-            artifact_reader = self._artifact_reader_factory(command.project_id)
-            output_dir = Path(artifact_reader.root) / "reports" / command.run_id
-        artifact_reader = self._artifact_reader_factory(command.project_id)
+            # Keep generated reports beneath the project and give every run
+            # of this use case an immutable version directory.
+            output_dir = (
+                Path(artifact_reader.root)
+                / "reports"
+                / command.run_id
+                / generated_report_id
+            )
         with self._uow_factory.read_only(command.project_id) as uow:
             evidence_reader = self._evidence_reader_factory(artifact_reader, uow.artifacts, uow.run_steps)
             collector = self._collector_factory(evidence_reader, artifact_reader)
@@ -117,8 +130,6 @@ class GenerateReport:
         # pure-port test doubles may not support write access.
         report_id = None
         if hasattr(artifact_reader, "root"):
-            import uuid
-
             from cardre.domain.diagnostics import utc_now_iso
             root = Path(artifact_reader.root).resolve()
             try:
@@ -129,7 +140,7 @@ class GenerateReport:
                 # not be registered as retrievable project-scoped reports.
                 pass
             else:
-                report_id = str(uuid.uuid4())
+                report_id = generated_report_id
                 with self._uow_factory.for_project(command.project_id) as uow:
                     uow.reports.register(
                         report_id=report_id, run_id=command.run_id,

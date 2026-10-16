@@ -43,6 +43,14 @@ class CollectReportCommand:
     run_id: str
 
 
+def _set_variable_summary_counts(bundle: ReportBundle) -> None:
+    statuses = [variable.role.strip().casefold() for variable in bundle.variables]
+    bundle.summary.final_variable_count = sum(status == "included" for status in statuses)
+    bundle.summary.excluded_variable_count = sum(
+        status in {"excluded", "rejected"} for status in statuses
+    )
+
+
 class ReportCollector:
     """Assemble immutable run evidence into a report bundle."""
 
@@ -124,6 +132,8 @@ class ReportCollector:
                 config_hash=step.params_hash,
                 status=run_step.status.value if run_step is not None else "missing",
             ))
+
+        _set_variable_summary_counts(bundle)
 
         seen_artifacts: set[str] = set()
         for run_step in report_steps.values():
