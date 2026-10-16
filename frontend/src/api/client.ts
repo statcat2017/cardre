@@ -447,6 +447,23 @@ export const api = {
           }),
         );
       },
+      generateAuditPack: async (runId: string) => {
+        const client = makeClient();
+        return requireData(
+          await client.POST("/projects/{project_id}/runs/{run_id}/exports/audit-pack", {
+            params: { path: { project_id: pid, run_id: runId } },
+          }),
+        );
+      },
+      downloadAuditPack: async (runId: string, exportId: string) => {
+        const pathTemplate: keyof paths =
+          "/projects/{project_id}/runs/{run_id}/exports/{export_id}/download";
+        const path = String(pathTemplate)
+          .replace("{project_id}", encodeURIComponent(pid))
+          .replace("{run_id}", encodeURIComponent(runId))
+          .replace("{export_id}", encodeURIComponent(exportId));
+        return fetchResponse(`${getBaseUrl()}${path}`);
+      },
       downloadExport: async (runId: string, artifactId: string) => {
         const pathTemplate: keyof paths = "/projects/{project_id}/runs/{run_id}/exports/download";
         const path = String(pathTemplate)

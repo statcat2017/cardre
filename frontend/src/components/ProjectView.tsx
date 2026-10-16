@@ -180,6 +180,16 @@ export function ProjectView({ projectId, onBack }: Props) {
               }}
               reportGenerationPending={ws.reportGenerationPending}
               reportGenerationError={ws.reportGenerationError}
+              onGenerateAuditPack={() => {
+                if (!ws.effectiveSelectedRunId) {
+                  return Promise.reject(
+                    new Error("Select a run before generating its audit pack."),
+                  );
+                }
+                return ws.generateAuditPackMutation.mutateAsync(ws.effectiveSelectedRunId);
+              }}
+              auditPackGenerationPending={ws.auditPackGenerationPending}
+              auditPackGenerationError={ws.auditPackGenerationError}
               onOpenReport={(item) => {
                 if (!item.run_id) {
                   return Promise.reject(new Error("This report is not associated with a run."));
@@ -194,6 +204,18 @@ export function ProjectView({ projectId, onBack }: Props) {
               }}
               exportsLoading={ws.exportsQuery.isLoading}
               exports={ws.exportsQuery.data?.exports}
+              onDownloadAuditPack={(item) => {
+                if (!item.download_url || !item.file_name) {
+                  return Promise.reject(new Error("This audit pack is unavailable for download."));
+                }
+                return ws.downloadAuditPackMutation
+                  .mutateAsync({
+                    runId: item.run_id,
+                    exportId: item.export_id,
+                    fileName: item.file_name,
+                  })
+                  .then(() => undefined);
+              }}
               onDownloadExport={(item) => {
                 if (!item.artifact_id || !item.file_name) {
                   return Promise.reject(new Error("This export is unavailable for download."));

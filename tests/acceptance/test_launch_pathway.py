@@ -15,7 +15,9 @@ Supersedes the pre-Batch-05 ``test_launch_pathway.py`` and
 from __future__ import annotations
 
 import hashlib
+import io
 import json
+import zipfile
 
 import polars as pl
 import pytest
@@ -357,31 +359,91 @@ class TestLaunchPathway:
                     f"Technical manifest logical hash mismatch for {art.artifact_id}"
                 )
 
-        # 16. Audit package generation.
-        from cardre.application.reporting.export_audit_pack import ExportAuditPackCommand
+        # 16. Generate, discover, and download a checksummed audit archive
+        # through the same public endpoints used by the application UI.
+        with container.uow_factory.read_only(project_id) as uow:
+            artifact_ids_before = set(uow.artifacts.output_artifact_ids_for_run(run_id))
+            edge_ids_before = {
+                edge.evidence_edge_id
+                for run_step in uow.run_steps.get_for_run(run_id)
+                for edge in uow.evidence.get_edges_for_run_step(run_step.run_step_id)
+            }
+            run_before = uow.runs.get(run_id)
 
-        audit_dir = root / "exports" / f"audit-pack-{run_id}"
-        container.export_audit_pack(ExportAuditPackCommand(
-            project_id=project_id,
-            plan_id=plan_id,
-            run_id=run_id,
-            project_root=str(root),
-            export_path=str(audit_dir),
-        ))
-        assert audit_dir.is_dir(), f"Audit pack dir not created: {audit_dir}"
-        checksums_path = audit_dir / "checksums.sha256"
-        assert checksums_path.is_file(), "Audit pack missing checksums.sha256"
-        checksum_entries = {}
-        for line in checksums_path.read_text().splitlines():
-            digest, _, rel = line.partition("  ")
-            checksum_entries[rel.strip()] = digest
-        assert len(checksum_entries) >= 4, f"Too few checksum entries: {sorted(checksum_entries)}"
-        for rel, digest in checksum_entries.items():
-            target = audit_dir / rel
-            assert target.is_file(), f"Checksum references missing file: {rel}"
-            assert hashlib.sha256(target.read_bytes()).hexdigest() == digest, (
-                f"Checksum mismatch for {rel}"
+        audit_response = client.post(
+            f"/projects/{project_id}/runs/{run_id}/exports/audit-pack",
+        )
+        assert audit_response.status_code == 201, audit_response.text
+        audit_export = audit_response.json()
+        assert audit_export["export_type"] == "audit_pack"
+        assert audit_export["partial"] is False
+        assert audit_export["download_url"].endswith(
+            f"/runs/{run_id}/exports/{audit_export['export_id']}/download"
+        )
+
+        exports_response = client.get(f"/projects/{project_id}/exports", params={"run_id": run_id})
+        assert exports_response.status_code == 200
+        listed_export = next(
+            item for item in exports_response.json()["exports"]
+            if item["export_id"] == audit_export["export_id"]
+        )
+        assert listed_export["partial"] is False
+        assert listed_export["warnings"]
+        assert listed_export["download_url"] == audit_export["download_url"]
+
+        download_response = client.get(audit_export["download_url"])
+        assert download_response.status_code == 200
+        assert download_response.headers["content-type"].startswith("application/zip")
+        assert download_response.headers["content-disposition"].endswith(
+            f'filename="{audit_export["file_name"]}"'
+        )
+        with zipfile.ZipFile(io.BytesIO(download_response.content)) as archive:
+            names = set(archive.namelist())
+            assert {
+                "audit_pack.json", "checksums.sha256", "plan_version.json", "run.json",
+                "canonical_manifest.json", "evidence_edges.json", "evidence_artifacts.json",
+                "artifacts.json",
+            }.issubset(names)
+            checksum_entries = {}
+            for line in archive.read("checksums.sha256").decode("utf-8").splitlines():
+                digest, _, relative_path = line.partition("  ")
+                checksum_entries[relative_path] = digest
+            assert set(checksum_entries) == names - {"checksums.sha256"}
+            for relative_path, digest in checksum_entries.items():
+                assert hashlib.sha256(archive.read(relative_path)).hexdigest() == digest
+
+            pack_metadata = json.loads(archive.read("audit_pack.json"))
+            assert pack_metadata["project_id"] == project_id
+            assert pack_metadata["run_id"] == run_id
+            assert pack_metadata["plan_id"] == plan_id
+            assert pack_metadata["partial"] is False
+            artifacts = json.loads(archive.read("artifacts.json"))
+            omitted_row_level = {
+                item["artifact_id"]
+                for item in artifacts
+                if item["artifact_type"] in {"dataset", "tabular", "scored_dataset"}
+            }
+            assert omitted_row_level
+            assert all(
+                not item["content_included"]
+                for item in artifacts
+                if item["artifact_id"] in omitted_row_level
             )
+            assert not any(
+                name.startswith("artifacts/")
+                and any(artifact_id in name for artifact_id in omitted_row_level)
+                for name in names
+            )
+
+        with container.uow_factory.read_only(project_id) as uow:
+            assert set(uow.artifacts.output_artifact_ids_for_run(run_id)) == artifact_ids_before
+            assert {
+                edge.evidence_edge_id
+                for run_step in uow.run_steps.get_for_run(run_id)
+                for edge in uow.evidence.get_edges_for_run_step(run_step.run_step_id)
+            } == edge_ids_before
+            run_after = uow.runs.get(run_id)
+            assert run_after == run_before
 
         # 17. Replay a committed plan; assert deterministic content.
         # Run-scoped artifacts (RunSummary, technical/run manifests, and
