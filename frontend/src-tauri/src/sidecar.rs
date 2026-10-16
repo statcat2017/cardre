@@ -172,7 +172,10 @@ pub(crate) fn inject_api_url(window: &tauri::WebviewWindow, api_url: &str) -> Re
         .map_err(|e| format!("failed to inject API URL: {e}"))
 }
 
-pub(crate) fn inject_sidecar_error(window: &tauri::WebviewWindow, error: &str) -> Result<(), String> {
+pub(crate) fn inject_sidecar_error(
+    window: &tauri::WebviewWindow,
+    error: &str,
+) -> Result<(), String> {
     let script = sidecar_error_assignment_script(error)?;
     window
         .eval(&script)

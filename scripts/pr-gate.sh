@@ -169,7 +169,29 @@ def write_job_log(owner: str, repo: str, pr_number: int, job: dict) -> Path:
     }
     logs_url = f"https://api.github.com/repos/{owner}/{repo}/actions/jobs/{job['id']}/logs"
     req = urllib.request.Request(logs_url, headers=headers)
-    raw = urllib.request.urlopen(req, timeout=60).read()
+
+    class StripCrossOriginAuthRedirectHandler(urllib.request.HTTPRedirectHandler):
+        def redirect_request(self, req, fp, code, msg, headers, newurl):
+            source = urllib.parse.urlsplit(req.full_url)
+            destination = urllib.parse.urlsplit(newurl)
+            if destination.scheme != "https":
+                raise urllib.error.HTTPError(
+                    newurl, code, "Refusing non-HTTPS job log redirect", headers, fp
+                )
+            request_headers = (
+                req.headers
+                if destination.netloc.lower() == source.netloc.lower()
+                else {"User-Agent": "cardre-pr-gate"}
+            )
+            return urllib.request.Request(
+                newurl,
+                headers=request_headers,
+                origin_req_host=req.origin_req_host,
+                unverifiable=True,
+            )
+
+    opener = urllib.request.build_opener(StripCrossOriginAuthRedirectHandler())
+    raw = opener.open(req, timeout=60).read()
     if raw.startswith(b"PK"):
         with zipfile.ZipFile(BytesIO(raw)) as archive:
             members = [name for name in archive.namelist() if not name.endswith("/")]
