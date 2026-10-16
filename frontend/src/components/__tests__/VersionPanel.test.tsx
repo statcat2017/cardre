@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
@@ -32,8 +32,11 @@ function renderPanel(overrides: Partial<Parameters<typeof VersionPanel>[0]> = {}
     runPending: false,
     canRun: false,
     onRun: vi.fn(),
-    sourcePath: "",
-    onSourcePathChange: vi.fn(),
+    selectedDataset: null,
+    datasetImportingName: null,
+    datasetImportPending: false,
+    datasetImportError: null,
+    onDatasetFile: vi.fn(),
     targetColumn: "",
     onTargetColumnChange: vi.fn(),
     goodValues: "",
@@ -183,21 +186,52 @@ describe("VersionPanel", () => {
     expect(screen.getByRole("button", { name: "Running..." })).toBeDisabled();
   });
 
-  it("updates the source path input", async () => {
+  it("uploads the selected File object without reading a nonstandard File.path", async () => {
     const user = userEvent.setup();
-    const { onSourcePathChange } = renderPanel({ versions: [] });
+    const { onDatasetFile } = renderPanel({ versions: [] });
+    const file = new File(["parquet bytes"], "customers.parquet", {
+      type: "application/octet-stream",
+    });
 
-    await user.type(
-      screen.getByPlaceholderText("Absolute path to your Parquet file"),
-      "/tmp/a.parquet",
-    );
+    await user.upload(screen.getByLabelText("Browse…"), file);
 
-    expect(onSourcePathChange).toHaveBeenCalled();
+    expect(onDatasetFile).toHaveBeenCalledWith(file);
   });
 
-  it("does not generate the pathway when the source path is empty", async () => {
+  it("preserves the selected dataset when the file chooser is cancelled", () => {
+    const selectedDataset = {
+      source_ref: "dataset:0123456789abcdef0123456789abcdef",
+      file_name: "customers.parquet",
+      size_bytes: 100,
+    };
+    const { onDatasetFile } = renderPanel({ versions: [], selectedDataset });
+    fireEvent.change(screen.getByLabelText("Browse…"), { target: { files: [] } });
+
+    expect(onDatasetFile).not.toHaveBeenCalled();
+    expect(screen.getByRole("status")).toHaveTextContent("Ready: customers.parquet");
+  });
+
+  it("shows importing, ready, and failure states", () => {
+    renderPanel({
+      versions: [],
+      datasetImportPending: true,
+      datasetImportingName: "customers.parquet",
+    });
+    expect(screen.getByRole("status")).toHaveTextContent("Importing customers.parquet");
+    expect(screen.getByRole("button", { name: "Generate launch pathway" })).toBeDisabled();
+  });
+
+  it("shows an actionable invalid-dataset error", () => {
+    renderPanel({
+      versions: [],
+      datasetImportError: "DATASET_INVALID: Choose a readable Parquet file.",
+    });
+    expect(screen.getByRole("alert")).toHaveTextContent("Choose a readable Parquet file.");
+  });
+
+  it("does not generate the pathway until a dataset is ready", async () => {
     const user = userEvent.setup();
-    const { onGeneratePathway } = renderPanel({ versions: [], sourcePath: "" });
+    const { onGeneratePathway } = renderPanel({ versions: [] });
 
     const generateButton = screen.getByRole("button", { name: "Generate launch pathway" });
     expect(generateButton).toBeDisabled();
@@ -206,9 +240,14 @@ describe("VersionPanel", () => {
     expect(onGeneratePathway).not.toHaveBeenCalled();
   });
 
-  it("generates the pathway when a source path is present", async () => {
+  it("generates the pathway when an imported dataset is ready", async () => {
     const user = userEvent.setup();
-    const { onGeneratePathway } = renderPanel({ versions: [], sourcePath: "/tmp/a.parquet" });
+    const selectedDataset = {
+      source_ref: "dataset:0123456789abcdef0123456789abcdef",
+      file_name: "customers.parquet",
+      size_bytes: 100,
+    };
+    const { onGeneratePathway } = renderPanel({ versions: [], selectedDataset });
 
     const generateButton = screen.getByRole("button", { name: "Generate launch pathway" });
     expect(generateButton).toBeEnabled();
@@ -218,7 +257,15 @@ describe("VersionPanel", () => {
   });
 
   it("shows generating pending text when generating", () => {
-    renderPanel({ versions: [], sourcePath: "/tmp/a.parquet", generatePathwayPending: true });
+    renderPanel({
+      versions: [],
+      selectedDataset: {
+        source_ref: "dataset:0123456789abcdef0123456789abcdef",
+        file_name: "customers.parquet",
+        size_bytes: 100,
+      },
+      generatePathwayPending: true,
+    });
 
     expect(screen.getByRole("button", { name: "Generating..." })).toBeDisabled();
   });

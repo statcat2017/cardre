@@ -395,6 +395,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/projects/{project_id}/datasets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Import Dataset
+         * @description Import a Parquet file without accepting a client-controlled path.
+         */
+        post: operations["import_dataset_projects__project_id__datasets_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/projects/{project_id}/node-types": {
         parameters: {
             query?: never;
@@ -506,7 +526,9 @@ export interface components {
         /** CanonicalScorecardVersionRequest */
         CanonicalScorecardVersionRequest: {
             /** Source Path */
-            source_path: string;
+            source_path?: string | null;
+            /** Source Ref */
+            source_ref?: string | null;
             /** Target Column */
             target_column?: string | null;
             /** Good Values */
@@ -529,6 +551,15 @@ export interface components {
             smoothing?: {
                 [key: string]: unknown;
             } | null;
+        };
+        /** DatasetImportResponse */
+        DatasetImportResponse: {
+            /** Source Ref */
+            source_ref: string;
+            /** File Name */
+            file_name: string;
+            /** Size Bytes */
+            size_bytes: number;
         };
         /** DiagnosticResponse */
         DiagnosticResponse: {
@@ -555,6 +586,21 @@ export interface components {
             };
             /** Created At */
             created_at?: string | null;
+        };
+        /** ErrorDetail */
+        ErrorDetail: {
+            /** Code */
+            code: string;
+            /** Message */
+            message: string;
+            /** Context */
+            context?: {
+                [key: string]: unknown;
+            };
+        };
+        /** ErrorResponse */
+        ErrorResponse: {
+            detail: components["schemas"]["ErrorDetail"];
         };
         /** EvidenceArtifactResponse */
         EvidenceArtifactResponse: {
@@ -1996,6 +2042,62 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ArtifactResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    import_dataset_projects__project_id__datasets_post: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-File-Name": string;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/octet-stream": string;
+                "application/vnd.apache.parquet": string;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DatasetImportResponse"];
+                };
+            };
+            /** @description Dataset exceeds the upload limit. */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unsupported upload content type. */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
             /** @description Validation Error */

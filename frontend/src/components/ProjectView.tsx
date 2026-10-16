@@ -134,8 +134,11 @@ export function ProjectView({ projectId, onBack }: Props) {
               runPending={ws.runMutation.isPending}
               canRun={!!ws.selectedVersion?.is_committed}
               onRun={() => ws.runMutation.mutate()}
-              sourcePath={ws.sourcePath}
-              onSourcePathChange={ws.setSourcePath}
+              selectedDataset={ws.selectedDataset}
+              datasetImportingName={ws.datasetImportingName}
+              datasetImportPending={ws.datasetImportPending}
+              datasetImportError={ws.datasetImportError}
+              onDatasetFile={ws.importDataset}
               targetColumn={ws.targetColumn}
               onTargetColumnChange={ws.setTargetColumn}
               goodValues={ws.goodValues}

@@ -292,6 +292,8 @@ export type ProjectScope = {
   projectId: string;
 };
 
+type DatasetImportResponse = components["schemas"]["DatasetImportResponse"];
+
 export const api = {
   listProjects: async () => {
     const client = makeClient();
@@ -348,6 +350,19 @@ export const api = {
             body,
           }),
         );
+      },
+      uploadDataset: async (file: File): Promise<DatasetImportResponse> => {
+        const response = await typedTransport(
+          new Request(`${getBaseUrl()}/projects/${encodeURIComponent(pid)}/datasets`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/octet-stream",
+              "X-File-Name": encodeURIComponent(file.name),
+            },
+            body: file,
+          }),
+        );
+        return (await response.json()) as DatasetImportResponse;
       },
       getPlanVersionSteps: async (planVersionId: string) => {
         const client = makeClient();

@@ -167,6 +167,36 @@ jobs:
       # available for targeted local runs.
       - run: npm run test:coverage
 
+  test-browser-e2e:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.frontend == 'true' || needs.detect-changes.outputs.python == 'true' || needs.detect-changes.outputs.sidecar == 'true' || needs.detect-changes.outputs.ci == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup-python-env
+        with:
+          python-version: \${{ env.PYTHON_VERSION }}
+          extras: sidecar,test
+      - uses: ./.github/actions/setup-frontend
+        with:
+          node-version: \${{ env.NODE_VERSION }}
+      - name: Install Chromium
+        working-directory: frontend
+        run: npx playwright install --with-deps chromium
+      - name: Run real browser workflow
+        working-directory: frontend
+        env:
+          CARDRE_BROWSER_OUTPUT_DIR: \${{ runner.temp }}/cardre-browser-e2e
+        run: npm run test:e2e
+      - name: Upload browser evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: cardre-dataset-browse-browser-evidence
+          path: \${{ runner.temp }}/cardre-browser-e2e
+          if-no-files-found: ignore
+
   build-sidecar:
     needs: detect-changes
     if: needs.detect-changes.outputs.sidecar == 'true' || needs.detect-changes.outputs.ci == 'true'

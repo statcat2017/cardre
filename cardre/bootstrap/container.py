@@ -8,6 +8,7 @@ from typing import Any
 
 from cardre.adapters.evidence.reader import EvidenceReader
 from cardre.adapters.filesystem.artifact_store import FsArtifactStore
+from cardre.adapters.filesystem.dataset_store import FsDatasetStore
 from cardre.adapters.filesystem.manifest_publisher import FsManifestPublisher
 from cardre.adapters.rendering.html_report import HtmlReportRenderer
 from cardre.adapters.reporting.collector import ReportCollector
@@ -67,6 +68,7 @@ class Container:
     list_reports: Any = None
     list_exports: Any = None
     get_run_manifest: Any = None
+    dataset_store_factory: Any = None
 
 
 def build_container(settings: Settings) -> Container:
@@ -90,6 +92,9 @@ def build_container(settings: Settings) -> Container:
 
     def artifact_store_factory(project_id: str) -> FsArtifactStore:
         return FsArtifactStore(project_root(project_id))
+
+    def dataset_store_factory(project_id: str) -> FsDatasetStore:
+        return FsDatasetStore(project_root(project_id))
 
     def evidence_reader_factory(
         reader: ArtifactReader,
@@ -286,4 +291,5 @@ def build_container(settings: Settings) -> Container:
         list_reports=list_reports,
         list_exports=list_exports,
         get_run_manifest=get_run_manifest,
+        dataset_store_factory=dataset_store_factory,
     )

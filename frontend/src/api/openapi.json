@@ -1349,6 +1349,97 @@
         }
       }
     },
+    "/projects/{project_id}/datasets": {
+      "post": {
+        "tags": [
+          "datasets"
+        ],
+        "summary": "Import Dataset",
+        "description": "Import a Parquet file without accepting a client-controlled path.",
+        "operationId": "import_dataset_projects__project_id__datasets_post",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "X-File-Name",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 1024,
+              "title": "X-File-Name"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DatasetImportResponse"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Dataset exceeds the upload limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Unsupported upload content type.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/octet-stream": {
+              "schema": {
+                "type": "string",
+                "format": "binary"
+              }
+            },
+            "application/vnd.apache.parquet": {
+              "schema": {
+                "type": "string",
+                "format": "binary"
+              }
+            }
+          }
+        }
+      }
+    },
     "/projects/{project_id}/node-types": {
       "get": {
         "tags": [
@@ -1645,8 +1736,26 @@
       "CanonicalScorecardVersionRequest": {
         "properties": {
           "source_path": {
-            "type": "string",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Source Path"
+          },
+          "source_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Ref"
           },
           "target_column": {
             "anyOf": [
@@ -1767,10 +1876,30 @@
           }
         },
         "type": "object",
-        "required": [
-          "source_path"
-        ],
         "title": "CanonicalScorecardVersionRequest"
+      },
+      "DatasetImportResponse": {
+        "properties": {
+          "source_ref": {
+            "type": "string",
+            "title": "Source Ref"
+          },
+          "file_name": {
+            "type": "string",
+            "title": "File Name"
+          },
+          "size_bytes": {
+            "type": "integer",
+            "title": "Size Bytes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "source_ref",
+          "file_name",
+          "size_bytes"
+        ],
+        "title": "DatasetImportResponse"
       },
       "DiagnosticResponse": {
         "properties": {
@@ -1819,6 +1948,41 @@
         },
         "type": "object",
         "title": "DiagnosticResponse"
+      },
+      "ErrorDetail": {
+        "properties": {
+          "code": {
+            "type": "string",
+            "title": "Code"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "context": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "code",
+          "message"
+        ],
+        "title": "ErrorDetail"
+      },
+      "ErrorResponse": {
+        "properties": {
+          "detail": {
+            "$ref": "#/components/schemas/ErrorDetail"
+          }
+        },
+        "type": "object",
+        "required": [
+          "detail"
+        ],
+        "title": "ErrorResponse"
       },
       "EvidenceArtifactResponse": {
         "properties": {

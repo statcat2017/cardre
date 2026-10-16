@@ -28,6 +28,7 @@ describe("useProjectWorkspace", () => {
     listPlans: vi.fn().mockResolvedValue({ plans: [] }),
     createPlan: vi.fn(),
     createCanonicalVersion: vi.fn(),
+    uploadDataset: vi.fn(),
     getPlanVersionSteps: vi.fn().mockResolvedValue([]),
     updateStepParams: vi.fn(),
     commitPlanVersion: vi.fn(),
@@ -294,8 +295,17 @@ describe("useProjectWorkspace", () => {
       expect(result.current.effectiveSelectedPlanId).toBe("pl-1");
     });
 
+    const file = new File(["parquet"], "in.parquet");
+    mockScoped.uploadDataset.mockResolvedValue({
+      source_ref: "dataset:0123456789abcdef0123456789abcdef",
+      file_name: "in.parquet",
+      size_bytes: 7,
+    });
     act(() => {
-      result.current.setSourcePath("/tmp/in.parquet");
+      result.current.importDataset(file);
+    });
+    await waitFor(() => {
+      expect(result.current.selectedDataset?.file_name).toBe("in.parquet");
     });
 
     await act(async () => {
@@ -303,7 +313,7 @@ describe("useProjectWorkspace", () => {
     });
 
     expect(mockScoped.createCanonicalVersion).toHaveBeenCalledWith("pl-1", {
-      source_path: "/tmp/in.parquet",
+      source_ref: "dataset:0123456789abcdef0123456789abcdef",
     });
     expect(result.current.effectiveSelectedVersionId).toBe("v-new");
   });

@@ -113,6 +113,7 @@ _DOMAIN_ERROR_MAP: dict[ErrorCode, tuple[ErrorCode, int]] = {
     ErrorCode.PROJECT_NOT_FOUND: (ErrorCode.PROJECT_NOT_FOUND, 404),
     ErrorCode.PLAN_NOT_FOUND: (ErrorCode.PLAN_NOT_FOUND, 404),
     ErrorCode.ARTIFACT_NOT_FOUND: (ErrorCode.ARTIFACT_NOT_FOUND, 404),
+    ErrorCode.DATASET_NOT_FOUND: (ErrorCode.DATASET_NOT_FOUND, 404),
     ErrorCode.STEP_NOT_FOUND: (ErrorCode.STEP_NOT_FOUND, 404),
     ErrorCode.REVIEW_NOT_FOUND: (ErrorCode.REVIEW_NOT_FOUND, 404),
     ErrorCode.INVALID_PROJECT_PATH: (ErrorCode.INVALID_PROJECT_PATH, 400),
@@ -121,6 +122,8 @@ _DOMAIN_ERROR_MAP: dict[ErrorCode, tuple[ErrorCode, int]] = {
     ErrorCode.RUN_SCOPE_INVALID: (ErrorCode.BAD_REQUEST, 400),
     # 400 — request validation
     ErrorCode.EVIDENCE_VALIDATION_ERROR: (ErrorCode.EVIDENCE_VALIDATION_ERROR, 400),
+    ErrorCode.DATASET_INVALID: (ErrorCode.DATASET_INVALID, 422),
+    ErrorCode.UPLOAD_TOO_LARGE: (ErrorCode.UPLOAD_TOO_LARGE, 413),
     # 404 — not found
     # 409 — state conflict / not ready
     ErrorCode.EXPORT_RUN_NOT_FOUND: (ErrorCode.EXPORT_RUN_NOT_FOUND, 409),
@@ -128,6 +131,7 @@ _DOMAIN_ERROR_MAP: dict[ErrorCode, tuple[ErrorCode, int]] = {
     ErrorCode.CANONICAL_MANIFEST_MISSING: (ErrorCode.CANONICAL_MANIFEST_MISSING, 404),
     # 500 — infrastructure
     ErrorCode.REGISTRY_CORRUPTED: (ErrorCode.REGISTRY_CORRUPTED, 500),
+    ErrorCode.DATASET_STORAGE_FAILED: (ErrorCode.DATASET_STORAGE_FAILED, 500),
 }
 
 
