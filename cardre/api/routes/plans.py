@@ -74,12 +74,30 @@ def create_canonical_scorecard_version(
         CreateCanonicalScorecardVersionCommand,
     )
 
+    if bool(body.source_ref) == bool(body.source_path):
+        raise CardreApiError(
+            code=ErrorCode.BAD_REQUEST,
+            message="Provide exactly one of source_ref or source_path.",
+            status_code=400,
+        )
+    if body.source_ref:
+        from cardre.application.datasets.import_dataset import (
+            ResolveDatasetSource,
+            ResolveDatasetSourceCommand,
+        )
+
+        source_path = ResolveDatasetSource(container.dataset_store_factory)(
+            ResolveDatasetSourceCommand(project_id=project_id, source_ref=body.source_ref)
+        )
+    else:
+        source_path = body.source_path
+
     pv = CreateCanonicalScorecardVersion(
         _uow_factory(container, project_id), container.node_catalogue,
     )(
         CreateCanonicalScorecardVersionCommand(
             plan_id=plan_id,
-            source_path=body.source_path,
+            source_path=str(source_path),
             target_column=body.target_column,
             good_values=body.good_values,
             bad_values=body.bad_values,

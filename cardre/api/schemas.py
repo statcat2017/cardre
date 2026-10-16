@@ -64,6 +64,12 @@ class ProjectCreateRequest(BaseModel):
     path: str
 
 
+class DatasetImportResponse(BaseModel):
+    source_ref: str
+    file_name: str
+    size_bytes: int
+
+
 # ---------------------------------------------------------------------------
 # Plans
 # ---------------------------------------------------------------------------
@@ -84,7 +90,8 @@ class PlanCreateRequest(BaseModel):
 
 
 class CanonicalScorecardVersionRequest(BaseModel):
-    source_path: str
+    source_path: str | None = None
+    source_ref: str | None = None
     target_column: str | None = None
     good_values: list[str] | None = None
     bad_values: list[str] | None = None

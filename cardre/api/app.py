@@ -22,6 +22,7 @@ from cardre.api.errors import (
 )
 from cardre.api.routes import (
     artifacts,
+    datasets,
     evidence,
     exports,
     health,
@@ -84,7 +85,7 @@ def create_app(container: object) -> FastAPI:
         allow_origins=cors_origins,
         allow_credentials=True,
         allow_methods=["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"],
-        allow_headers=["Content-Type"],
+        allow_headers=["Content-Type", "X-File-Name"],
     )
 
     app.add_exception_handler(CardreError, cardre_error_handler)  # type: ignore[arg-type]
@@ -97,6 +98,7 @@ def create_app(container: object) -> FastAPI:
     app.include_router(runs.router)
     app.include_router(evidence.router)
     app.include_router(artifacts.router)
+    app.include_router(datasets.router)
     app.include_router(node_types.router)
     app.include_router(exports.router)
     app.include_router(reports.router)

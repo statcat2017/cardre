@@ -10,6 +10,10 @@ type SelectedVersion = Pick<
   components["schemas"]["PlanVersionResponse"],
   "plan_version_id" | "version_number" | "is_committed"
 >;
+type ImportedDataset = Pick<
+  components["schemas"]["DatasetImportResponse"],
+  "source_ref" | "file_name" | "size_bytes"
+>;
 
 interface Props {
   selectedPlan: SelectedPlan | null;
@@ -21,8 +25,11 @@ interface Props {
   runPending: boolean;
   canRun: boolean;
   onRun: () => void;
-  sourcePath: string | null;
-  onSourcePathChange: (path: string) => void;
+  selectedDataset: ImportedDataset | null;
+  datasetImportingName: string | null;
+  datasetImportPending: boolean;
+  datasetImportError: string | null;
+  onDatasetFile: (file: File) => void;
   targetColumn: string;
   onTargetColumnChange: (value: string) => void;
   goodValues: string;
@@ -45,8 +52,11 @@ export function VersionPanel({
   runPending,
   canRun,
   onRun,
-  sourcePath,
-  onSourcePathChange,
+  selectedDataset,
+  datasetImportingName,
+  datasetImportPending,
+  datasetImportError,
+  onDatasetFile,
   targetColumn,
   onTargetColumnChange,
   goodValues,
@@ -128,7 +138,7 @@ export function VersionPanel({
           <form
             onSubmit={(event) => {
               event.preventDefault();
-              if (sourcePath?.trim()) onGeneratePathway();
+              if (selectedDataset && !datasetImportPending) onGeneratePathway();
             }}
             style={{ display: "grid", gap: 8 }}
           >
@@ -141,43 +151,58 @@ export function VersionPanel({
               }}
             >
               <input
-                type="text"
-                value={sourcePath ?? ""}
-                onChange={(event) => onSourcePathChange(event.target.value)}
-                placeholder="Absolute path to your Parquet file"
-                style={{
-                  width: "100%",
-                  padding: "10px 12px",
-                  borderRadius: 10,
-                  border: `1px solid ${theme.borderStrong}`,
-                  boxSizing: "border-box",
-                }}
-              />
-              <input
                 type="file"
                 accept=".parquet"
                 onChange={(event) => {
                   const file = event.target.files?.[0];
-                  const path = (file as unknown as { path?: string } | null)?.path;
-                  if (path) onSourcePathChange(path);
+                  if (file) onDatasetFile(file);
+                  event.currentTarget.value = "";
                 }}
+                disabled={datasetImportPending}
                 style={{ display: "none" }}
                 id="parquet-file-picker"
               />
               <label
                 htmlFor="parquet-file-picker"
+                aria-disabled={datasetImportPending}
                 style={{
                   padding: "10px 12px",
                   borderRadius: 10,
                   border: `1px solid ${theme.borderStrong}`,
                   background: theme.canvasSoft,
-                  cursor: "pointer",
+                  cursor: datasetImportPending ? "not-allowed" : "pointer",
                   whiteSpace: "nowrap",
+                  opacity: datasetImportPending ? 0.6 : 1,
                 }}
               >
                 Browse…
               </label>
             </label>
+            <div role="status" aria-live="polite" style={{ color: theme.muted, fontSize: 13 }}>
+              {datasetImportPending
+                ? `Importing ${datasetImportingName ?? "selected dataset"}…`
+                : datasetImportError && selectedDataset
+                  ? `Upload failed. Previous dataset still selected: ${selectedDataset.file_name}`
+                  : selectedDataset
+                    ? `Ready: ${selectedDataset.file_name}`
+                    : "No dataset selected"}
+            </div>
+            {datasetImportError && (
+              <div
+                role="alert"
+                style={{
+                  color: theme.redText,
+                  background: theme.redBg,
+                  padding: 10,
+                  borderRadius: 8,
+                }}
+              >
+                Could not import the selected dataset: {datasetImportError}
+                {selectedDataset && (
+                  <> The previous dataset, {selectedDataset.file_name}, remains selected.</>
+                )}
+              </div>
+            )}
             <div
               style={{
                 display: "grid",
@@ -233,15 +258,20 @@ export function VersionPanel({
             </div>
             <button
               type="submit"
-              disabled={!sourcePath?.trim() || generatePathwayPending}
+              disabled={!selectedDataset || datasetImportPending || generatePathwayPending}
               style={{
                 padding: "10px 12px",
                 borderRadius: 10,
                 border: 0,
                 background:
-                  !sourcePath?.trim() || generatePathwayPending ? theme.mutedSoft : theme.text,
+                  !selectedDataset || datasetImportPending || generatePathwayPending
+                    ? theme.mutedSoft
+                    : theme.text,
                 color: "#fff",
-                cursor: !sourcePath?.trim() || generatePathwayPending ? "not-allowed" : "pointer",
+                cursor:
+                  !selectedDataset || datasetImportPending || generatePathwayPending
+                    ? "not-allowed"
+                    : "pointer",
               }}
             >
               {generatePathwayPending ? "Generating..." : "Generate launch pathway"}

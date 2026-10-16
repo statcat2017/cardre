@@ -14,6 +14,15 @@ import { ErrorCodes, isErrorCode, type ErrorCode } from "./errorCodes";
 // ---------------------------------------------------------------------------
 
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
+const DEFAULT_DATASET_UPLOAD_TIMEOUT_MS = 10 * 60_000;
+
+export function getDatasetUploadTimeoutMs(): number {
+  // Vite build-time setting for deployments that need longer dataset uploads.
+  const configured = Number(import.meta.env.VITE_DATASET_UPLOAD_TIMEOUT_MS);
+  return Number.isSafeInteger(configured) && configured > 0
+    ? configured
+    : DEFAULT_DATASET_UPLOAD_TIMEOUT_MS;
+}
 
 // ---------------------------------------------------------------------------
 // ApiError
@@ -237,7 +246,10 @@ export async function fetchJson<T>(url: string, options: FetchOptions = {}): Pro
 // openapi-fetch adapter & helpers
 // ---------------------------------------------------------------------------
 
-async function typedTransport(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+async function typedTransport(
+  input: RequestInfo | URL,
+  init?: RequestInit & { timeoutMs?: number },
+): Promise<Response> {
   const response = await fetchResponse(input, init);
 
   if (response.status === 204) {
@@ -291,6 +303,8 @@ function requireData<T>(result: { data?: T; error?: unknown; response: Response 
 export type ProjectScope = {
   projectId: string;
 };
+
+type DatasetImportResponse = components["schemas"]["DatasetImportResponse"];
 
 export const api = {
   listProjects: async () => {
@@ -348,6 +362,20 @@ export const api = {
             body,
           }),
         );
+      },
+      uploadDataset: async (file: File): Promise<DatasetImportResponse> => {
+        const response = await typedTransport(
+          new Request(`${getBaseUrl()}/projects/${encodeURIComponent(pid)}/datasets`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/octet-stream",
+              "X-File-Name": encodeURIComponent(file.name),
+            },
+            body: file,
+          }),
+          { timeoutMs: getDatasetUploadTimeoutMs() },
+        );
+        return (await response.json()) as DatasetImportResponse;
       },
       getPlanVersionSteps: async (planVersionId: string) => {
         const client = makeClient();

@@ -19,6 +19,7 @@ describe("ProjectView", () => {
     listPlans: vi.fn().mockResolvedValue({ plans: [] }),
     createPlan: vi.fn(),
     createCanonicalVersion: vi.fn(),
+    uploadDataset: vi.fn(),
     getPlanVersionSteps: vi.fn().mockResolvedValue([]),
     updateStepParams: vi.fn(),
     commitPlanVersion: vi.fn(),
@@ -81,7 +82,8 @@ describe("ProjectView", () => {
       expect(screen.getAllByText("Generate launch pathway").length).toBeGreaterThan(0);
     });
 
-    expect(screen.getByPlaceholderText("Absolute path to your Parquet file")).toBeDefined();
+    expect(screen.getByLabelText("Browse…")).toBeDefined();
+    expect(screen.getByRole("status")).toHaveTextContent("No dataset selected");
   });
 
   it("renders error banner when present", async () => {

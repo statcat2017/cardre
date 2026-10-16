@@ -2,9 +2,11 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 
 import { api, toErrorMessage, type ProjectScope } from "../api/client";
+import type { components } from "../api/schema.d";
 import { useSelectedEntity } from "./useSelectedEntity";
 
 const TERMINAL_RUN_STATUSES = new Set(["succeeded", "failed", "cancelled", "interrupted"]);
+type ImportedDataset = components["schemas"]["DatasetImportResponse"];
 
 function isTerminalRun(status: string): boolean {
   return TERMINAL_RUN_STATUSES.has(status);
@@ -16,7 +18,9 @@ export function useProjectWorkspace(scope: ProjectScope) {
   const [selectedVersionId, setSelectedVersionId] = useState<string | null>(null);
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [newPlanName, setNewPlanName] = useState("Scorecard Pathway");
-  const [sourcePath, setSourcePath] = useState<string | null>(null);
+  const [selectedDataset, setSelectedDataset] = useState<ImportedDataset | null>(null);
+  const [datasetImportingName, setDatasetImportingName] = useState<string | null>(null);
+  const [datasetImportError, setDatasetImportError] = useState<string | null>(null);
   const [targetColumn, setTargetColumn] = useState<string>("");
   const [goodValues, setGoodValues] = useState<string>("");
   const [badValues, setBadValues] = useState<string>("");
@@ -187,10 +191,27 @@ export function useProjectWorkspace(scope: ProjectScope) {
     },
   });
 
+  const uploadDatasetMutation = useMutation({
+    mutationFn: (file: File) => scoped.uploadDataset(file),
+    onMutate: (file) => {
+      setDatasetImportingName(file.name);
+      setDatasetImportError(null);
+    },
+    onSuccess: (dataset) => {
+      setSelectedDataset(dataset);
+      setDatasetImportingName(null);
+      setDatasetImportError(null);
+    },
+    onError: (err) => {
+      setDatasetImportingName(null);
+      setDatasetImportError(toErrorMessage(err));
+    },
+  });
+
   const createCanonicalVersionMutation = useMutation({
     mutationFn: () =>
       scoped.createCanonicalVersion(effectiveSelectedPlanId!, {
-        source_path: sourcePath!,
+        source_ref: selectedDataset!.source_ref,
         ...(targetColumn.trim() ? { target_column: targetColumn.trim() } : {}),
         ...(goodValues.trim()
           ? {
@@ -303,8 +324,11 @@ export function useProjectWorkspace(scope: ProjectScope) {
     visibleRuns,
     newPlanName,
     setNewPlanName,
-    sourcePath,
-    setSourcePath,
+    selectedDataset,
+    datasetImportingName,
+    datasetImportError,
+    datasetImportPending: uploadDatasetMutation.isPending,
+    importDataset: (file: File) => uploadDatasetMutation.mutate(file),
     targetColumn,
     setTargetColumn,
     goodValues,

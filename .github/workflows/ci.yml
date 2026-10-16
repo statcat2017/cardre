@@ -4,7 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
-    branches: [main]
+    branches: [main, 'feature/**']
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -166,6 +166,36 @@ jobs:
       # Full-suite coverage gate (60/60/60/50). Ordinary `npm test` remains
       # available for targeted local runs.
       - run: npm run test:coverage
+
+  test-browser-e2e:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.frontend == 'true' || needs.detect-changes.outputs.python == 'true' || needs.detect-changes.outputs.sidecar == 'true' || needs.detect-changes.outputs.ci == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup-python-env
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          extras: sidecar,test
+      - uses: ./.github/actions/setup-frontend
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Install Chromium
+        working-directory: frontend
+        run: npx playwright install --with-deps chromium
+      - name: Run real browser workflow
+        working-directory: frontend
+        env:
+          CARDRE_BROWSER_OUTPUT_DIR: ${{ runner.temp }}/cardre-browser-e2e
+        run: npm run test:e2e
+      - name: Upload browser evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: cardre-dataset-browse-browser-evidence
+          path: ${{ runner.temp }}/cardre-browser-e2e
+          if-no-files-found: ignore
 
   build-sidecar:
     needs: detect-changes
@@ -340,6 +370,7 @@ jobs:
       - smoke-test-packaged-sidecar
       - smoke-test-sidecar
       - check-api-contracts
+      - test-browser-e2e
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -358,6 +389,7 @@ jobs:
           SMOKE_TEST_PACKAGED_SIDECAR: ${{ needs.smoke-test-packaged-sidecar.result }}
           SMOKE_TEST_SIDECAR: ${{ needs.smoke-test-sidecar.result }}
           CHECK_API_CONTRACTS: ${{ needs.check-api-contracts.result }}
+          TEST_BROWSER_E2E: ${{ needs.test-browser-e2e.result }}
         run: |
           failures=0
           for job in \
@@ -372,7 +404,8 @@ jobs:
             "check-tauri:$CHECK_TAURI" \
             "smoke-test-packaged-sidecar:$SMOKE_TEST_PACKAGED_SIDECAR" \
             "smoke-test-sidecar:$SMOKE_TEST_SIDECAR" \
-            "check-api-contracts:$CHECK_API_CONTRACTS"
+            "check-api-contracts:$CHECK_API_CONTRACTS" \
+            "test-browser-e2e:$TEST_BROWSER_E2E"
           do
             name=${job%%:*}
             result=${job#*:}
