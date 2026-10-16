@@ -434,6 +434,14 @@ export const api = {
           }),
         );
       },
+      downloadExport: async (runId: string, artifactId: string) => {
+        const pathTemplate: keyof paths = "/projects/{project_id}/runs/{run_id}/exports/download";
+        const path = String(pathTemplate)
+          .replace("{project_id}", encodeURIComponent(pid))
+          .replace("{run_id}", encodeURIComponent(runId));
+        const query = new URLSearchParams({ artifact_id: artifactId });
+        return fetchResponse(`${getBaseUrl()}${path}?${query.toString()}`);
+      },
       listPlanVersions: async (planId: string) => {
         const client = makeClient();
         return requireData(

@@ -32,15 +32,13 @@ class ExportRepo:
         sql = (
             "SELECT e.* FROM exports e JOIN runs r ON e.run_id = r.run_id "
             "JOIN plan_versions pv ON r.plan_version_id = pv.plan_version_id "
-            "JOIN plans p ON pv.plan_id = p.plan_id WHERE p.project_id = ? "
-            "ORDER BY e.created_at"
+            "JOIN plans p ON pv.plan_id = p.plan_id WHERE p.project_id = ?"
         )
         params: list[Any] = [project_id]
         if run_id is not None:
-            sql = (
-                "SELECT e.* FROM exports e WHERE e.run_id = ? ORDER BY e.created_at"
-            )
-            params = [run_id]
+            sql += " AND e.run_id = ?"
+            params.append(run_id)
+        sql += " ORDER BY e.created_at"
         rows = self._conn.execute(sql, tuple(params)).fetchall()
         return [_row_to_export(r) for r in rows]
 

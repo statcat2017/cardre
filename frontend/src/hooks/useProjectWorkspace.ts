@@ -103,6 +103,32 @@ export function useProjectWorkspace(scope: ProjectScope) {
     enabled: !!effectiveSelectedRunId,
   });
 
+  const downloadExportMutation = useMutation({
+    mutationFn: async ({
+      runId,
+      artifactId,
+      fileName,
+    }: {
+      runId: string;
+      artifactId: string;
+      fileName: string;
+    }) => ({
+      response: await scoped.downloadExport(runId, artifactId),
+      fileName,
+    }),
+    onSuccess: async ({ response, fileName }) => {
+      const objectUrl = URL.createObjectURL(await response.blob());
+      const link = document.createElement("a");
+      link.href = objectUrl;
+      link.download = fileName;
+      link.style.display = "none";
+      document.body.append(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+    },
+  });
+
   const selectedRunStatus = selectedRunQuery.data?.status;
 
   useEffect(() => {
@@ -313,6 +339,7 @@ export function useProjectWorkspace(scope: ProjectScope) {
     runEvidenceQuery,
     reportsQuery,
     exportsQuery,
+    downloadExportMutation,
     stepsQuery,
     nodeTypesQuery,
     effectiveSelectedPlanId,
