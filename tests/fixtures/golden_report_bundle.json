@@ -18,7 +18,7 @@
     "observation_level": "",
     "development_sample": "train",
     "validation_samples": [],
-    "final_variable_count": 0,
+    "final_variable_count": 3,
     "excluded_variable_count": 0
   },
   "dataset_roles": [],
