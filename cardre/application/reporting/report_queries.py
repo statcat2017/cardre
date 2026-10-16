@@ -8,6 +8,7 @@ plain records the API mapper converts. Routes never touch the filesystem or
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 from cardre.application.ports.manifest_publisher import ManifestPublisherFactoryPort
@@ -31,6 +32,23 @@ class ExportItem:
     path: str
     created_at: str
     size_bytes: int
+    artifact_id: str | None = None
+    file_name: str | None = None
+    media_type: str | None = None
+
+
+@dataclass(frozen=True)
+class ScoringExportFormat:
+    export_type: str
+    file_name: str
+    media_type: str
+
+
+SCORING_EXPORT_FORMATS = {
+    "scorecard_table": ScoringExportFormat("scorecard_csv", "scorecard.csv", "text/csv"),
+    "scoring_export_python": ScoringExportFormat("python_scorer", "scorecard.py", "text/x-python"),
+    "scoring_export_sql": ScoringExportFormat("sql_scorer", "scorecard.sql", "application/sql"),
+}
 
 
 class ListReports:
@@ -119,13 +137,37 @@ class ListExports:
     def __call__(self, project_id: str, run_id: str | None = None) -> list[ExportItem]:
         with self._uow_factory.read_only(project_id) as uow:
             rows = uow.exports.list_for_project(project_id, run_id=run_id)
-        return [
+            scoring_exports: list[ExportItem] = []
+            if run_id is not None:
+                run = uow.runs.get(run_id)
+                if run is not None and run.status == "succeeded":
+                    for artifact_id in uow.artifacts.output_artifact_ids_for_run(run_id):
+                        artifact = uow.artifacts.get(artifact_id)
+                        if artifact is None:
+                            continue
+                        export_format = SCORING_EXPORT_FORMATS.get(artifact.artifact_type)
+                        if export_format is None:
+                            continue
+                        scoring_exports.append(ExportItem(
+                            export_id=artifact.artifact_id,
+                            run_id=run_id,
+                            export_type=export_format.export_type,
+                            path=export_format.file_name,
+                            created_at=artifact.created_at,
+                            size_bytes=0,
+                            artifact_id=artifact.artifact_id,
+                            file_name=export_format.file_name,
+                            media_type=export_format.media_type,
+                        ))
+        registered = [
             ExportItem(
                 export_id=e.export_id, run_id=e.run_id, export_type=e.export_type,
                 path=e.path, created_at=e.created_at, size_bytes=e.size_bytes,
+                file_name=Path(e.path).name,
             )
             for e in rows
         ]
+        return registered + scoring_exports
 
 
 class GetRunManifest:

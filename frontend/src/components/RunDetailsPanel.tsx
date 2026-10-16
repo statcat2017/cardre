@@ -1,3 +1,5 @@
+import { useState } from "react";
+
 import type { components } from "../api/schema.d";
 import { theme, pageCardStyle } from "../styles";
 
@@ -18,18 +20,31 @@ interface Props {
   reports: Report[] | null | undefined;
   exportsLoading: boolean;
   exports: Export[] | null | undefined;
+  onDownloadExport?: (item: Export) => Promise<void>;
 }
+
+type FileListItem = {
+  id: string;
+  type: string;
+  path: string;
+  fileName?: string | null;
+  mediaType?: string | null;
+  artifactId?: string | null;
+  size?: number;
+};
 
 function FileList({
   title,
   loading,
   items,
   renderLine,
+  emptyMessage = "None.",
 }: {
   title: string;
   loading: boolean;
-  items: Array<{ id: string; type: string; path: string }> | null | undefined;
-  renderLine?: (item: { id: string; type: string; path: string }) => React.ReactNode;
+  items: FileListItem[] | null | undefined;
+  renderLine?: (item: FileListItem) => React.ReactNode;
+  emptyMessage?: string;
 }) {
   return (
     <div style={{ display: "grid", gap: 10 }}>
@@ -51,11 +66,13 @@ function FileList({
               <strong>{item.type}</strong>
               {renderLine?.(item)}
             </div>
-            <div style={{ color: theme.muted, fontSize: 12, marginTop: 4 }}>{item.path}</div>
+            <div style={{ color: theme.muted, fontSize: 12, marginTop: 4 }}>
+              {item.fileName ?? item.path}
+            </div>
           </div>
         ))
       ) : (
-        <div style={{ color: theme.muted }}>None.</div>
+        <div style={{ color: theme.muted }}>{emptyMessage}</div>
       )}
     </div>
   );
@@ -72,7 +89,37 @@ export function RunDetailsPanel({
   reports,
   exportsLoading,
   exports,
+  onDownloadExport,
 }: Props) {
+  const [downloadState, setDownloadState] = useState<{
+    exportId: string;
+    status: "downloading" | "success" | "error";
+    message: string;
+  } | null>(null);
+
+  const downloadExport = async (item: Export) => {
+    if (!onDownloadExport || !item.artifact_id || !item.file_name) return;
+    setDownloadState({
+      exportId: item.export_id,
+      status: "downloading",
+      message: "Preparing download…",
+    });
+    try {
+      await onDownloadExport(item);
+      setDownloadState({
+        exportId: item.export_id,
+        status: "success",
+        message: `Downloaded ${item.file_name}.`,
+      });
+    } catch (error) {
+      setDownloadState({
+        exportId: item.export_id,
+        status: "error",
+        message: `Download failed: ${error instanceof Error ? error.message : String(error)}`,
+      });
+    }
+  };
+
   return (
     <>
       <section style={{ ...pageCardStyle, padding: 18 }}>
@@ -211,15 +258,50 @@ export function RunDetailsPanel({
               id: e.export_id,
               type: e.export_type,
               path: e.path,
+              fileName: e.file_name,
+              mediaType: e.media_type,
+              artifactId: e.artifact_id,
               ...(e.size_bytes ? { size: e.size_bytes } : {}),
             }))}
-            renderLine={(item) =>
-              "size" in item && typeof item.size === "number" ? (
-                <span style={{ color: theme.muted, fontSize: 12 }}>
-                  {Math.round(item.size / 1024)} KB
-                </span>
-              ) : undefined
+            emptyMessage={
+              run?.status === "succeeded"
+                ? "No scoring exports are available for this run."
+                : "Exports are unavailable until this run succeeds."
             }
+            renderLine={(item) => {
+              const exportItem = exports?.find((entry) => entry.export_id === item.id);
+              const state = downloadState?.exportId === item.id ? downloadState : null;
+              return (
+                <div style={{ display: "grid", justifyItems: "end", gap: 6 }}>
+                  {item.mediaType && (
+                    <span style={{ color: theme.muted, fontSize: 12 }}>{item.mediaType}</span>
+                  )}
+                  {typeof item.size === "number" && item.size > 0 && (
+                    <span style={{ color: theme.muted, fontSize: 12 }}>
+                      {Math.round(item.size / 1024)} KB
+                    </span>
+                  )}
+                  {item.artifactId && exportItem && onDownloadExport && (
+                    <button
+                      type="button"
+                      onClick={() => void downloadExport(exportItem)}
+                      disabled={state?.status === "downloading"}
+                      aria-label={`Download ${item.fileName ?? item.type}`}
+                    >
+                      {state?.status === "downloading" ? "Downloading…" : "Download"}
+                    </button>
+                  )}
+                  {state && (
+                    <span
+                      role={state.status === "error" ? "alert" : "status"}
+                      style={{ color: state.status === "error" ? theme.redText : theme.muted }}
+                    >
+                      {state.message}
+                    </span>
+                  )}
+                </div>
+              );
+            }}
           />
         </section>
       </div>

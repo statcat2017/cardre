@@ -155,6 +155,11 @@ def test_exports_from_project_a_not_in_project_b(env, tmp_path):
     assert len(resp_a.json()["exports"]) == 1
     resp_b = client.get(f"/projects/{pid_b}/exports")
     assert len(resp_b.json()["exports"]) == 0
+    foreign_run_filter = client.get(
+        f"/projects/{pid_b}/exports", params={"run_id": run_a},
+    )
+    assert foreign_run_filter.status_code == 200
+    assert foreign_run_filter.json()["exports"] == []
 
 
 def test_generated_audit_pack_is_discoverable_through_exports_route(env, tmp_path):

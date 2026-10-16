@@ -392,6 +392,9 @@ class ExportResponse(BaseModel):
     path: str
     created_at: str
     size_bytes: int = 0
+    artifact_id: str | None = None
+    file_name: str | None = None
+    media_type: str | None = None
 
 
 class ExportListResponse(BaseModel):

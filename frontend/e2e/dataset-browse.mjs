@@ -11,8 +11,9 @@ import { chromium } from "playwright";
 
 const frontendRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const repoRoot = resolve(frontendRoot, "..");
-const python = process.env.CARDRE_PYTHON
-  ?? (existsSync(join(repoRoot, ".venv", "bin", "python"))
+const python =
+  process.env.CARDRE_PYTHON ??
+  (existsSync(join(repoRoot, ".venv", "bin", "python"))
     ? join(repoRoot, ".venv", "bin", "python")
     : "python3");
 const datasetPath = join(repoRoot, "datasets", "german_credit", "german_credit.parquet");
@@ -83,7 +84,13 @@ async function apiJson(url, init) {
   const body = await response.json();
   assert.ok(
     response.ok,
-    (init?.method ?? "GET") + " " + url + " returned " + response.status + ": " + JSON.stringify(body),
+    (init?.method ?? "GET") +
+      " " +
+      url +
+      " returned " +
+      response.status +
+      ": " +
+      JSON.stringify(body),
   );
   return body;
 }
@@ -95,12 +102,32 @@ async function fillStepField(card, name, value) {
 async function saveStep(page, card, planVersionId) {
   const saved = page.waitForResponse((response) => {
     const url = new URL(response.url());
-    return response.request().method() === "PATCH"
-      && url.pathname.includes("/plan-versions/" + planVersionId + "/steps/");
+    return (
+      response.request().method() === "PATCH" &&
+      url.pathname.includes("/plan-versions/" + planVersionId + "/steps/")
+    );
   });
   await card.getByRole("button", { name: "Save", exact: true }).click();
   const response = await saved;
   assert.equal(response.status(), 200, await response.text());
+}
+
+async function downloadExport(page, fileName, mediaType) {
+  const responsePromise = page.waitForResponse((response) => {
+    const url = new URL(response.url());
+    return (
+      response.request().method() === "GET" &&
+      url.pathname.includes("/exports/") &&
+      url.pathname.endsWith("/download")
+    );
+  });
+  const downloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Download " + fileName }).click();
+  const [response, download] = await Promise.all([responsePromise, downloadPromise]);
+  assert.equal(response.status(), 200);
+  assert.ok(response.headers()["content-type"].startsWith(mediaType));
+  assert.equal(download.suggestedFilename(), fileName);
+  assert.equal(await download.failure(), null, fileName + " download should complete");
 }
 
 async function run() {
@@ -161,23 +188,28 @@ async function run() {
 
     await page.getByLabel("Project root").fill(projectRoot);
     await page.getByLabel("Project name").fill("Dataset Browse E2E");
-    const projectResponse = page.waitForResponse((response) =>
-      response.request().method() === "POST" && new URL(response.url()).pathname === "/projects",
+    const projectResponse = page.waitForResponse(
+      (response) =>
+        response.request().method() === "POST" && new URL(response.url()).pathname === "/projects",
     );
     await page.getByRole("button", { name: "Create Project", exact: true }).click();
     const project = await (await projectResponse).json();
     assert.equal(project.name, "Dataset Browse E2E");
 
     await page.getByPlaceholder("New plan name").fill("German Credit");
-    const planResponse = page.waitForResponse((response) =>
-      response.request().method() === "POST" && new URL(response.url()).pathname.endsWith("/plans"),
+    const planResponse = page.waitForResponse(
+      (response) =>
+        response.request().method() === "POST" &&
+        new URL(response.url()).pathname.endsWith("/plans"),
     );
     await page.getByRole("button", { name: "Create plan", exact: true }).click();
     const plan = await (await planResponse).json();
 
     const filePicker = page.locator("#parquet-file-picker");
-    const invalidUpload = page.waitForResponse((response) =>
-      response.request().method() === "POST" && new URL(response.url()).pathname.endsWith("/datasets"),
+    const invalidUpload = page.waitForResponse(
+      (response) =>
+        response.request().method() === "POST" &&
+        new URL(response.url()).pathname.endsWith("/datasets"),
     );
     await filePicker.setInputFiles({
       name: "invalid.parquet",
@@ -188,7 +220,10 @@ async function run() {
     assert.equal(invalidResponse.status(), 422);
     assert.equal((await invalidResponse.json()).detail.code, "DATASET_INVALID");
     await page.getByRole("alert").waitFor();
-    assert.equal(await page.getByRole("button", { name: "Generate launch pathway" }).isDisabled(), true);
+    assert.equal(
+      await page.getByRole("button", { name: "Generate launch pathway" }).isDisabled(),
+      true,
+    );
     const versionsAfterInvalidUpload = await apiJson(
       apiBase + "/projects/" + project.project_id + "/plans/" + plan.plan_id + "/versions",
     );
@@ -199,8 +234,10 @@ async function run() {
     });
     assert.deepEqual(rejectedDatasetFiles, []);
 
-    const validUpload = page.waitForResponse((response) =>
-      response.request().method() === "POST" && new URL(response.url()).pathname.endsWith("/datasets"),
+    const validUpload = page.waitForResponse(
+      (response) =>
+        response.request().method() === "POST" &&
+        new URL(response.url()).pathname.endsWith("/datasets"),
     );
     await filePicker.setInputFiles(datasetPath);
     assert.equal((await validUpload).status(), 201);
@@ -211,28 +248,45 @@ async function run() {
     await page.getByPlaceholder("class").fill("class");
     await page.getByPlaceholder("good").fill("good");
     await page.getByPlaceholder("bad").fill("bad");
-    const canonicalResponse = page.waitForResponse((response) =>
-      response.request().method() === "POST"
-        && new URL(response.url()).pathname.endsWith("/canonical-version"),
+    const canonicalResponse = page.waitForResponse(
+      (response) =>
+        response.request().method() === "POST" &&
+        new URL(response.url()).pathname.endsWith("/canonical-version"),
     );
     await page.getByRole("button", { name: "Generate launch pathway" }).click();
     const planVersion = await (await canonicalResponse).json();
     assert.equal(planVersion.is_committed, false);
 
-    const versionStepsUrl = apiBase + "/projects/" + project.project_id
-      + "/plan-versions/" + planVersion.plan_version_id + "/steps";
+    const versionStepsUrl =
+      apiBase +
+      "/projects/" +
+      project.project_id +
+      "/plan-versions/" +
+      planVersion.plan_version_id +
+      "/steps";
     const versionSteps = await apiJson(versionStepsUrl);
     const sourcePath = versionSteps[0].params.source_path;
     assert.equal(dirname(sourcePath), join(projectRoot, "datasets"));
     assert.match(sourcePath, /[0-9a-f]{32}\.parquet$/);
 
     const finalWoe = page.getByText("final-woe-iv", { exact: true }).last().locator("..");
-    await finalWoe.locator("label").filter({ hasText: "Purpose" }).locator("select").selectOption("final");
-    await finalWoe.locator("label").filter({ hasText: "Smoothing" }).locator("input").fill(JSON.stringify({
-      method: "additive",
-      alpha: 0.5,
-      rationale: "The representative German Credit data contains sparse bins; additive smoothing stabilizes WOE.",
-    }));
+    await finalWoe
+      .locator("label")
+      .filter({ hasText: "Purpose" })
+      .locator("select")
+      .selectOption("final");
+    await finalWoe
+      .locator("label")
+      .filter({ hasText: "Smoothing" })
+      .locator("input")
+      .fill(
+        JSON.stringify({
+          method: "additive",
+          alpha: 0.5,
+          rationale:
+            "The representative German Credit data contains sparse bins; additive smoothing stabilizes WOE.",
+        }),
+      );
     await saveStep(page, finalWoe, planVersion.plan_version_id);
 
     const metadata = page.getByText("define-metadata", { exact: true }).last().locator("..");
@@ -240,33 +294,38 @@ async function run() {
     await fillStepField(metadata, "Segment", "retail");
     await fillStepField(metadata, "Observation Window", "2020 calendar year");
     await fillStepField(metadata, "Performance Window", "2021 calendar year");
-    await metadata.locator("label").filter({ hasText: "Reject Inference Position" })
-      .locator("select").selectOption("not_applied");
+    await metadata
+      .locator("label")
+      .filter({ hasText: "Reject Inference Position" })
+      .locator("select")
+      .selectOption("not_applied");
     await saveStep(page, metadata, planVersion.plan_version_id);
 
     const manualBinning = page.getByText("manual-binning", { exact: true }).last().locator("..");
     await manualBinning.getByLabel(/Accept automated bins/).check();
     await saveStep(page, manualBinning, planVersion.plan_version_id);
 
-    const committed = page.waitForResponse((response) =>
-      response.request().method() === "POST" && new URL(response.url()).pathname.endsWith("/commit"),
+    const committed = page.waitForResponse(
+      (response) =>
+        response.request().method() === "POST" &&
+        new URL(response.url()).pathname.endsWith("/commit"),
     );
     await page.getByRole("button", { name: "Commit version", exact: true }).click();
     const commitResponse = await committed;
     assert.equal(commitResponse.status(), 200, await commitResponse.text());
 
-    const runResponse = page.waitForResponse((response) =>
-      response.request().method() === "POST" && new URL(response.url()).pathname.endsWith("/runs"),
+    const runResponse = page.waitForResponse(
+      (response) =>
+        response.request().method() === "POST" &&
+        new URL(response.url()).pathname.endsWith("/runs"),
     );
     await page.getByRole("button", { name: "Run selected version" }).click();
     const runSubmission = await runResponse;
     assert.equal(runSubmission.status(), 201, await runSubmission.text());
     const runRecord = await runSubmission.json();
-    await page.waitForFunction(
-      () => document.body.innerText.includes("Status: succeeded"),
-      null,
-      { timeout: 120_000 },
-    );
+    await page.waitForFunction(() => document.body.innerText.includes("Status: succeeded"), null, {
+      timeout: 120_000,
+    });
 
     const run = await apiJson(
       apiBase + "/projects/" + project.project_id + "/runs/" + runRecord.run_id,
@@ -280,24 +339,31 @@ async function run() {
     assert.ok(runSteps.every((step) => step.status === "succeeded"));
     assert.equal((await stat(sourcePath)).isFile(), true);
 
+    await downloadExport(page, "scorecard.csv", "text/csv");
+    await downloadExport(page, "scorecard.py", "text/x-python");
+    await downloadExport(page, "scorecard.sql", "application/sql");
+
     if (outputDir) {
       await mkdir(outputDir, { recursive: true });
       await page.getByText("Run Details", { exact: true }).scrollIntoViewIfNeeded();
       await page.screenshot({ path: join(outputDir, "dataset-browse-run.png"), fullPage: true });
     }
 
-    console.log(JSON.stringify({
-      ok: true,
-      projectId: project.project_id,
-      planId: plan.plan_id,
-      planVersionId: planVersion.plan_version_id,
-      runId: runRecord.run_id,
-      fileName: "german_credit.parquet",
-      stepCount: runSteps.length,
-      invalidUploadRejected: true,
-      cancellationPreservedSelection: true,
-      sourceStoredUnderProject: true,
-    }));
+    console.log(
+      JSON.stringify({
+        ok: true,
+        projectId: project.project_id,
+        planId: plan.plan_id,
+        planVersionId: planVersion.plan_version_id,
+        runId: runRecord.run_id,
+        fileName: "german_credit.parquet",
+        stepCount: runSteps.length,
+        invalidUploadRejected: true,
+        cancellationPreservedSelection: true,
+        sourceStoredUnderProject: true,
+        scoringDownloadsVerified: ["scorecard.csv", "scorecard.py", "scorecard.sql"],
+      }),
+    );
   } catch (error) {
     for (const [name, logs] of processLogs) {
       console.error("--- " + name + " logs ---\n" + logs);

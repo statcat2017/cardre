@@ -69,6 +69,7 @@ class Container:
     list_exports: Any = None
     get_run_manifest: Any = None
     dataset_store_factory: Any = None
+    download_scoring_export: Any = None
 
 
 def build_container(settings: Settings) -> Container:
@@ -252,10 +253,12 @@ def build_container(settings: Settings) -> Container:
             capability_probe=capability_probe,
         )
 
+    from cardre.application.reporting.download_scoring_export import DownloadScoringExport
     from cardre.application.reporting.report_queries import GetRunManifest, ListExports, ListReports
     list_reports = ListReports(uow_factory, manifest_publisher_factory)
     list_exports = ListExports(uow_factory)
     get_run_manifest = GetRunManifest(uow_factory, manifest_publisher_factory)
+    download_scoring_export = DownloadScoringExport(uow_factory, artifact_reader_factory)
 
     from cardre.application.runs.recover_stale_runs import StaleRunRecoveryWatchdog
 
@@ -292,4 +295,5 @@ def build_container(settings: Settings) -> Container:
         list_exports=list_exports,
         get_run_manifest=get_run_manifest,
         dataset_store_factory=dataset_store_factory,
+        download_scoring_export=download_scoring_export,
     )

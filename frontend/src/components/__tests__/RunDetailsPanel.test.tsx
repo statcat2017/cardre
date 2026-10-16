@@ -1,5 +1,6 @@
 import { render, screen, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import userEvent from "@testing-library/user-event";
+import { describe, expect, it, vi } from "vitest";
 
 import { RunDetailsPanel } from "../RunDetailsPanel";
 
@@ -193,8 +194,111 @@ describe("RunDetailsPanel", () => {
     expect(screen.getByText("2 KB")).toBeInTheDocument();
   });
 
+  it("downloads an available scoring export and shows success", async () => {
+    const user = userEvent.setup();
+    const exportItem = {
+      export_id: "artifact-1",
+      artifact_id: "artifact-1",
+      run_id: "r-1",
+      export_type: "scorecard_csv",
+      path: "scorecard.csv",
+      file_name: "scorecard.csv",
+      media_type: "text/csv",
+      created_at: "2024-01-01T00:00:00",
+      size_bytes: 0,
+    };
+    const onDownloadExport = vi.fn().mockResolvedValue(undefined);
+
+    render(
+      <RunDetailsPanel
+        {...EMPTY_PROPS}
+        run={{
+          run_id: "r-1",
+          plan_version_id: "v-1",
+          status: "succeeded",
+          run_scope: "full_plan",
+          force: false,
+          started_at: "2024-01-01T00:00:00",
+          step_count: 31,
+          is_stale: false,
+          cancel_requested: false,
+        }}
+        exports={[exportItem]}
+        onDownloadExport={onDownloadExport}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Download scorecard.csv" }));
+
+    expect(onDownloadExport).toHaveBeenCalledWith(exportItem);
+    expect(await screen.findByText("Downloaded scorecard.csv.")).toBeInTheDocument();
+  });
+
+  it("distinguishes a download failure and missing outputs", async () => {
+    const user = userEvent.setup();
+    const onDownloadExport = vi.fn().mockRejectedValue(new Error("artifact is unavailable"));
+
+    render(
+      <RunDetailsPanel
+        {...EMPTY_PROPS}
+        run={{
+          run_id: "r-1",
+          plan_version_id: "v-1",
+          status: "succeeded",
+          run_scope: "full_plan",
+          force: false,
+          started_at: "2024-01-01T00:00:00",
+          step_count: 31,
+          is_stale: false,
+          cancel_requested: false,
+        }}
+        exports={[
+          {
+            export_id: "artifact-1",
+            artifact_id: "artifact-1",
+            run_id: "r-1",
+            export_type: "python_scorer",
+            path: "scorecard.py",
+            file_name: "scorecard.py",
+            media_type: "text/x-python",
+            created_at: "2024-01-01T00:00:00",
+            size_bytes: 0,
+          },
+        ]}
+        onDownloadExport={onDownloadExport}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Download scorecard.py" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Download failed: artifact is unavailable",
+    );
+
+    render(
+      <RunDetailsPanel
+        {...EMPTY_PROPS}
+        run={{
+          run_id: "r-2",
+          plan_version_id: "v-1",
+          status: "succeeded",
+          run_scope: "full_plan",
+          force: false,
+          started_at: "2024-01-01T00:00:00",
+          step_count: 31,
+          is_stale: false,
+          cancel_requested: false,
+        }}
+        exports={[]}
+      />,
+    );
+    expect(screen.getByText("No scoring exports are available for this run.")).toBeInTheDocument();
+  });
+
   it("shows None. for empty file lists", () => {
     render(<RunDetailsPanel {...EMPTY_PROPS} reports={[]} exports={[]} />);
-    expect(screen.getAllByText("None.").length).toBe(2);
+    expect(screen.getByText("None.")).toBeInTheDocument();
+    expect(
+      screen.getByText("Exports are unavailable until this run succeeds."),
+    ).toBeInTheDocument();
   });
 });

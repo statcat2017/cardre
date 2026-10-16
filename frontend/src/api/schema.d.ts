@@ -449,6 +449,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/projects/{project_id}/runs/{run_id}/exports/download": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Download Scoring Export */
+        get: operations["download_scoring_export_projects__project_id__runs__run_id__exports_download_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/projects/{project_id}/reports": {
         parameters: {
             query?: never;
@@ -640,6 +657,12 @@ export interface components {
              * @default 0
              */
             size_bytes: number;
+            /** Artifact Id */
+            artifact_id?: string | null;
+            /** File Name */
+            file_name?: string | null;
+            /** Media Type */
+            media_type?: string | null;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -2162,6 +2185,60 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ExportListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    download_scoring_export_projects__project_id__runs__run_id__exports_download_get: {
+        parameters: {
+            query: {
+                artifact_id: string;
+            };
+            header?: never;
+            path: {
+                project_id: string;
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Rendered presentation of an immutable scoring output artifact. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/csv": string;
+                    "text/x-python": string;
+                    "application/sql": string;
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
             /** @description Validation Error */

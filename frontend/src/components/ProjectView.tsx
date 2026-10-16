@@ -174,6 +174,18 @@ export function ProjectView({ projectId, onBack }: Props) {
               reports={ws.reportsQuery.data?.reports}
               exportsLoading={ws.exportsQuery.isLoading}
               exports={ws.exportsQuery.data?.exports}
+              onDownloadExport={(item) => {
+                if (!item.artifact_id || !item.file_name) {
+                  return Promise.reject(new Error("This export is unavailable for download."));
+                }
+                return ws.downloadExportMutation
+                  .mutateAsync({
+                    runId: item.run_id,
+                    artifactId: item.artifact_id,
+                    fileName: item.file_name,
+                  })
+                  .then(() => undefined);
+              }}
             />
           </section>
         </section>

@@ -390,6 +390,9 @@ def export_to_response(item: Any) -> ExportResponse:
         path=item.path,
         created_at=item.created_at,
         size_bytes=getattr(item, "size_bytes", 0),
+        artifact_id=getattr(item, "artifact_id", None),
+        file_name=getattr(item, "file_name", None),
+        media_type=getattr(item, "media_type", None),
     )
 
 
