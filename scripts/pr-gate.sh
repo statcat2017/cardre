@@ -245,8 +245,9 @@ owner, repo = parse_origin(origin)
 branch = run_git("branch", "--show-current")
 if not branch:
     raise RuntimeError("Detached HEAD: checkout a branch before running scripts/pr-gate.sh")
+expected_sha = run_git("rev-parse", "HEAD")
 
-print(f"Pushing {branch} to origin")
+print(f"Pushing {branch} ({expected_sha[:12]}) to origin")
 subprocess.run(["git", "push", "-u", "origin", branch], cwd=ROOT, check=True)
 
 pr = ensure_pr(owner, repo, branch)
@@ -264,6 +265,13 @@ while True:
 
     pr = api("GET", f"/repos/{owner}/{repo}/pulls/{pr_number}")
     head_sha = pr["head"]["sha"]
+    if head_sha != expected_sha:
+        print(
+            f"Waiting for PR head to update: {head_sha[:12]} != {expected_sha[:12]}",
+            flush=True,
+        )
+        time.sleep(sleep_seconds)
+        continue
     run = latest_ci_run(owner, repo, head_sha)
     if run is None:
         print("Waiting for GitHub Actions run to appear...")
