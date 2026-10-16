@@ -8,6 +8,7 @@ standard envelope, and that query use cases close their UoWs.
 from __future__ import annotations
 
 import uuid
+import zipfile
 from contextlib import nullcontext
 from io import BytesIO
 from types import SimpleNamespace
@@ -169,21 +170,57 @@ def test_exports_from_project_a_not_in_project_b(env, tmp_path):
 
 
 def test_generated_audit_pack_is_discoverable_through_exports_route(env, tmp_path):
-    from cardre.application.reporting.export_audit_pack import ExportAuditPackCommand
-
     client, container = env
     pid, root = _provision(container, tmp_path)
-    plan_id, pv_id, run_id = _seed_run(container, pid, root)
+    _plan_id, pv_id, run_id = _seed_run(container, pid, root)
 
-    result = container.export_audit_pack(ExportAuditPackCommand(
-        project_id=pid, plan_id=plan_id, run_id=run_id,
-    ))
+    generate = client.post(f"/projects/{pid}/runs/{run_id}/exports/audit-pack")
+    assert generate.status_code == 201, generate.text
+    result = generate.json()
+    assert result["partial"] is True
+    assert result["warnings"]
+    assert result["download_url"].endswith(
+        f"/runs/{run_id}/exports/{result['export_id']}/download"
+    )
 
     response = client.get(f"/projects/{pid}/exports")
     assert response.status_code == 200
-    export = next(item for item in response.json()["exports"] if item["export_id"] == result.export_id)
+    export = next(
+        item for item in response.json()["exports"] if item["export_id"] == result["export_id"]
+    )
     assert export["run_id"] == run_id
     assert export["export_type"] == "audit_pack"
+    assert export["partial"] is True
+    assert export["warnings"]
+
+    download = client.get(result["download_url"])
+    assert download.status_code == 200
+    assert download.headers["content-type"].startswith("application/zip")
+    assert download.headers["x-content-type-options"] == "nosniff"
+    assert download.headers["content-disposition"].endswith(
+        f'filename="{result["file_name"]}"'
+    )
+
+    other_project_id, _ = _provision(container, tmp_path, "Other")
+    foreign_download = client.get(
+        f"/projects/{other_project_id}/runs/{run_id}/exports/{result['export_id']}/download"
+    )
+    assert foreign_download.status_code == 404
+
+    wrong_run_download = client.get(
+        f"/projects/{pid}/runs/another-run/exports/{result['export_id']}/download"
+    )
+    assert wrong_run_download.status_code == 404
+
+    archive_path = root / "exports" / result["path"]
+    with zipfile.ZipFile(archive_path) as archive:
+        files = {name: archive.read(name) for name in archive.namelist()}
+    files["run.json"] = b'{"run_id":"tampered"}'
+    with zipfile.ZipFile(archive_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        for name, content in files.items():
+            archive.writestr(name, content)
+    tampered_download = client.get(result["download_url"])
+    assert tampered_download.status_code == 404
 
 
 # ---------------------------------------------------------------------------

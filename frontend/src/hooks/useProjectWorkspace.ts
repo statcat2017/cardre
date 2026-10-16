@@ -112,6 +112,41 @@ export function useProjectWorkspace(scope: ProjectScope) {
     },
   });
 
+  const generateAuditPackMutation = useMutation({
+    mutationFn: (runId: string) => scoped.generateAuditPack(runId),
+    onSuccess: async (_export, runId) => {
+      await queryClient.invalidateQueries({
+        queryKey: ["runExports", scope.projectId, runId],
+      });
+    },
+  });
+
+  const downloadAuditPackMutation = useMutation({
+    mutationFn: async ({
+      runId,
+      exportId,
+      fileName,
+    }: {
+      runId: string;
+      exportId: string;
+      fileName: string;
+    }) => ({
+      response: await scoped.downloadAuditPack(runId, exportId),
+      fileName,
+    }),
+    onSuccess: async ({ response, fileName }) => {
+      const objectUrl = URL.createObjectURL(await response.blob());
+      const link = document.createElement("a");
+      link.href = objectUrl;
+      link.download = fileName;
+      link.style.display = "none";
+      document.body.append(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+    },
+  });
+
   const downloadExportMutation = useMutation({
     mutationFn: async ({
       runId,
@@ -356,6 +391,15 @@ export function useProjectWorkspace(scope: ProjectScope) {
     reportGenerationPending:
       generateReportMutation.isPending &&
       generateReportMutation.variables === effectiveSelectedRunId,
+    generateAuditPackMutation,
+    auditPackGenerationError:
+      generateAuditPackMutation.variables === effectiveSelectedRunId
+        ? generateAuditPackMutation.error
+        : null,
+    auditPackGenerationPending:
+      generateAuditPackMutation.isPending &&
+      generateAuditPackMutation.variables === effectiveSelectedRunId,
+    downloadAuditPackMutation,
     readReportHtml: (runId: string, reportId: string) => scoped.readReportHtml(runId, reportId),
     downloadReportHtml: (runId: string, reportId: string) =>
       scoped.downloadReportHtml(runId, reportId),

@@ -272,6 +272,82 @@ describe("RunDetailsPanel", () => {
     expect(onGenerateReport).toHaveBeenCalledOnce();
   });
 
+  it("generates an audit pack and keeps partial status and warnings visible", async () => {
+    const user = userEvent.setup();
+    const onGenerateAuditPack = vi.fn().mockResolvedValue(undefined);
+    const onDownloadAuditPack = vi.fn().mockResolvedValue(undefined);
+    const run = {
+      run_id: "r-1",
+      plan_version_id: "v-1",
+      status: "succeeded",
+      run_scope: "full_plan",
+      force: false,
+      started_at: "2024-01-01T00:00:00",
+      step_count: 31,
+      is_stale: false,
+      cancel_requested: false,
+    };
+    const partialPack = {
+      export_id: "exp-1",
+      run_id: "r-1",
+      export_type: "audit_pack",
+      path: "exports/audit-r-1.zip",
+      file_name: "audit-r-1.zip",
+      media_type: "application/zip",
+      download_url: "/projects/p-1/runs/r-1/exports/exp-1/download",
+      partial: true,
+      warnings: ["Canonical manifest is unavailable."],
+      created_at: "2024-01-01T00:00:00",
+      size_bytes: 123,
+    };
+
+    render(
+      <RunDetailsPanel
+        {...EMPTY_PROPS}
+        run={run}
+        exports={[partialPack]}
+        onGenerateAuditPack={onGenerateAuditPack}
+        onDownloadAuditPack={onDownloadAuditPack}
+      />,
+    );
+
+    expect(
+      screen.getByText("Audit packs exclude source and scored row-level data by default."),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Partial audit pack")).toBeInTheDocument();
+    expect(screen.getByText("Canonical manifest is unavailable.")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Generate audit pack" }));
+    expect(onGenerateAuditPack).toHaveBeenCalledOnce();
+    await user.click(screen.getByRole("button", { name: "Download audit-r-1.zip" }));
+    expect(onDownloadAuditPack).toHaveBeenCalledWith(partialPack);
+    expect(await screen.findByText("Downloaded audit-r-1.zip.")).toBeInTheDocument();
+  });
+
+  it("shows audit pack generation errors and pending state", () => {
+    render(
+      <RunDetailsPanel
+        {...EMPTY_PROPS}
+        run={{
+          run_id: "r-1",
+          plan_version_id: "v-1",
+          status: "succeeded",
+          run_scope: "full_plan",
+          force: false,
+          started_at: "2024-01-01T00:00:00",
+          step_count: 31,
+          is_stale: false,
+          cancel_requested: false,
+        }}
+        onGenerateAuditPack={vi.fn().mockResolvedValue(undefined)}
+        auditPackGenerationPending={true}
+        auditPackGenerationError={new Error("Audit pack could not be generated.")}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "Preparing audit pack…" })).toBeDisabled();
+    expect(screen.getByRole("alert")).toHaveTextContent("Audit pack could not be generated.");
+  });
+
   it("opens and downloads a listed model report", async () => {
     const user = userEvent.setup();
     const report = {
@@ -382,7 +458,7 @@ describe("RunDetailsPanel", () => {
         exports={[]}
       />,
     );
-    expect(screen.getByText("No scoring exports are available for this run.")).toBeInTheDocument();
+    expect(screen.getByText("No exports are available for this run yet.")).toBeInTheDocument();
   });
 
   it("shows None. for empty file lists", () => {

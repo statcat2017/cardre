@@ -395,6 +395,9 @@ class ExportResponse(BaseModel):
     artifact_id: str | None = None
     file_name: str | None = None
     media_type: str | None = None
+    download_url: str | None = None
+    partial: bool | None = None
+    warnings: list[str] = Field(default_factory=list)
 
 
 class ExportListResponse(BaseModel):

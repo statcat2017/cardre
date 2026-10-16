@@ -393,6 +393,9 @@ def export_to_response(item: Any) -> ExportResponse:
         artifact_id=getattr(item, "artifact_id", None),
         file_name=getattr(item, "file_name", None),
         media_type=getattr(item, "media_type", None),
+        download_url=getattr(item, "download_url", None),
+        partial=getattr(item, "partial", None),
+        warnings=list(getattr(item, "warnings", []) or []),
     )
 
 

@@ -23,9 +23,13 @@ interface Props {
   onGenerateReport?: () => Promise<unknown>;
   reportGenerationPending?: boolean;
   reportGenerationError?: unknown;
+  onGenerateAuditPack?: () => Promise<unknown>;
+  auditPackGenerationPending?: boolean;
+  auditPackGenerationError?: unknown;
   onOpenReport?: (item: Report) => Promise<Response>;
   onDownloadReport?: (item: Report) => Promise<Response>;
   onDownloadExport?: (item: Export) => Promise<void>;
+  onDownloadAuditPack?: (item: Export) => Promise<void>;
 }
 
 type FileListItem = {
@@ -38,6 +42,8 @@ type FileListItem = {
   openUrl?: string | null;
   downloadUrl?: string | null;
   size?: number;
+  partial?: boolean | null;
+  warnings?: string[];
 };
 
 function FileList({
@@ -106,9 +112,13 @@ export function RunDetailsPanel({
   onGenerateReport,
   reportGenerationPending = false,
   reportGenerationError,
+  onGenerateAuditPack,
+  auditPackGenerationPending = false,
+  auditPackGenerationError,
   onOpenReport,
   onDownloadReport,
   onDownloadExport,
+  onDownloadAuditPack,
 }: Props) {
   const [downloadState, setDownloadState] = useState<{
     exportId: string;
@@ -143,6 +153,7 @@ export function RunDetailsPanel({
     | (Error & { context?: { blockers?: Array<{ code?: string; message?: string }> } })
     | null
     | undefined;
+  const auditPackError = auditPackGenerationError as Error | null | undefined;
 
   const openReport = async (item: Report) => {
     if (!onOpenReport) return;
@@ -207,6 +218,29 @@ export function RunDetailsPanel({
     } catch (error) {
       setDownloadState({
         exportId: item.report_id,
+        status: "error",
+        message: `Download failed: ${error instanceof Error ? error.message : String(error)}`,
+      });
+    }
+  };
+
+  const downloadAuditPack = async (item: Export) => {
+    if (!onDownloadAuditPack || !item.file_name) return;
+    setDownloadState({
+      exportId: item.export_id,
+      status: "downloading",
+      message: "Preparing audit pack download…",
+    });
+    try {
+      await onDownloadAuditPack(item);
+      setDownloadState({
+        exportId: item.export_id,
+        status: "success",
+        message: `Downloaded ${item.file_name}.`,
+      });
+    } catch (error) {
+      setDownloadState({
+        exportId: item.export_id,
         status: "error",
         message: `Download failed: ${error instanceof Error ? error.message : String(error)}`,
       });
@@ -418,17 +452,36 @@ export function RunDetailsPanel({
             loading={exportsLoading}
             items={exports?.map((e) => ({
               id: e.export_id,
-              type: e.export_type,
+              type:
+                e.export_type === "audit_pack"
+                  ? e.partial === false
+                    ? "Checksummed audit pack"
+                    : "Partial audit pack"
+                  : e.export_type,
               path: e.path,
               fileName: e.file_name,
               mediaType: e.media_type,
               artifactId: e.artifact_id,
+              partial: e.partial,
+              warnings: e.warnings,
+              downloadUrl: e.download_url,
               ...(e.size_bytes ? { size: e.size_bytes } : {}),
             }))}
             emptyMessage={
               run?.status === "succeeded"
-                ? "No scoring exports are available for this run."
+                ? "No exports are available for this run yet."
                 : "Exports are unavailable until this run succeeds."
+            }
+            headerAction={
+              run?.status === "succeeded" ? (
+                <button
+                  type="button"
+                  onClick={() => void onGenerateAuditPack?.()}
+                  disabled={!onGenerateAuditPack || auditPackGenerationPending}
+                >
+                  {auditPackGenerationPending ? "Preparing audit pack…" : "Generate audit pack"}
+                </button>
+              ) : null
             }
             renderLine={(item) => {
               const exportItem = exports?.find((entry) => entry.export_id === item.id);
@@ -437,6 +490,13 @@ export function RunDetailsPanel({
                 <div style={{ display: "grid", justifyItems: "end", gap: 6 }}>
                   {item.mediaType && (
                     <span style={{ color: theme.muted, fontSize: 12 }}>{item.mediaType}</span>
+                  )}
+                  {!!item.warnings?.length && (
+                    <ul style={{ margin: 0, paddingLeft: 18, color: theme.muted, fontSize: 12 }}>
+                      {item.warnings.map((warning) => (
+                        <li key={warning}>{warning}</li>
+                      ))}
+                    </ul>
                   )}
                   {typeof item.size === "number" && item.size > 0 && (
                     <span style={{ color: theme.muted, fontSize: 12 }}>
@@ -453,6 +513,18 @@ export function RunDetailsPanel({
                       {state?.status === "downloading" ? "Downloading…" : "Download"}
                     </button>
                   )}
+                  {exportItem?.export_type === "audit_pack" &&
+                    item.downloadUrl &&
+                    onDownloadAuditPack && (
+                      <button
+                        type="button"
+                        onClick={() => void downloadAuditPack(exportItem)}
+                        disabled={state?.status === "downloading"}
+                        aria-label={`Download ${item.fileName ?? "audit pack"}`}
+                      >
+                        {state?.status === "downloading" ? "Downloading…" : "Download"}
+                      </button>
+                    )}
                   {state && (
                     <span
                       role={state.status === "error" ? "alert" : "status"}
@@ -465,6 +537,14 @@ export function RunDetailsPanel({
               );
             }}
           />
+          <p style={{ color: theme.muted, fontSize: 12, margin: 0 }}>
+            Audit packs exclude source and scored row-level data by default.
+          </p>
+          {auditPackError && (
+            <div role="alert" style={{ color: theme.redText }}>
+              {auditPackError.message}
+            </div>
+          )}
         </section>
       </div>
     </>

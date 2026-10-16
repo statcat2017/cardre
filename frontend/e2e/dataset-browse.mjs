@@ -134,8 +134,7 @@ async function generateAndOpenReport(page, runId) {
   const generation = page.waitForResponse((response) => {
     const url = new URL(response.url());
     return (
-      response.request().method() === "POST" &&
-      url.pathname.endsWith("/runs/" + runId + "/reports")
+      response.request().method() === "POST" && url.pathname.endsWith("/runs/" + runId + "/reports")
     );
   });
   await page.getByRole("button", { name: "Generate report" }).click();
@@ -154,7 +153,8 @@ async function generateAndOpenReport(page, runId) {
   const [openResponse, reportPage] = await Promise.all([openResponsePromise, reportPagePromise]);
   assert.equal(openResponse.status(), 200);
   await reportPage.waitForFunction(
-    () => document.body.innerText.includes("Executive Summary") &&
+    () =>
+      document.body.innerText.includes("Executive Summary") &&
       document.body.innerText.includes("Reproducibility"),
   );
   assert.ok((await reportPage.title()).length > 0);
@@ -165,12 +165,52 @@ async function generateAndOpenReport(page, runId) {
   });
   const downloadPromise = page.waitForEvent("download");
   await page.getByRole("button", { name: "Download", exact: true }).click();
-  const [downloadResponse, download] = await Promise.all([downloadResponsePromise, downloadPromise]);
+  const [downloadResponse, download] = await Promise.all([
+    downloadResponsePromise,
+    downloadPromise,
+  ]);
   assert.equal(downloadResponse.status(), 200);
   assert.ok(downloadResponse.headers()["content-type"].startsWith("text/html"));
   assert.equal(download.suggestedFilename(), "model-development-report.html");
   assert.equal(await download.failure(), null, "model report download should complete");
   return report.report_id;
+}
+
+async function generateAndDownloadAuditPack(page, runId) {
+  const generation = page.waitForResponse((response) => {
+    const url = new URL(response.url());
+    return (
+      response.request().method() === "POST" &&
+      url.pathname.endsWith("/runs/" + runId + "/exports/audit-pack")
+    );
+  });
+  await page.getByRole("button", { name: "Generate audit pack" }).click();
+  const generated = await generation;
+  assert.equal(generated.status(), 201, await generated.text());
+  const auditPack = await generated.json();
+  assert.equal(auditPack.run_id, runId);
+  assert.equal(auditPack.export_type, "audit_pack");
+  assert.equal(auditPack.partial, false);
+  assert.ok(auditPack.download_url);
+
+  const downloadResponsePromise = page.waitForResponse((response) => {
+    const url = new URL(response.url());
+    return (
+      response.request().method() === "GET" &&
+      url.pathname.endsWith("/exports/" + auditPack.export_id + "/download")
+    );
+  });
+  const downloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Download " + auditPack.file_name }).click();
+  const [downloadResponse, download] = await Promise.all([
+    downloadResponsePromise,
+    downloadPromise,
+  ]);
+  assert.equal(downloadResponse.status(), 200);
+  assert.ok(downloadResponse.headers()["content-type"].startsWith("application/zip"));
+  assert.equal(download.suggestedFilename(), auditPack.file_name);
+  assert.equal(await download.failure(), null, "audit pack download should complete");
+  return auditPack.export_id;
 }
 
 async function run() {
@@ -386,6 +426,7 @@ async function run() {
     await downloadExport(page, "scorecard.py", "text/x-python");
     await downloadExport(page, "scorecard.sql", "application/sql");
     const reportId = await generateAndOpenReport(page, runRecord.run_id);
+    const auditPackId = await generateAndDownloadAuditPack(page, runRecord.run_id);
 
     if (outputDir) {
       await mkdir(outputDir, { recursive: true });
@@ -409,6 +450,8 @@ async function run() {
         reportId,
         reportOpened: true,
         reportDownloadVerified: true,
+        auditPackId,
+        auditPackDownloadVerified: true,
       }),
     );
   } catch (error) {

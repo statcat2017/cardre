@@ -7,7 +7,10 @@ plain records the API mapper converts. Routes never touch the filesystem or
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import json
+import zipfile
+from collections.abc import Callable
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -35,6 +38,8 @@ class ExportItem:
     artifact_id: str | None = None
     file_name: str | None = None
     media_type: str | None = None
+    partial: bool | None = None
+    warnings: list[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -131,8 +136,13 @@ class ListReports:
 class ListExports:
     """List exports for a project, optionally filtered by run_id."""
 
-    def __init__(self, uow_factory: UnitOfWorkFactory) -> None:
+    def __init__(
+        self,
+        uow_factory: UnitOfWorkFactory,
+        project_root_factory: Callable[[str], Path] | None = None,
+    ) -> None:
         self._uow_factory = uow_factory
+        self._project_root_factory = project_root_factory
 
     def __call__(self, project_id: str, run_id: str | None = None) -> list[ExportItem]:
         with self._uow_factory.read_only(project_id) as uow:
@@ -159,15 +169,76 @@ class ListExports:
                             file_name=export_format.file_name,
                             media_type=export_format.media_type,
                         ))
-        registered = [
-            ExportItem(
-                export_id=e.export_id, run_id=e.run_id, export_type=e.export_type,
-                path=e.path, created_at=e.created_at, size_bytes=e.size_bytes,
-                file_name=Path(e.path).name,
-            )
-            for e in rows
-        ]
+        registered = []
+        for export in rows:
+            file_name = Path(export.path).name
+            if export.export_type == "audit_pack":
+                partial, warnings = self._audit_pack_status(project_id, export)
+                registered.append(ExportItem(
+                    export_id=export.export_id,
+                    run_id=export.run_id,
+                    export_type=export.export_type,
+                    path=file_name,
+                    created_at=export.created_at,
+                    size_bytes=export.size_bytes,
+                    file_name=file_name,
+                    media_type="application/zip",
+                    partial=partial,
+                    warnings=warnings,
+                ))
+            else:
+                registered.append(ExportItem(
+                    export_id=export.export_id,
+                    run_id=export.run_id,
+                    export_type=export.export_type,
+                    path=export.path,
+                    created_at=export.created_at,
+                    size_bytes=export.size_bytes,
+                    file_name=file_name,
+                ))
         return registered + scoring_exports
+
+    def _audit_pack_status(self, project_id: str, export: Any) -> tuple[bool, list[str]]:
+        unavailable = ["Audit pack status is unavailable; treat this archive as partial."]
+        if self._project_root_factory is None:
+            return True, unavailable
+        root = Path(self._project_root_factory(project_id)).resolve()
+        path = Path(export.path)
+        if not path.is_absolute():
+            path = root / path
+        try:
+            resolved = path.resolve(strict=True)
+            resolved.relative_to(root)
+            exports_root = (root / "exports").resolve()
+            exports_root.relative_to(root)
+            relative_to_exports = resolved.relative_to(exports_root)
+            if not relative_to_exports.parts:
+                return True, unavailable
+            if resolved.is_dir():
+                metadata_path = resolved / "audit_pack.json"
+                if metadata_path.is_symlink():
+                    return True, unavailable
+                metadata_path = metadata_path.resolve(strict=True)
+                metadata_path.relative_to(resolved)
+                metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+            else:
+                with zipfile.ZipFile(resolved) as archive:
+                    metadata = json.loads(archive.read("audit_pack.json").decode("utf-8"))
+        except (OSError, ValueError, KeyError, zipfile.BadZipFile, json.JSONDecodeError):
+            return True, unavailable
+        if not isinstance(metadata, dict):
+            return True, unavailable
+        if (
+            metadata.get("schema_version") != "cardre.audit_pack.v1"
+            or metadata.get("project_id") != project_id
+            or metadata.get("run_id") != export.run_id
+            or metadata.get("export_id") != export.export_id
+        ):
+            return True, unavailable
+        warnings = metadata.get("warnings")
+        if not isinstance(warnings, list) or not all(isinstance(item, str) for item in warnings):
+            return True, unavailable
+        return bool(metadata.get("partial", True)), warnings
 
 
 class GetRunManifest:

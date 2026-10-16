@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import hashlib
 import json
+import zipfile
 from pathlib import Path
 
 import pytest
@@ -9,7 +11,7 @@ from cardre.application.reporting.export_audit_pack import ExportAuditPack, Expo
 from cardre.domain.artifacts import ArtifactRef
 from cardre.domain.errors import CardreError
 from cardre.domain.evidence import EvidenceArtifact, EvidenceEdge
-from cardre.domain.plan import Plan
+from cardre.domain.plan import Plan, PlanVersion
 from cardre.domain.project import Project
 from cardre.domain.run import Run, RunStep, RunStepStatus
 
@@ -37,6 +39,9 @@ class _Factory:
 
 
 class _Reader:
+    def __init__(self, root=None):
+        self.root = root
+
     def read_bytes(self, artifact):
         return f"artifact:{artifact.artifact_id}".encode()
 
@@ -52,6 +57,12 @@ class _Plans:
 
     def get_version_steps(self, plan_version_id):
         return []
+
+    def get_plan_id_for_version(self, plan_version_id):
+        return "plan" if plan_version_id == "pv" else None
+
+    def get_version(self, plan_version_id):
+        return PlanVersion("pv", "plan", 1, True, "2026-01-01") if plan_version_id == "pv" else None
 
 
 class _Runs:
@@ -120,25 +131,72 @@ class _Uow:
 
 
 def _use_case(tmp_path: Path) -> ExportAuditPack:
-    return ExportAuditPack(_Factory(_Uow()), lambda project_id: _Reader(), lambda project_id: tmp_path, lambda command: None)
+    manifest_path = tmp_path / "manifests" / "runs" / "branch-run.json"
+    manifest_path.parent.mkdir(parents=True, exist_ok=True)
+    manifest_path.write_text(json.dumps({"run_id": "branch-run", "plan_version_id": "pv"}))
+    return ExportAuditPack(
+        _Factory(_Uow()),
+        lambda project_id: _Reader(tmp_path),
+        lambda project_id: tmp_path,
+        lambda command: None,
+    )
 
 
 def test_export_includes_run_evidence_and_artifacts(tmp_path):
     export_dir = tmp_path / "audit-pack"
-    result = _use_case(tmp_path)(ExportAuditPackCommand("project", "plan", "branch-run", export_path=export_dir))
+    result = _use_case(tmp_path)(ExportAuditPackCommand(
+        project_id="project", plan_id="plan", run_id="branch-run", export_path=export_dir,
+    ))
 
     assert result.partial is False
+    assert result.archive_path == f"{export_dir}.zip"
+    assert Path(result.archive_path).is_file()
     run_steps = json.loads((export_dir / "run_steps.json").read_text())
     assert {row["run_step_id"] for row in run_steps} == {"local"}
     artifacts = json.loads((export_dir / "artifacts.json").read_text())
     assert {artifact["artifact_id"] for artifact in artifacts} == {"local-artifact"}
-    assert (export_dir / "artifacts" / "local-artifact_local-hash").read_bytes() == b"artifact:local-artifact"
+    assert artifacts[0]["content_included"] is True
+    assert (export_dir / artifacts[0]["content_path"]).read_bytes() == b"artifact:local-artifact"
     assert (export_dir / "checksums.sha256").is_file()
+    with zipfile.ZipFile(result.archive_path) as archive:
+        checksums = archive.read("checksums.sha256").decode().splitlines()
+        for line in checksums:
+            digest, _, relative_path = line.partition("  ")
+            assert hashlib.sha256(archive.read(relative_path)).hexdigest() == digest
+        assert "plan_version.json" in archive.namelist()
+        assert "canonical_manifest.json" in archive.namelist()
+
+
+def test_unreadable_artifact_is_marked_unavailable_in_manifest(tmp_path):
+    class _UnreadableReader(_Reader):
+        def read_bytes(self, artifact):
+            raise FileNotFoundError("artifact content is missing")
+
+    export_dir = tmp_path / "audit-pack"
+    use_case = ExportAuditPack(
+        _Factory(_Uow()),
+        lambda project_id: _UnreadableReader(tmp_path),
+        lambda project_id: tmp_path,
+        lambda command: None,
+    )
+
+    result = use_case(ExportAuditPackCommand(
+        project_id="project", plan_id="plan", run_id="branch-run", export_path=export_dir,
+    ))
+
+    artifacts = json.loads((export_dir / "artifacts.json").read_text())
+    assert result.partial is True
+    assert artifacts[0]["content_included"] is False
+    assert artifacts[0]["content_path"] is None
+    assert artifacts[0]["content_status"] == "unavailable"
+    assert list((export_dir / "artifacts").iterdir()) == []
 
 
 def test_export_rejects_missing_run(tmp_path):
     with pytest.raises(CardreError) as exc_info:
-        _use_case(tmp_path)(ExportAuditPackCommand("project", "plan", "missing", export_path=tmp_path / "audit-pack"))
+        _use_case(tmp_path)(ExportAuditPackCommand(
+            project_id="project", plan_id="plan", run_id="missing", export_path=tmp_path / "audit-pack",
+        ))
     assert exc_info.value.code == "RUN_NOT_FOUND"
 
 
@@ -190,7 +248,9 @@ def test_export_excludes_stale_evidence_edges(tmp_path):
         lambda project_id: tmp_path,
         lambda command: None,
     )
-    use_case(ExportAuditPackCommand("project", "plan", "branch-run", export_path=export_dir))
+    use_case(ExportAuditPackCommand(
+        project_id="project", plan_id="plan", run_id="branch-run", export_path=export_dir,
+    ))
 
     evidence = json.loads((export_dir / "evidence.json").read_text())
     edge_ids = {e["edge"]["evidence_edge_id"] for e in evidence}
