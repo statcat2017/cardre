@@ -411,6 +411,9 @@ class ReportResponse(BaseModel):
     report_type: str
     path: str
     created_at: str
+    file_name: str | None = None
+    open_url: str | None = None
+    download_url: str | None = None
 
 
 class ReportListResponse(BaseModel):

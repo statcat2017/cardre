@@ -52,6 +52,7 @@ class Container:
     list_projects: Any = None
     get_project: Any = None
     generate_report: Any = None
+    read_report_html: Any = None
     export_audit_pack: Any = None
     submit_run: Any = None
     execute_run: Any = None
@@ -254,8 +255,10 @@ def build_container(settings: Settings) -> Container:
         )
 
     from cardre.application.reporting.download_scoring_export import DownloadScoringExport
+    from cardre.application.reporting.read_report import ReadReportHtml
     from cardre.application.reporting.report_queries import GetRunManifest, ListExports, ListReports
     list_reports = ListReports(uow_factory, manifest_publisher_factory)
+    read_report_html = ReadReportHtml(uow_factory, artifact_reader_factory)
     list_exports = ListExports(uow_factory)
     get_run_manifest = GetRunManifest(uow_factory, manifest_publisher_factory)
     download_scoring_export = DownloadScoringExport(uow_factory, artifact_reader_factory)
@@ -280,6 +283,7 @@ def build_container(settings: Settings) -> Container:
         list_projects=ListProjects(registry, uow_factory),
         get_project=GetProject(registry, uow_factory),
         generate_report=generate_report,
+        read_report_html=read_report_html,
         export_audit_pack=export_audit_pack,
         finalize_run=finalize_run_factory,
         manifest_publisher_factory=manifest_publisher_factory,

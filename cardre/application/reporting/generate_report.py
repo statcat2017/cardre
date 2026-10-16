@@ -29,6 +29,7 @@ class GenerateReportCommand:
 
 @dataclass(frozen=True)
 class GenerateReportResult:
+    report_id: str | None
     html_path: str
     bundle_path: str
     report_dir: str
@@ -114,21 +115,30 @@ class GenerateReport:
         # query use case can discover it project- and run-scoped. Only register
         # when the artifact reader exposes a project root (production wiring);
         # pure-port test doubles may not support write access.
+        report_id = None
         if hasattr(artifact_reader, "root"):
             import uuid
 
             from cardre.domain.diagnostics import utc_now_iso
-            report_id = str(uuid.uuid4())
-            root = Path(artifact_reader.root)
-            html_rel = str(html_path.relative_to(root)) if str(html_path).startswith(str(root)) else str(html_path)
-            with self._uow_factory.for_project(command.project_id) as uow:
-                uow.reports.register(
-                    report_id=report_id, run_id=command.run_id,
-                    report_type="report", path=html_rel, created_at=utc_now_iso(),
-                    scope="run",
-                )
-                uow.commit()
+            root = Path(artifact_reader.root).resolve()
+            try:
+                html_rel = Path(html_path).resolve().relative_to(root)
+            except ValueError:
+                # Audit packs can be written to a user-selected external
+                # destination. Such copies are not project reports and must
+                # not be registered as retrievable project-scoped reports.
+                pass
+            else:
+                report_id = str(uuid.uuid4())
+                with self._uow_factory.for_project(command.project_id) as uow:
+                    uow.reports.register(
+                        report_id=report_id, run_id=command.run_id,
+                        report_type="report", path=str(html_rel), created_at=utc_now_iso(),
+                        scope="run",
+                    )
+                    uow.commit()
         return GenerateReportResult(
+            report_id=report_id,
             html_path=str(html_path),
             bundle_path=str(bundle_path),
             report_dir=str(output_dir),

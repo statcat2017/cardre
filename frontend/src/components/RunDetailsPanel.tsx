@@ -20,6 +20,11 @@ interface Props {
   reports: Report[] | null | undefined;
   exportsLoading: boolean;
   exports: Export[] | null | undefined;
+  onGenerateReport?: () => Promise<unknown>;
+  reportGenerationPending?: boolean;
+  reportGenerationError?: unknown;
+  onOpenReport?: (item: Report) => Promise<Response>;
+  onDownloadReport?: (item: Report) => Promise<Response>;
   onDownloadExport?: (item: Export) => Promise<void>;
 }
 
@@ -30,6 +35,8 @@ type FileListItem = {
   fileName?: string | null;
   mediaType?: string | null;
   artifactId?: string | null;
+  openUrl?: string | null;
+  downloadUrl?: string | null;
   size?: number;
 };
 
@@ -39,16 +46,23 @@ function FileList({
   items,
   renderLine,
   emptyMessage = "None.",
+  headerAction,
 }: {
   title: string;
   loading: boolean;
   items: FileListItem[] | null | undefined;
   renderLine?: (item: FileListItem) => React.ReactNode;
   emptyMessage?: string;
+  headerAction?: React.ReactNode;
 }) {
   return (
     <div style={{ display: "grid", gap: 10 }}>
-      <h3 style={{ margin: 0, fontSize: 16 }}>{title}</h3>
+      <div
+        style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}
+      >
+        <h3 style={{ margin: 0, fontSize: 16 }}>{title}</h3>
+        {headerAction}
+      </div>
       {loading ? (
         <div style={{ color: theme.muted }}>Loading...</div>
       ) : items?.length ? (
@@ -89,6 +103,11 @@ export function RunDetailsPanel({
   reports,
   exportsLoading,
   exports,
+  onGenerateReport,
+  reportGenerationPending = false,
+  reportGenerationError,
+  onOpenReport,
+  onDownloadReport,
   onDownloadExport,
 }: Props) {
   const [downloadState, setDownloadState] = useState<{
@@ -114,6 +133,80 @@ export function RunDetailsPanel({
     } catch (error) {
       setDownloadState({
         exportId: item.export_id,
+        status: "error",
+        message: `Download failed: ${error instanceof Error ? error.message : String(error)}`,
+      });
+    }
+  };
+
+  const reportError = reportGenerationError as
+    | (Error & { context?: { blockers?: Array<{ code?: string; message?: string }> } })
+    | null
+    | undefined;
+
+  const openReport = async (item: Report) => {
+    if (!onOpenReport) return;
+    const reportWindow = window.open("about:blank", "_blank");
+    if (!reportWindow) {
+      setDownloadState({
+        exportId: item.report_id,
+        status: "error",
+        message: "Allow popups to open this report.",
+      });
+      return;
+    }
+    reportWindow.opener = null;
+    setDownloadState({
+      exportId: item.report_id,
+      status: "downloading",
+      message: "Opening report…",
+    });
+    try {
+      const response = await onOpenReport(item);
+      const objectUrl = URL.createObjectURL(await response.blob());
+      reportWindow.location.href = objectUrl;
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+      setDownloadState({
+        exportId: item.report_id,
+        status: "success",
+        message: "Report opened.",
+      });
+    } catch (error) {
+      reportWindow.close();
+      setDownloadState({
+        exportId: item.report_id,
+        status: "error",
+        message: `Could not open report: ${error instanceof Error ? error.message : String(error)}`,
+      });
+    }
+  };
+
+  const downloadReport = async (item: Report) => {
+    if (!onDownloadReport) return;
+    setDownloadState({
+      exportId: item.report_id,
+      status: "downloading",
+      message: "Preparing report download…",
+    });
+    try {
+      const response = await onDownloadReport(item);
+      const objectUrl = URL.createObjectURL(await response.blob());
+      const link = document.createElement("a");
+      link.href = objectUrl;
+      link.download = "model-development-report.html";
+      link.style.display = "none";
+      document.body.append(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+      setDownloadState({
+        exportId: item.report_id,
+        status: "success",
+        message: "Downloaded model-development-report.html.",
+      });
+    } catch (error) {
+      setDownloadState({
+        exportId: item.report_id,
         status: "error",
         message: `Download failed: ${error instanceof Error ? error.message : String(error)}`,
       });
@@ -247,8 +340,77 @@ export function RunDetailsPanel({
               id: r.report_id,
               type: r.report_type,
               path: r.path,
+              fileName: r.file_name,
+              openUrl: r.open_url,
+              downloadUrl: r.download_url,
             }))}
+            emptyMessage={
+              run?.status === "succeeded"
+                ? "No model development report has been generated for this run."
+                : "A report can be generated after this run succeeds."
+            }
+            headerAction={
+              run?.status === "succeeded" ? (
+                <button
+                  type="button"
+                  onClick={() => void onGenerateReport?.()}
+                  disabled={!onGenerateReport || reportGenerationPending}
+                >
+                  {reportGenerationPending ? "Generating…" : "Generate report"}
+                </button>
+              ) : null
+            }
+            renderLine={(item) => {
+              const report = reports?.find((entry) => entry.report_id === item.id);
+              const state = downloadState?.exportId === item.id ? downloadState : null;
+              return (
+                <div style={{ display: "grid", justifyItems: "end", gap: 6 }}>
+                  {item.type === "report" && report && (
+                    <div style={{ display: "flex", gap: 8 }}>
+                      {item.openUrl && onOpenReport && (
+                        <button
+                          type="button"
+                          onClick={() => void openReport(report)}
+                          disabled={state?.status === "downloading"}
+                        >
+                          Open
+                        </button>
+                      )}
+                      {item.downloadUrl && onDownloadReport && (
+                        <button
+                          type="button"
+                          onClick={() => void downloadReport(report)}
+                          disabled={state?.status === "downloading"}
+                        >
+                          Download
+                        </button>
+                      )}
+                    </div>
+                  )}
+                  {state && (
+                    <span
+                      role={state.status === "error" ? "alert" : "status"}
+                      style={{ color: state.status === "error" ? theme.redText : theme.muted }}
+                    >
+                      {state.message}
+                    </span>
+                  )}
+                </div>
+              );
+            }}
           />
+          {reportError && (
+            <div role="alert" style={{ color: theme.redText, marginTop: 10 }}>
+              <div>{reportError.message}</div>
+              {!!reportError.context?.blockers?.length && (
+                <ul>
+                  {reportError.context.blockers.map((blocker, index) => (
+                    <li key={`${blocker.code ?? "blocker"}-${index}`}>{blocker.message}</li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
         </section>
         <section style={{ ...pageCardStyle, padding: 18 }}>
           <FileList

@@ -172,6 +172,26 @@ export function ProjectView({ projectId, onBack }: Props) {
               evidence={ws.runEvidenceQuery.data}
               reportsLoading={ws.reportsQuery.isLoading}
               reports={ws.reportsQuery.data?.reports}
+              onGenerateReport={() => {
+                if (!ws.effectiveSelectedRunId) {
+                  return Promise.reject(new Error("Select a run before generating its report."));
+                }
+                return ws.generateReportMutation.mutateAsync(ws.effectiveSelectedRunId);
+              }}
+              reportGenerationPending={ws.reportGenerationPending}
+              reportGenerationError={ws.reportGenerationError}
+              onOpenReport={(item) => {
+                if (!item.run_id) {
+                  return Promise.reject(new Error("This report is not associated with a run."));
+                }
+                return ws.readReportHtml(item.run_id, item.report_id);
+              }}
+              onDownloadReport={(item) => {
+                if (!item.run_id) {
+                  return Promise.reject(new Error("This report is not associated with a run."));
+                }
+                return ws.downloadReportHtml(item.run_id, item.report_id);
+              }}
               exportsLoading={ws.exportsQuery.isLoading}
               exports={ws.exportsQuery.data?.exports}
               onDownloadExport={(item) => {

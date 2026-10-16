@@ -413,6 +413,32 @@ export const api = {
           }),
         );
       },
+      generateReport: async (runId: string) => {
+        const client = makeClient();
+        return requireData(
+          await client.POST("/projects/{project_id}/runs/{run_id}/reports", {
+            params: { path: { project_id: pid, run_id: runId } },
+          }),
+        );
+      },
+      readReportHtml: async (runId: string, reportId: string) => {
+        const pathTemplate: keyof paths =
+          "/projects/{project_id}/runs/{run_id}/reports/{report_id}/html";
+        const path = String(pathTemplate)
+          .replace("{project_id}", encodeURIComponent(pid))
+          .replace("{run_id}", encodeURIComponent(runId))
+          .replace("{report_id}", encodeURIComponent(reportId));
+        return fetchResponse(`${getBaseUrl()}${path}`);
+      },
+      downloadReportHtml: async (runId: string, reportId: string) => {
+        const pathTemplate: keyof paths =
+          "/projects/{project_id}/runs/{run_id}/reports/{report_id}/download";
+        const path = String(pathTemplate)
+          .replace("{project_id}", encodeURIComponent(pid))
+          .replace("{run_id}", encodeURIComponent(runId))
+          .replace("{report_id}", encodeURIComponent(reportId));
+        return fetchResponse(`${getBaseUrl()}${path}`);
+      },
       listExports: async (runId?: string) => {
         const client = makeClient();
         return requireData(

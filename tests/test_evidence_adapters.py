@@ -245,7 +245,7 @@ _JSON_KIND_FIXTURES = [
     (EvidenceKind.WOE_IV_EVIDENCE, "woe_iv_evidence", "report",
      "cardre.woe_iv_evidence.v1", {"variables": [{"variable": "age"}]}),
     (EvidenceKind.VALIDATION_METRICS, "validation_metrics", "report",
-     "cardre.validation_metrics.v1", {"roles": {"train": {"auc": 0.75}}, "metrics": {"train": {"auc": 0.75}}, "stability": {}}),
+     "cardre.validation_metrics.v1", {"roles": {"train": {"auc": 0.75}}, "stability": {}}),
     (EvidenceKind.CUTOFF_ANALYSIS, "cutoff_analysis", "report",
      "cardre.cutoff_analysis.v1", {"cutoff_tables": {"train": [{"score_cutoff": 100}]}}),
 ]
